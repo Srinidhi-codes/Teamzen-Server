@@ -1,0 +1,106 @@
+# ============================
+# Python
+# ============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# ============================
+# Virtual Environments
+# ============================
+venv/
+.venv/
+env/
+ENV/
+.virtualenv/
+
+# ============================
+# Django
+# ============================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Django media & static (optional – see notes)
+media/
+staticfiles/
+
+# ============================
+# Migrations (optional)
+# ============================
+# Uncomment if you DON'T want migrations tracked
+# */migrations/
+# !*/migrations/__init__.py
+
+# ============================
+# Environment variables
+# ============================
+.env
+.env.*
+!.env.example
+
+# ============================
+# Testing / Coverage
+# ============================
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# ============================
+# Build / Packaging
+# ============================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ============================
+# IDEs / Editors
+# ============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# ============================
+# OS files
+# ============================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================
+# Logs & temp files
+# ============================
+*.log
+*.tmp
+*.temp
+
+# ============================
+# Celery / Redis
+# ============================
+celerybeat-schedule
+celerybeat.pid
+
+# ============================
+# Jupyter
+# ============================
+.ipynb_checkpoints/
+
+# ============================
+# Node / Frontend (if mixed project)
+# ============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
