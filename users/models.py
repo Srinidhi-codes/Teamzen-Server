@@ -36,7 +36,7 @@ class CustomUser(AbstractUser):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
-    profile_picture = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    profile_picture = models.ImageField(upload_to='teamzen/user_profile/', null=True, blank=True)
     
     # Employment Details
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES, default='full_time')

@@ -1,4 +1,5 @@
 from django.db import models
+from datetime import time
 
 class Organization(models.Model):
     """Enterprise organization model"""
@@ -24,6 +25,8 @@ class OfficeLocation(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='office_locations')
     name = models.CharField(max_length=255)
     address = models.TextField()
+    login_time = models.TimeField(default=time(9, 0))
+    logout_time = models.TimeField(default=time(17, 0))
     latitude = models.DecimalField(max_digits=10, decimal_places=8)
     longitude = models.DecimalField(max_digits=11, decimal_places=8)
     geo_radius_meters = models.IntegerField(default=100)
