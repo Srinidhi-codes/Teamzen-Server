@@ -23,6 +23,12 @@ class CustomUser(AbstractUser):
         ('intern', 'Intern'),
     ]
 
+    EMPLOYEE_STATUS = [
+        ('active', 'Active'),
+        ('exited', 'Exited'),
+        ('terminated', 'Terminated'),
+    ]
+
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE,  null=True,
         blank=True)
     employee_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
@@ -36,12 +42,12 @@ class CustomUser(AbstractUser):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
-    profile_picture = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    profile_picture = models.ImageField(upload_to='teamzen/user_profile/', null=True, blank=True)
     
     # Employment Details
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES, default='full_time')
     date_of_joining = models.DateField(default=timezone.localdate)
-    date_of_leaving = models.DateField(null=True, blank=True)
+    date_of_exit = models.DateField(null=True, blank=True)
     
     # Banking & Tax
     bank_account_number = models.CharField(max_length=100, null=True, blank=True)

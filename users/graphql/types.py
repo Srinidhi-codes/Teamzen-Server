@@ -4,6 +4,7 @@ from strawberry import auto
 import strawberry.django
 from users.models import CustomUser
 from organizations.models import Department, Designation, OfficeLocation
+from organizations.graphql.types import OfficeLocationType, OrganizationType
 
 @strawberry.django.type(Department)
 class DepartmentType:
@@ -14,12 +15,6 @@ class DepartmentType:
 class DesignationType:
     id: strawberry.ID
     name: auto
-
-@strawberry.django.type(OfficeLocation)
-class OfficeLocationType:
-    id: strawberry.ID
-    name: auto
-    address: auto
 
 @strawberry.django.type(CustomUser)
 class UserType:
@@ -40,6 +35,7 @@ class UserType:
     employee_id: auto
     employment_type: auto
     manager: Optional['UserType']
+    organization: Optional['OrganizationType']
     
     # Relationships
     department: DepartmentType | None

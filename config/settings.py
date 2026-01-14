@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'cloudinary_storage',
+    'cloudinary',
     'django.contrib.staticfiles',
     "rest_framework",
     "corsheaders",
@@ -108,12 +110,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "neondb",
-        "USER": "neondb_owner",
-        "PASSWORD": "npg_KUgvYG2pPcz9",
-        "HOST": "ep-odd-smoke-a1gkii89-pooler.ap-southeast-1.aws.neon.tech",
+        "NAME": "payroll",
+        "USER": "postgres",
+        "PASSWORD": "123",
+        "HOST": "localhost",
         "PORT": "5432",
-        "OPTIONS": {"sslmode": "require"},
     }
 }
 
@@ -156,8 +157,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
+# Static & Media Storage (Django 4.2+)
+STORAGES = {
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -187,3 +195,10 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+
+# Cloudinary Configuration
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': 'dvoi1wvxl',
+    'API_KEY': '474361522756498',
+    'API_SECRET': 'FdynUJf5xAih3-QQcyqe4z8FZAA',
+}

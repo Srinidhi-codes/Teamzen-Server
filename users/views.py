@@ -124,6 +124,9 @@ class LoginView(generics.GenericAPIView):
 
 
 class CookieTokenRefreshView(TokenRefreshView):
+    permission_classes = []
+    authentication_classes = []
+
     def post(self, request, *args, **kwargs):
         # Prepare data for serializer (handle cookie if body is empty of refresh)
         data = request.data.copy() if hasattr(request.data, 'copy') else request.data
