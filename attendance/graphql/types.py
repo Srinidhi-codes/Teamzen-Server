@@ -33,6 +33,27 @@ class AttendanceRecordType:
     created_at: auto
     updated_at: auto
 
+    @strawberry.field
+    def correction_reason(self) -> Optional[str]:
+        correction = (
+            self.attendancecorrection_set.order_by("-created_at").first()
+        )
+        return correction.reason if correction else None
+
+    @strawberry.field
+    def correction_status(self) -> Optional[str]:
+        correction = (
+            self.attendancecorrection_set.order_by("-created_at").first()
+        )
+        return correction.status if correction else None
+
+    @strawberry.field
+    def approval_comment(self) -> Optional[str]:
+        correction = (
+            self.attendancecorrection_set.order_by("-created_at").first()
+        )
+        return correction.approval_comments if correction else None
+
 @strawberry.django.type(AttendanceCorrection)
 class AttendanceCorrectionType:
     id: strawberry.ID
@@ -48,24 +69,3 @@ class AttendanceCorrectionType:
 
     created_at: auto
 
-
-# @strawberry.django.type(AttendanceRecord)
-# class AttendanceRecordType:
-#     id: strawberry.ID
-#     attendance_date: auto
-#     login_time: auto
-#     logout_time: auto
-#     status: auto
-#     worked_hours: auto
-#     is_within_geofence: auto
-#     remarks: auto
-
-
-# @strawberry.django.type(AttendanceCorrection)
-# class AttendanceCorrectionType:
-#     id: strawberry.ID
-#     reason: auto
-#     status: auto
-#     corrected_login_time: auto
-#     corrected_logout_time: auto
-#     created_at: auto

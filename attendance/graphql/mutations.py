@@ -9,7 +9,7 @@ from attendance.graphql.types import (
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from attendance.services import check_in_user, check_out_user
 from django.db import transaction
-
+from graphql import GraphQLError
 
 @strawberry.input
 class CheckInInput:
@@ -96,6 +96,7 @@ class AttendanceMutation:
             reason=input.reason,
         )
 
+        
     @strawberry.mutation
     def approve_attendance_correction(
         self,
@@ -104,35 +105,38 @@ class AttendanceMutation:
         status: str,
         approval_comments: Optional[str] = None,
     ) -> bool:
-        approver = info.context.request.user 
+        approver = info.context.request.user
 
-        # if not approver or approver.is_anonymous:
-        #     raise Exception("Authentication required")
+        # 🔐 Auth check
+        # if not approver or getattr(approver, "is_anonymous", True):
+        #     raise GraphQLError("Authentication required")
 
+        # # 🔐 Role check
         # if approver.role not in ["admin", "hr", "manager"]:
-        #     raise Exception("Not authorized")
+        #     raise GraphQLError("Not authorized")
 
-        if status not in ["approved", "rejected"]:
-            raise Exception("Invalid status")
-
-        with transaction.atomic():
+        # 🔎 Fetch correction
+        try:
             correction = AttendanceCorrection.objects.select_related(
                 "attendance_record"
             ).get(id=correction_id)
+        except AttendanceCorrection.DoesNotExist:
+            raise GraphQLError("Attendance correction not found")
 
-            attendance = correction.attendance_record
+        # 🛑 Prevent double approval/rejection
+        if correction.status != "pending":
+            raise GraphQLError("This correction has already been processed")
 
-            if status == "approved":
-                attendance.login_time = correction.corrected_login_time
-                attendance.logout_time = correction.corrected_logout_time
-                attendance.status = "present"  
-                attendance.save()
-                correction.delete()
+        # ✅ Apply decision
+        if status == "approved":
+            correction.approve(approver, approval_comments)
 
-            else:
-                correction.status = "rejected"
-                correction.approved_by = approver
-                correction.approval_comments = approval_comments
-                correction.save()
+        elif status == "rejected":
+            correction.reject(approver, approval_comments)
+
+        else:
+            raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")
 
         return True
+
+
