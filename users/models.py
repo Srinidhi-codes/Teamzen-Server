@@ -23,6 +23,12 @@ class CustomUser(AbstractUser):
         ('intern', 'Intern'),
     ]
 
+    EMPLOYEE_STATUS = [
+        ('active', 'Active'),
+        ('exited', 'Exited'),
+        ('terminated', 'Terminated'),
+    ]
+
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE,  null=True,
         blank=True)
     employee_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
@@ -41,7 +47,7 @@ class CustomUser(AbstractUser):
     # Employment Details
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES, default='full_time')
     date_of_joining = models.DateField(default=timezone.localdate)
-    date_of_leaving = models.DateField(null=True, blank=True)
+    date_of_exit = models.DateField(null=True, blank=True)
     
     # Banking & Tax
     bank_account_number = models.CharField(max_length=100, null=True, blank=True)

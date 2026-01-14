@@ -110,12 +110,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "neondb",
-        "USER": "neondb_owner",
-        "PASSWORD": "npg_KUgvYG2pPcz9",
-        "HOST": "ep-odd-smoke-a1gkii89-pooler.ap-southeast-1.aws.neon.tech",
+        "NAME": "payroll",
+        "USER": "postgres",
+        "PASSWORD": "123",
+        "HOST": "localhost",
         "PORT": "5432",
-        "OPTIONS": {"sslmode": "require"},
     }
 }
 
