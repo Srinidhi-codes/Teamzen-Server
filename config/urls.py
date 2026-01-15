@@ -10,7 +10,7 @@ class CustomGraphQLView(GraphQLView):
         return CustomContext(request, response)
 
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from users.views import LoginView, CookieTokenRefreshView
+from users.views import LoginView, CookieTokenRefreshView, RegisterView
 
 from django.views.decorators.csrf import csrf_exempt
 
@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema")), 
     path("api/auth/login/", LoginView.as_view(), name="token_obtain_pair"),
+    path("api/auth/register/", RegisterView.as_view(), name="token_obtain_pair"),
     path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),  
     path("api/users/", include("users.urls")),
     path("api/", include("organizations.urls")),

@@ -48,6 +48,13 @@ class AttendanceRecordType:
         return correction.status if correction else None
 
     @strawberry.field
+    def correction_id(self) -> Optional[strawberry.ID]:
+        correction = (
+            self.attendancecorrection_set.order_by("-created_at").first()
+        )
+        return correction.id if correction else None
+
+    @strawberry.field
     def approval_comment(self) -> Optional[str]:
         correction = (
             self.attendancecorrection_set.order_by("-created_at").first()

@@ -140,3 +140,11 @@ class AttendanceMutation:
         return True
 
 
+    @strawberry.mutation
+    def cancel_attendance_correction(self, info, correctionId: strawberry.ID) -> AttendanceCorrectionType:
+        correction = AttendanceCorrection.objects.get(id=correctionId)
+
+        correction.status = "cancelled"
+        correction.save(update_fields=["status"])
+
+        return correction

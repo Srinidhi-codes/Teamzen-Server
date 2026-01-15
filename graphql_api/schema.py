@@ -5,6 +5,7 @@ from attendance.graphql.queries import AttendanceQuery
 from attendance.graphql.mutations import AttendanceMutation
 from users.graphql.mutations import UserMutation
 from leaves.graphql.queries import LeaveQuery
+from leaves.graphql.mutations import LeaveMutation
 
 
 @strawberry.type
@@ -19,7 +20,7 @@ class Query(UserQuery, AttendanceQuery, LeaveQuery):
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation):
+class Mutation(UserMutation, AttendanceMutation, LeaveMutation):
     """
     Root Mutation:
     - login (REST preferred)

@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     "organizations",
     "payroll",
     "attendance",
-    "leaves",
+    "leaves.apps.LeavesConfig",
     "ai_engine",
     "graphql",
     ]
