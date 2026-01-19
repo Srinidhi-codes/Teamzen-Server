@@ -75,7 +75,7 @@ class LeaveMutation:
             # req.approved_by = 1
             req.approval_comments = input.comments
             req.save(update_fields=['status','approved_by','approval_comments'])
-
+        
         elif input.status == 'rejected':
             balance = get_or_create_balance(req.user, req.leave_type)
             release_balance(balance, req.duration_days)
@@ -89,7 +89,7 @@ class LeaveMutation:
     @strawberry.mutation
     def cancel_leave_request(self, info, requestId: strawberry.ID) -> LeaveRequestType:
         req = LeaveRequest.objects.get(id=requestId)
-
+        
         balance = get_or_create_balance(req.user, req.leave_type)
         release_balance(balance, req.duration_days)
 

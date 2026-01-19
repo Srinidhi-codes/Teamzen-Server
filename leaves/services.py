@@ -1,5 +1,5 @@
 from datetime import date
-from leaves.models import LeaveBalance, LeaveType
+from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest 
 
 def get_or_create_balance(user, leave_type: LeaveType):
     year = date.today().year
@@ -155,3 +155,88 @@ def audit_request(request, action, actor, comment=None):
         actor=actor,
         comment=comment
     )
+
+def get_balance(user, leave_type: LeaveType, year=None):
+    year = year or date.today().year
+    return LeaveBalance.objects.filter(
+        user=user, leave_type=leave_type, year=year
+    ).first()
+
+def add_accrual(balance: LeaveBalance, days):
+    balance.accrued += days
+    balance.total_entitled += days
+    balance.save(update_fields=["accrued", "total_entitled"])
+
+def prorate_entitlement(user, leave_type: LeaveType, year):
+    join = user.date_joined.date()
+    if join.year != year:
+        return leave_type.max_days_per_year
+    
+    total_days = 365
+    days_served = (date(year, 12, 31) - join).days + 1
+    
+    prorated = (leave_type.max_days_per_year * days_served) / total_days
+    return round(prorated, 2)
+
+def allocate_entitlement(user, leave_type, year):
+    entitlement = leave_type.max_days_per_year
+
+    if leave_type.prorate_on_join:
+        entitlement = prorate_entitlement(user, leave_type, year)
+
+    balance = get_or_create_balance(user, leave_type, year)
+    balance.total_entitled = entitlement
+    balance.save(update_fields=["total_entitled"])
+
+def run_monthly_accrual():
+    today = date.today()
+    if today.day != 1:
+        return  # safety
+
+    active_users = CustomUser.objects.filter(is_active=True)
+    leave_types = LeaveType.objects.filter(accrual_frequency="monthly")
+
+    for user in active_users:
+        for lt in leave_types:
+            if not lt.accrual_days:
+                continue
+
+            balance = get_or_create_balance(user, lt, today.year)
+
+            add_accrual(balance, lt.accrual_days)
+
+def run_carry_forward():
+    today = date.today()
+    if not (today.month == 1 and today.day == 1):
+        return
+
+    from leaves.models import LeaveBalance, LeaveType
+
+    prev_year = today.year - 1
+    balances = LeaveBalance.objects.filter(year=prev_year)
+
+    for bal in balances:
+        lt = bal.leave_type
+
+        if not lt.carry_forward_allowed:
+            continue
+
+        cf = max(bal.total_entitled + bal.carried_forward - bal.used, 0)
+
+        if lt.carry_forward_max_days:
+            cf = min(cf, lt.carry_forward_max_days)
+
+        new = get_or_create_balance(bal.user, lt, today.year)
+        new.carried_forward = cf
+        new.save(update_fields=["carried_forward"])
+
+def apply_leave_policies(user, year):
+
+    for lt in LeaveType.objects.filter(is_active=True):
+        if lt.accrual_frequency == "yearly":
+            allocate_entitlement(user, lt, year)
+
+        elif lt.accrual_frequency == "onetime":
+            allocate_entitlement(user, lt, year)
+
+        # monthly handled by scheduler

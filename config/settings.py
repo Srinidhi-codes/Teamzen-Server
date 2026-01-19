@@ -202,3 +202,23 @@ CLOUDINARY_STORAGE = {
     'API_KEY': '474361522756498',
     'API_SECRET': 'FdynUJf5xAih3-QQcyqe4z8FZAA',
 }
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'run-monthly-accruals': {
+        'task': 'leaves.task.run_monthly_leave_accrual',
+        'schedule': crontab(day_of_month='1', hour=0, minute=0),  # Run at midnight on the 1st of every month
+    },
+    'run-yearly-carry-forward': {
+        'task': 'leaves.task.run_yearly_carry_forward',
+        'schedule': crontab(day_of_month='1', month_of_year='1', hour=0, minute=0), # Run at midnight on Jan 1st
+    },
+}
