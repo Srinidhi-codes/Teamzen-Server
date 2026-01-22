@@ -60,7 +60,8 @@ class AttendanceCorrection(models.Model):
     STATUS_CHOICES = [
         ("pending", "Pending"),
         ("approved", "Approved"),
-        ("rejected", "Rejected"),
+        ("rejected", "Rejected"),        
+        ("cancelled", "Cancelled")
     ]
 
     attendance_record = models.ForeignKey(AttendanceRecord, on_delete=models.CASCADE)

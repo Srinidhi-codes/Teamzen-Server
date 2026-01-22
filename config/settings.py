@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-e1lv$oqf4omxqxwg@g^fm6b!ajnno3%%*gs_-^1n-dv75qto!u
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     "organizations",
     "payroll",
     "attendance",
-    "leaves",
+    "leaves.apps.LeavesConfig",
     "ai_engine",
     "graphql",
     ]
@@ -76,6 +76,7 @@ CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3001",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -201,4 +202,24 @@ CLOUDINARY_STORAGE = {
     'CLOUD_NAME': 'dvoi1wvxl',
     'API_KEY': '474361522756498',
     'API_SECRET': 'FdynUJf5xAih3-QQcyqe4z8FZAA',
+}
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'run-monthly-accruals': {
+        'task': 'leaves.task.run_monthly_leave_accrual',
+        'schedule': crontab(day_of_month='1', hour=0, minute=0),  # Run at midnight on the 1st of every month
+    },
+    'run-yearly-carry-forward': {
+        'task': 'leaves.task.run_yearly_carry_forward',
+        'schedule': crontab(day_of_month='1', month_of_year='1', hour=0, minute=0), # Run at midnight on Jan 1st
+    },
 }

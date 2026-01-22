@@ -40,3 +40,12 @@ class LeaveQuery:
         if organization_id:
             return LeaveRequest.objects.filter(organization_id=organization_id)
         return LeaveRequest.objects.all()
+    @strawberry.field
+    def getLeaveRequests(
+        self,
+        info,
+    ) -> List[LeaveRequestType]:
+        user = info.context.request.user
+        if user:
+            return LeaveRequest.objects.filter(user=user)
+        return LeaveRequest.objects.all()
