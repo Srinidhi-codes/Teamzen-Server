@@ -11,6 +11,7 @@ class OrganizationType:
     pan_number: auto
     registration_number: auto
     headquarters_address: auto
+    employee_count: int
     is_active: auto
     created_at: auto
     updated_at: auto
@@ -29,6 +30,7 @@ class OfficeLocationType:
     latitude: auto
     longitude: auto
     geo_radius_meters: auto
+    organization_id: auto
     is_active: auto
     created_at: auto
 
