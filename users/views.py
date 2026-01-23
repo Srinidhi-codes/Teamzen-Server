@@ -65,12 +65,8 @@ class RegisterView(generics.CreateAPIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
-        if settings.DEBUG:
-            samesite = "Lax"
-            secure = False
-        else:
-            samesite = "None"
-            secure = True
+        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
+        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
         # Set cookies
         response.set_cookie(
             key="access_token",
@@ -106,12 +102,8 @@ class LoginView(generics.GenericAPIView):
             'user': UserSerializer(user).data,
         }, status=status.HTTP_200_OK)
     
-        if settings.DEBUG:
-            samesite = "Lax"
-            secure = False
-        else:
-            samesite = "None"
-            secure = True
+        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
+        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
         # 🔐 Set cookies
         response.set_cookie(
             key="access_token",
@@ -153,12 +145,8 @@ class CookieTokenRefreshView(TokenRefreshView):
         token_data = serializer.validated_data
         
         response = Response(token_data, status=status.HTTP_200_OK)
-        if settings.DEBUG:
-            samesite = "Lax"
-            secure = False
-        else:
-            samesite = "None"
-            secure = True
+        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
+        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
         if 'access' in token_data:
             response.set_cookie(
                 key="access_token",
