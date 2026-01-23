@@ -226,7 +226,13 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://teamzen-server.onrender.com',
+    'https://teamzen-client.vercel.app',
+    'https://teamzen-admin.vercel.app',
+]
 
 # Cloudinary Configuration
 CLOUDINARY_STORAGE = {
