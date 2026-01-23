@@ -72,7 +72,7 @@ class RegisterView(generics.CreateAPIView):
             value=str(refresh.access_token),
             httponly=True,
             secure=settings.DEBUG is False,
-            samesite="Lax",
+            samesite=None,
             max_age=30 * 60,  # 30 minutes
         )
         response.set_cookie(
@@ -80,7 +80,7 @@ class RegisterView(generics.CreateAPIView):
             value=str(refresh),
             httponly=True,
             secure=settings.DEBUG is False,
-            samesite="Lax",
+            samesite=None,
             max_age=7 * 24 * 60 * 60,  # 7 days
         )
 
@@ -107,7 +107,7 @@ class LoginView(generics.GenericAPIView):
             value=str(refresh.access_token),
             httponly=True,
             secure=settings.DEBUG is False,
-            samesite="Lax",
+            samesite=None,
             max_age=30 * 60,
         )
 
@@ -116,7 +116,7 @@ class LoginView(generics.GenericAPIView):
             value=str(refresh),
             httponly=True,
             secure=settings.DEBUG is False,
-            samesite="Lax",
+            samesite=None,
             max_age=60 * 60 * 24 * 7,
         )
 
@@ -150,7 +150,7 @@ class CookieTokenRefreshView(TokenRefreshView):
                 value=token_data['access'],
                 httponly=True,
                 secure=settings.DEBUG is False,
-                samesite="Lax",
+                samesite=None,
                 max_age=30 * 60,
             )
             
@@ -160,7 +160,7 @@ class CookieTokenRefreshView(TokenRefreshView):
                 value=token_data['refresh'],
                 httponly=True,
                 secure=settings.DEBUG is False,
-                samesite="Lax",
+                samesite=None,
                 max_age=7 * 24 * 60 * 60,
             )
             
