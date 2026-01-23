@@ -65,22 +65,27 @@ class RegisterView(generics.CreateAPIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
-
+        if settings.DEBUG:
+            samesite = "Lax"
+            secure = False
+        else:
+            samesite = "None"
+            secure = True
         # Set cookies
         response.set_cookie(
             key="access_token",
             value=str(refresh.access_token),
             httponly=True,
-            secure=settings.DEBUG is False,
-            samesite=None,
+            secure=secure,
+            samesite=samesite,
             max_age=30 * 60,  # 30 minutes
         )
         response.set_cookie(
             key="refresh_token",
             value=str(refresh),
             httponly=True,
-            secure=settings.DEBUG is False,
-            samesite=None,
+            secure=secure,
+            samesite=samesite,
             max_age=7 * 24 * 60 * 60,  # 7 days
         )
 
@@ -101,22 +106,27 @@ class LoginView(generics.GenericAPIView):
             'user': UserSerializer(user).data,
         }, status=status.HTTP_200_OK)
     
+        if settings.DEBUG:
+            samesite = "Lax"
+            secure = False
+        else:
+            samesite = "None"
+            secure = True
         # 🔐 Set cookies
         response.set_cookie(
             key="access_token",
             value=str(refresh.access_token),
             httponly=True,
-            secure=settings.DEBUG is False,
-            samesite=None,
+            secure=secure,
+            samesite=samesite,
             max_age=30 * 60,
         )
-
         response.set_cookie(
             key="refresh_token",
             value=str(refresh),
             httponly=True,
-            secure=settings.DEBUG is False,
-            samesite=None,
+            secure=secure,
+            samesite=samesite,
             max_age=60 * 60 * 24 * 7,
         )
 
@@ -143,14 +153,19 @@ class CookieTokenRefreshView(TokenRefreshView):
         token_data = serializer.validated_data
         
         response = Response(token_data, status=status.HTTP_200_OK)
-        
+        if settings.DEBUG:
+            samesite = "Lax"
+            secure = False
+        else:
+            samesite = "None"
+            secure = True
         if 'access' in token_data:
             response.set_cookie(
                 key="access_token",
                 value=token_data['access'],
                 httponly=True,
-                secure=settings.DEBUG is False,
-                samesite=None,
+                secure=secure,
+                samesite=samesite,
                 max_age=30 * 60,
             )
             
@@ -159,8 +174,8 @@ class CookieTokenRefreshView(TokenRefreshView):
                 key="refresh_token",
                 value=token_data['refresh'],
                 httponly=True,
-                secure=settings.DEBUG is False,
-                samesite=None,
+                secure=secure,
+                samesite=samesite,
                 max_age=7 * 24 * 60 * 60,
             )
             
