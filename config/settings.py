@@ -87,13 +87,27 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-SESSION_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SECURE = True
 
-CSRF_COOKIE_SAMESITE = "None"
-CSRF_COOKIE_SECURE = True
-ACCESS_TOKEN_COOKIE_SAMESITE = "None"
-REFRESH_TOKEN_COOKIE_SAMESITE = "None"
+if DEBUG:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    
+    # Lax allows cookies to be sent on top-level navigations and same-site requests
+    # which is appropriate for localhost usage.
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    ACCESS_TOKEN_COOKIE_SAMESITE = "Lax" 
+    REFRESH_TOKEN_COOKIE_SAMESITE = "Lax"
+else:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # None is required for cross-site cookies (e.g., frontend on different domain than backend)
+    # But requires Secure=True.
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
+    ACCESS_TOKEN_COOKIE_SAMESITE = "None"
+    REFRESH_TOKEN_COOKIE_SAMESITE = "None"
 
 
 
