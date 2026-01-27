@@ -60,29 +60,32 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         refresh = RefreshToken.for_user(user)
+        
         response = Response({
             'user': UserSerializer(user).data,
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
-        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
-        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
-        # Set cookies
+
+        # Set cookies with proper settings
+        cookie_settings = {
+            'httponly': True,
+            'secure': not settings.DEBUG,  # True in production
+            'samesite': 'None' if not settings.DEBUG else 'Lax',  # "None" for cross-origin
+            'path': '/',
+        }
+        
         response.set_cookie(
             key="access_token",
             value=str(refresh.access_token),
-            httponly=True,
-            secure=secure,
-            samesite=samesite,
             max_age=30 * 60,  # 30 minutes
+            **cookie_settings
         )
         response.set_cookie(
             key="refresh_token",
             value=str(refresh),
-            httponly=True,
-            secure=secure,
-            samesite=samesite,
             max_age=7 * 24 * 60 * 60,  # 7 days
+            **cookie_settings
         )
 
         return response
@@ -98,28 +101,30 @@ class LoginView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         refresh = RefreshToken.for_user(user)
+        
         response = Response({
             'user': UserSerializer(user).data,
         }, status=status.HTTP_200_OK)
     
-        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
-        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
-        # 🔐 Set cookies
+        # Cookie settings
+        cookie_settings = {
+            'httponly': True,
+            'secure': not settings.DEBUG,
+            'samesite': 'None' if not settings.DEBUG else 'Lax',
+            'path': '/',
+        }
+
         response.set_cookie(
             key="access_token",
             value=str(refresh.access_token),
-            httponly=True,
-            secure=secure,
-            samesite=samesite,
             max_age=30 * 60,
+            **cookie_settings
         )
         response.set_cookie(
             key="refresh_token",
             value=str(refresh),
-            httponly=True,
-            secure=secure,
-            samesite=samesite,
-            max_age=60 * 60 * 24 * 7,
+            max_age=7 * 24 * 60 * 60,
+            **cookie_settings
         )
 
         return response
@@ -130,48 +135,82 @@ class CookieTokenRefreshView(TokenRefreshView):
     authentication_classes = []
 
     def post(self, request, *args, **kwargs):
-        # Prepare data for serializer (handle cookie if body is empty of refresh)
-        data = request.data.copy() if hasattr(request.data, 'copy') else request.data
-        if 'refresh' not in data and 'refresh_token' in request.COOKIES:
+        # Get refresh token from cookie or body
+        data = {}
+        if 'refresh' in request.data:
+            data['refresh'] = request.data['refresh']
+        elif 'refresh_token' in request.COOKIES:
             data['refresh'] = request.COOKIES['refresh_token']
+        else:
+            return Response(
+                {'error': 'Refresh token not found'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         
         serializer = self.get_serializer(data=data)
         
         try:
             serializer.is_valid(raise_exception=True)
-        except Exception:
-            return Response({'error': 'Invalid or missing refresh token'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            response = Response(
+                {'error': 'Invalid or expired refresh token'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+            # Clear invalid cookies
+            response.delete_cookie('access_token', path='/')
+            response.delete_cookie('refresh_token', path='/')
+            return response
             
         token_data = serializer.validated_data
         
-        response = Response(token_data, status=status.HTTP_200_OK)
-        samesite = getattr(settings, "ACCESS_TOKEN_COOKIE_SAMESITE", "Lax")
-        secure = getattr(settings, "SESSION_COOKIE_SECURE", not settings.DEBUG)
+        response = Response({
+            'access': token_data.get('access'),
+            'refresh': token_data.get('refresh'),
+        }, status=status.HTTP_200_OK)
+        
+        # Cookie settings
+        cookie_settings = {
+            'httponly': True,
+            'secure': not settings.DEBUG,
+            'samesite': 'None' if not settings.DEBUG else 'Lax',
+            'path': '/',
+        }
+        
+        # Always set new access token
         if 'access' in token_data:
             response.set_cookie(
                 key="access_token",
                 value=token_data['access'],
-                httponly=True,
-                secure=secure,
-                samesite=samesite,
                 max_age=30 * 60,
+                **cookie_settings
             )
-            
+        
+        # Set new refresh token if rotation is enabled
         if 'refresh' in token_data:
             response.set_cookie(
                 key="refresh_token",
                 value=token_data['refresh'],
-                httponly=True,
-                secure=secure,
-                samesite=samesite,
                 max_age=7 * 24 * 60 * 60,
+                **cookie_settings
             )
             
         return response
 
+
 class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]  # Require authentication
+    
     def post(self, request):
-        response = Response({"detail": "Logged out"}, status=200)
-        response.delete_cookie("access_token")
-        response.delete_cookie("refresh_token")
+        try:
+            # Blacklist the refresh token
+            refresh_token = request.COOKIES.get('refresh_token')
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+        except Exception:
+            pass  # Token already blacklisted or invalid
+        
+        response = Response({"detail": "Logged out successfully"}, status=200)
+        response.delete_cookie("access_token", path='/')
+        response.delete_cookie("refresh_token", path='/')
         return response
