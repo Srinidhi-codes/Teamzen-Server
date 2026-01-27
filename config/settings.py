@@ -12,9 +12,9 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
-from urllib.parse import urlparse, parse_qsl
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse, parse_qsl
 
 load_dotenv()
 
@@ -83,6 +83,8 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     os.getenv('CLIENT_URL', "http://localhost:3000"),
     "http://localhost:3001",
+    "https://teamzen-client.vercel.app",
+    "https://teamzen-admin.vercel.app"
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -98,6 +100,29 @@ CORS_ALLOW_HEADERS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+if DEBUG:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    
+    # Lax allows cookies to be sent on top-level navigations and same-site requests
+    # which is appropriate for localhost usage.
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    ACCESS_TOKEN_COOKIE_SAMESITE = "Lax" 
+    REFRESH_TOKEN_COOKIE_SAMESITE = "Lax"
+else:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # None is required for cross-site cookies (e.g., frontend on different domain than backend)
+    # But requires Secure=True.
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
+    ACCESS_TOKEN_COOKIE_SAMESITE = "None"
+    REFRESH_TOKEN_COOKIE_SAMESITE = "None"
+
+
 
 TEMPLATES = [
     {
@@ -151,6 +176,17 @@ else:
         "PORT": "5432",
     }
 }
+
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": "payroll",
+#         "USER": "postgres",
+#         "PASSWORD": "123",
+#         "HOST": "localhost",
+#         "PORT": "5432",
+#     }
+# }
 
 
 
@@ -237,6 +273,7 @@ SIMPLE_JWT = {
 }
 CSRF_TRUSTED_ORIGINS = [
     os.getenv('CLIENT_URL', 'http://localhost:3000'),
+    os.getenv('ADMIN_URL', 'http://localhost:3000'),
     'http://localhost:3001',
     # Add production URLs
     # 'https://your-frontend-domain.com',

@@ -120,7 +120,6 @@ class LoginView(generics.GenericAPIView):
             max_age=30 * 60,
             **cookie_settings
         )
-
         response.set_cookie(
             key="refresh_token",
             value=str(refresh),
