@@ -65,15 +65,19 @@ class AttendanceQuery:
         info,
         status: Optional[str] = None
     ) -> List[AttendanceCorrectionType]:
-
+        
         user = info.context.request.user
-
         qs = AttendanceCorrection.objects.all()
 
         if user.role == "employee":
             qs = qs.filter(requested_by=user)
+        elif user.role in ["admin", "hr", "manager"]:
+            pass  # full queryset
+        else:
+            raise Exception("Not authorized")
 
         if status:
             qs = qs.filter(status=status)
 
         return qs
+
