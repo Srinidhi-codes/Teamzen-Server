@@ -1,3 +1,4 @@
+# users/views.py
 from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,6 +9,15 @@ from users.models import CustomUser
 from rest_framework_simplejwt.views import TokenRefreshView
 from users.serializers import UserSerializer, UserDetailSerializer, RegisterSerializer, LoginSerializer
 from django.conf import settings
+
+def get_cookie_settings():
+    """Get cookie settings based on environment"""
+    return {
+        'httponly': True,
+        'secure': not settings.DEBUG,
+        'samesite': 'None' if not settings.DEBUG else 'Lax',
+        'path': '/',
+    }
 
 class UserViewSet(viewsets.ModelViewSet):
     """User management viewset"""
@@ -67,13 +77,7 @@ class RegisterView(generics.CreateAPIView):
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
 
-        # Set cookies with proper settings
-        cookie_settings = {
-            'httponly': True,
-            'secure': not settings.DEBUG,  # True in production
-            'samesite': 'None' if not settings.DEBUG else 'Lax',  # "None" for cross-origin
-            'path': '/',
-        }
+        cookie_settings = get_cookie_settings()
         
         response.set_cookie(
             key="access_token",
@@ -106,13 +110,7 @@ class LoginView(generics.GenericAPIView):
             'user': UserSerializer(user).data,
         }, status=status.HTTP_200_OK)
     
-        # Cookie settings
-        cookie_settings = {
-            'httponly': True,
-            'secure': not settings.DEBUG,
-            'samesite': 'None' if not settings.DEBUG else 'Lax',
-            'path': '/',
-        }
+        cookie_settings = get_cookie_settings()
 
         response.set_cookie(
             key="access_token",
@@ -168,13 +166,7 @@ class CookieTokenRefreshView(TokenRefreshView):
             'refresh': token_data.get('refresh'),
         }, status=status.HTTP_200_OK)
         
-        # Cookie settings
-        cookie_settings = {
-            'httponly': True,
-            'secure': not settings.DEBUG,
-            'samesite': 'None' if not settings.DEBUG else 'Lax',
-            'path': '/',
-        }
+        cookie_settings = get_cookie_settings()  # ← Use centralized settings
         
         # Always set new access token
         if 'access' in token_data:
@@ -198,7 +190,7 @@ class CookieTokenRefreshView(TokenRefreshView):
 
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]  # Require authentication
+    permission_classes = []  # ← Allow logout even without valid token
     
     def post(self, request):
         try:
