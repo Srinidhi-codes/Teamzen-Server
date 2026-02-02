@@ -13,6 +13,8 @@ class AttendanceRecordType:
     attendance_date: auto
     login_time: auto
     logout_time: auto
+    actual_login_time: auto
+    actual_logout_time: auto
 
     login_latitude: auto
     login_longitude: auto
