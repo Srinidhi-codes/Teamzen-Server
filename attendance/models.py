@@ -21,6 +21,8 @@ class AttendanceRecord(models.Model):
     attendance_date = models.DateField()
     login_time = models.TimeField(null=True, blank=True)
     logout_time = models.TimeField(null=True, blank=True)
+    actual_login_time = models.TimeField(null=True, blank=True)
+    actual_logout_time = models.TimeField(null=True, blank=True)
     login_latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
     login_longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     logout_latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)

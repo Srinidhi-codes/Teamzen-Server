@@ -31,6 +31,12 @@ class AttendanceCorrectionInput:
     corrected_logout_time: time
     reason: str
 
+@strawberry.input
+class ApproveAttendanceCorrectionInput:
+    correction_id: strawberry.ID
+    status: str
+    approval_comments: Optional[str] = None
+
 
 @strawberry.type
 class AttendanceMutation:
@@ -93,33 +99,32 @@ class AttendanceMutation:
             requested_by=user,
             corrected_login_time=input.corrected_login_time or record.login_time,
             corrected_logout_time=input.corrected_logout_time or record.logout_time,
+            status="pending",
             reason=input.reason,
         )
 
         
     @strawberry.mutation
-    def approve_attendance_correction(
+    def approve_or_reject_attendance_correction(
         self,
         info,
-        correction_id: strawberry.ID,
-        status: str,
-        approval_comments: Optional[str] = None,
+        input: ApproveAttendanceCorrectionInput,
     ) -> bool:
         approver = info.context.request.user
 
         # 🔐 Auth check
-        # if not approver or getattr(approver, "is_anonymous", True):
-        #     raise GraphQLError("Authentication required")
+        if not approver or getattr(approver, "is_anonymous", True):
+            raise GraphQLError("Authentication required")
 
         # # 🔐 Role check
-        # if approver.role not in ["admin", "hr", "manager"]:
-        #     raise GraphQLError("Not authorized")
+        if approver.role not in ["admin", "hr", "manager"]:
+            raise GraphQLError("Not authorized")
 
         # 🔎 Fetch correction
         try:
             correction = AttendanceCorrection.objects.select_related(
                 "attendance_record"
-            ).get(id=correction_id)
+            ).get(id=input.correction_id)
         except AttendanceCorrection.DoesNotExist:
             raise GraphQLError("Attendance correction not found")
 
@@ -128,11 +133,11 @@ class AttendanceMutation:
             raise GraphQLError("This correction has already been processed")
 
         # ✅ Apply decision
-        if status == "approved":
-            correction.approve(approver, approval_comments)
+        if input.status == "approved":
+            correction.approve(approver, input.approval_comments)
 
-        elif status == "rejected":
-            correction.reject(approver, approval_comments)
+        elif input.status == "rejected":
+            correction.reject(approver, input.approval_comments)
 
         else:
             raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")

@@ -37,6 +37,8 @@ def check_in_user(user, office_id, latitude, longitude, time):
 
     login_time = normalize_time(time)
     attendance.login_time = login_time
+    attendance.actual_login_time = login_time
+    attendance.actual_logout_time = logout_time
     attendance.login_latitude = latitude
     attendance.login_longitude = longitude
     attendance.is_within_geofence = True
@@ -64,6 +66,7 @@ def check_out_user(user, latitude, longitude, time):
 
     logout_time = normalize_time(time)
     attendance.logout_time = logout_time
+    attendance.actual_logout_time = logout_time
     attendance.logout_latitude = latitude
     attendance.logout_longitude = longitude
     attendance.logout_distance = distance
