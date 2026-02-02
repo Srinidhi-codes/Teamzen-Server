@@ -28,9 +28,9 @@ class UserType:
     organization: Optional['OrganizationType']
     
     # Relationships
-    department: DepartmentType | None
-    designation: DesignationType | None
-    office_location: OfficeLocationType | None
+    department: Optional['DepartmentType']
+    designation: Optional['DesignationType']
+    office_location: Optional['OfficeLocationType']
     
     # Financial
     bank_account_number: auto
