@@ -28,18 +28,6 @@ class CreateUserInput:
     role: str = "employee"
     organization_id: str | None = None
     department_id: str | None = None
-    designation_id: str | None = None
-    manager_id: str | None = None
-    employment_type: str = "full_time"
-    date_of_joining: str | None = None
-    is_active: bool = True
-
-@strawberry.input
-class UpdateUserInput:
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    phone_number: str | None = None
     date_of_birth: str | None = None
     gender: str | None = None
     bank_account_number: str | None = None
@@ -47,17 +35,41 @@ class UpdateUserInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
-    role: str | None = None
-    department_id: str | None = None
+    phone_number: str | None = None
     designation_id: str | None = None
     manager_id: str | None = None
-    organization_id: str | None = None
-    employment_type: str | None = None
+    employment_type: str = "full_time"
     date_of_joining: str | None = None
     date_of_exit: str | None = None
-    is_active: bool | None = None
-    is_verified: bool | None = None
-    is_staff: bool | None = None
+    is_staff: bool = False
+    is_verified: bool = False
+    is_active: bool = True
+
+@strawberry.input
+class UpdateUserInput:
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    role: str = "employee"
+    organization_id: str | None = None
+    department_id: str | None = None
+    date_of_birth: str | None = None
+    gender: str | None = None
+    bank_account_number: str | None = None
+    bank_ifsc_code: str | None = None
+    pan_number: str | None = None
+    aadhar_number: str | None = None
+    uan_number: str | None = None
+    phone_number: str | None = None
+    designation_id: str | None = None
+    manager_id: str | None = None
+    employment_type: str = "full_time"
+    date_of_joining: str | None = None
+    date_of_exit: str | None = None
+    is_staff: bool = False
+    is_verified: bool = False
+    is_active: bool = True
 
 @strawberry.type
 class UserPayload:
@@ -112,7 +124,7 @@ class UserMutation:
     def create_user(self, info: Info, input: CreateUserInput) -> UserPayload:
         user = info.context.request.user
         # Only admin or HR/Manager can create users - simplistic check
-        if not user.is_authenticated:
+        if not user.role in ["admin", "hr", "manager"]:
              return UserPayload(error="Not authenticated")
         
         try:

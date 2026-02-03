@@ -1,16 +1,63 @@
 import strawberry
-from datetime import date, time
+import decimal
+from datetime import date
 from typing import Optional
 
-from leaves.models import LeaveType, LeaveBalance, LeaveRequest, CompanyHoliday
-from leaves.graphql.types import LeaveTypeType, LeaveBalanceType, LeaveRequestType, CompanyHolidayType
+from django.db import transaction
+
+from leaves.models import (
+    LeaveType,
+    LeaveBalance,
+    LeaveRequest,
+    CompanyHoliday,
+)
+
+from leaves.graphql.types import (
+    LeaveTypeType,
+    LeaveBalanceType,
+    LeaveRequestType,
+    CompanyHolidayType,
+)
+
 from leaves.services import (
     validate_balance,
     get_or_create_balance,
     reserve_balance,
     consume_balance,
     release_balance,
+    initialize_leave_type_for_all_users,
 )
+
+# =====================================================
+# CONSTANTS
+# =====================================================
+
+class LeaveStatus:
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+# =====================================================
+# UTILITY HELPERS
+# =====================================================
+
+def update_instance(instance, data: dict):
+    """
+    Generic helper to update model instance
+    with only non-null values.
+    """
+    for field, value in data.items():
+        if value is not None:
+            setattr(instance, field, value)
+    instance.save()
+    return instance
+
+
+# =====================================================
+# INPUT TYPES
+# =====================================================
 
 @strawberry.input
 class LeaveRequestInput:
@@ -19,82 +66,205 @@ class LeaveRequestInput:
     to_date: date
     reason: str
 
+
 @strawberry.input
-class LeaveRequestApprovalInput:
+class LeaveRequestProcessInput:
     request_id: strawberry.ID
     status: str
     comments: str
 
+
+@strawberry.input
+class LeaveBalanceInput:
+    user_id: strawberry.ID
+    leave_type_id: strawberry.ID
+    year: int
+    total_entitled: decimal.Decimal
+
+
+@strawberry.input
+class LeaveTypeInput:
+    organization_id: strawberry.ID
+    name: str
+    code: str
+    description: Optional[str] = ""
+    max_days_per_year: int = 10
+    carry_forward_allowed: bool = False
+    carry_forward_max_days: int = 0
+    accrual_frequency: str = "yearly"
+    accrual_days: float = 0
+    is_paid_leave: bool = False
+    requires_approval: bool = True
+    allow_encashment: bool = False
+    encashment_rate: Optional[float] = 0
+    prorate_on_join: bool = True
+    prorate_on_exit: bool = True
+    proration_basis: str = "monthly"
+    is_active: bool = True
+
+
+@strawberry.input
+class UpdateLeaveTypeInput:
+    id: strawberry.ID
+    name: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    max_days_per_year: Optional[int] = None
+    carry_forward_allowed: Optional[bool] = None
+    carry_forward_max_days: Optional[int] = None
+    accrual_frequency: Optional[str] = None
+    accrual_days: Optional[float] = None
+    is_paid_leave: Optional[bool] = None
+    requires_approval: Optional[bool] = None
+    allow_encashment: Optional[bool] = None
+    encashment_rate: Optional[float] = None
+    prorate_on_join: Optional[bool] = None
+    prorate_on_exit: Optional[bool] = None
+    proration_basis: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@strawberry.input
+class UpdateLeaveBalanceInput:
+    id: strawberry.ID
+    total_entitled: Optional[decimal.Decimal] = None
+    used: Optional[decimal.Decimal] = None
+    pending_approval: Optional[decimal.Decimal] = None
+    is_active: Optional[bool] = None
+
+
+# =====================================================
+# MUTATIONS
+# =====================================================
+
 @strawberry.type
 class LeaveMutation:
+
+    # ----------------------------
+    # LEAVE TYPE
+    # ----------------------------
+
     @strawberry.mutation
     def create_leave_type(
-        self,
-        info,
-        name: str,
-        organization_id: Optional[strawberry.ID] = None,
+        self, info, input: LeaveTypeInput
     ) -> LeaveTypeType:
-        leave_type = LeaveType.objects.create(name=name, organization_id=organization_id)
-        return LeaveTypeType.from_django_object(leave_type)
+        leave_type = LeaveType.objects.create(**input.__dict__)
+
+        # Initialize balances for all users
+        initialize_leave_type_for_all_users(leave_type)
+
+        return leave_type
+
+    @strawberry.mutation
+    def update_leave_type(
+        self, info, input: UpdateLeaveTypeInput
+    ) -> LeaveTypeType:
+        leave_type = LeaveType.objects.get(id=input.id)
+
+        update_data = {
+            k: v for k, v in input.__dict__.items()
+            if k != "id"
+        }
+
+        return update_instance(leave_type, update_data)
+
+    @strawberry.mutation
+    def delete_leave_type(self, info, id: strawberry.ID) -> bool:
+        LeaveType.objects.filter(id=id).update(is_active=False)
+        return True
+
+    # ----------------------------
+    # LEAVE BALANCE
+    # ----------------------------
+
+    @strawberry.mutation
+    def create_leave_balance(
+        self, info, input: LeaveBalanceInput
+    ) -> LeaveBalanceType:
+        return LeaveBalance.objects.create(**input.__dict__)
+
+    @strawberry.mutation
+    def update_leave_balance(
+        self, info, input: UpdateLeaveBalanceInput
+    ) -> LeaveBalanceType:
+        balance = LeaveBalance.objects.get(id=input.id)
+
+        update_data = {
+            k: v for k, v in input.__dict__.items()
+            if k != "id"
+        }
+
+        return update_instance(balance, update_data)
+
+    @strawberry.mutation
+    def delete_leave_balance(self, info, id: strawberry.ID) -> bool:
+        LeaveBalance.objects.filter(id=id).update(is_active=False)
+        return True
+
+    # ----------------------------
+    # LEAVE REQUEST
+    # ----------------------------
 
     @strawberry.mutation
     def create_leave_request(
-        self,
-        info,
-        input: LeaveRequestInput,
+        self, info, input: LeaveRequestInput
     ) -> LeaveRequestType:
         user = info.context.request.user
         duration = (input.to_date - input.from_date).days + 1
         leave_type = LeaveType.objects.get(id=input.leave_type_id)
 
-        balance = get_or_create_balance(user, leave_type)
-        validate_balance(balance, duration)
-        reserve_balance(balance, duration)
+        with transaction.atomic():
+            balance = get_or_create_balance(user, leave_type)
+            validate_balance(balance, duration)
+            reserve_balance(balance, duration)
 
-        leave_request = LeaveRequest.objects.create(
-            user=user,
-            leave_type=leave_type,
-            from_date=input.from_date,
-            to_date=input.to_date,
-            duration_days=duration,
-            reason=input.reason,
-            status='pending'
-        )
+            return LeaveRequest.objects.create(
+                user=user,
+                leave_type=leave_type,
+                from_date=input.from_date,
+                to_date=input.to_date,
+                duration_days=duration,
+                reason=input.reason,
+                status=LeaveStatus.PENDING,
+            )
 
-        return leave_request
-    
     @strawberry.mutation
-    def leave_request_process(self, info, input: LeaveRequestApprovalInput) -> LeaveRequestType:
-        # hr_user = info.context.request.user or 1
-        req = LeaveRequest.objects.get(id=input.request_id)
+    def leave_request_process(
+        self, info, input: LeaveRequestProcessInput
+    ) -> LeaveRequestType:
+        req = LeaveRequest.objects.select_related(
+            "leave_type", "user"
+        ).get(id=input.request_id)
 
-        if input.status == 'approved':
+        with transaction.atomic():
             balance = get_or_create_balance(req.user, req.leave_type)
-            consume_balance(balance, req.duration_days)
-            req.status = 'approved'
-            # req.approved_by = 1
+
+            if input.status == LeaveStatus.APPROVED:
+                consume_balance(balance, req.duration_days)
+                req.status = LeaveStatus.APPROVED
+
+            elif input.status == LeaveStatus.REJECTED:
+                release_balance(balance, req.duration_days)
+                req.status = LeaveStatus.REJECTED
+
             req.approval_comments = input.comments
-            req.save(update_fields=['status','approved_by','approval_comments'])
-        
-        elif input.status == 'rejected':
+            req.save(update_fields=["status", "approval_comments"])
+
+        return req
+
+    @strawberry.mutation
+    def cancel_leave_request(
+        self, info, requestId: strawberry.ID
+    ) -> LeaveRequestType:
+        req = LeaveRequest.objects.select_related(
+            "leave_type", "user"
+        ).get(id=requestId)
+
+        with transaction.atomic():
             balance = get_or_create_balance(req.user, req.leave_type)
             release_balance(balance, req.duration_days)
-            req.status = 'rejected'
-            req.approval_comments = input.comments
-            req.save(update_fields=['status','approval_comments'])
+
+            req.status = LeaveStatus.CANCELLED
+            req.save(update_fields=["status"])
 
         return req
-
-
-    @strawberry.mutation
-    def cancel_leave_request(self, info, requestId: strawberry.ID) -> LeaveRequestType:
-        req = LeaveRequest.objects.get(id=requestId)
-        
-        balance = get_or_create_balance(req.user, req.leave_type)
-        release_balance(balance, req.duration_days)
-
-        req.status = 'cancelled'
-        req.save(update_fields=['status'])
-
-        return req
-    

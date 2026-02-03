@@ -65,6 +65,7 @@ class LeaveBalance(models.Model):
     accrued = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     expired = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     is_locked = models.BooleanField(default=False) # Leaves freeze when user leaves the organization
+    is_active = models.BooleanField(default=True)
     locked_at = models.DateTimeField(null=True, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
 
