@@ -27,7 +27,13 @@ class LeaveQuery:
     ) -> List[LeaveBalanceType]:
 
         user = info.context.request.user
-        if user:
+        if user.role == 'admin':
+            return LeaveBalance.objects.all()
+        elif user.role == 'hr':
+            return LeaveBalance.objects.filter(user__organization_id=user.organization_id)
+        elif user.role == 'manager':
+            return LeaveBalance.objects.filter(user__manager=user)
+        if user.is_authenticated:
             return LeaveBalance.objects.filter(user=user)
         return LeaveBalance.objects.all()
 
@@ -37,9 +43,19 @@ class LeaveQuery:
         info,
         organization_id: LeaveInput,
     ) -> List[LeaveRequestType]:
-        if organization_id:
-            return LeaveRequest.objects.filter(organization_id=organization_id)
-        return LeaveRequest.objects.all()
+        user = info.context.request.user
+        if user.role == 'admin':
+            if organization_id:
+                return LeaveRequest.objects.filter(organization_id=organization_id)
+            return LeaveRequest.objects.all()
+        elif user.role == 'hr':
+            return LeaveRequest.objects.filter(user__organization_id=user.organization_id)
+        elif user.role == 'manager':
+            return LeaveRequest.objects.filter(user__manager=user)
+        if user.is_authenticated:
+            return LeaveRequest.objects.filter(user=user)
+        return LeaveRequest.objects.none()
+
     @strawberry.field
     def getLeaveRequests(
         self,

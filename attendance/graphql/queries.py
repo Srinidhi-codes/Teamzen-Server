@@ -71,10 +71,15 @@ class AttendanceQuery:
 
         if user.role == "employee":
             qs = qs.filter(requested_by=user)
-        elif user.role in ["admin", "hr", "manager"]:
+        elif user.role == "admin":
             pass  # full queryset
+        elif user.role == "hr":
+            qs = qs.filter(requested_by__organization_id=user.organization_id)
+        elif user.role == "manager":
+            qs = qs.filter(requested_by__manager=user)
         else:
             raise Exception("Not authorized")
+
 
         if status:
             qs = qs.filter(status=status)
