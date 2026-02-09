@@ -240,3 +240,27 @@ def apply_leave_policies(user, year):
             allocate_entitlement(user, lt, year)
 
         # monthly handled by scheduler
+
+def initialize_leave_type_for_all_users(leave_type: LeaveType):
+    """
+    When a new LeaveType is created, initialize balances for all active users 
+    in the organization for the current year.
+    """
+    year = date.today().year
+    users = CustomUser.objects.filter(organization=leave_type.organization, is_active=True)
+    
+    for user in users:
+        entitlement = calculate_initial_entitlement(user, leave_type, year)
+        LeaveBalance.objects.get_or_create(
+            user=user,
+            leave_type=leave_type,
+            year=year,
+            defaults={
+                "total_entitled": entitlement,
+                "used": 0,
+                "pending_approval": 0,
+                "carried_forward": 0,
+                "accrued": entitlement if leave_type.accrual_frequency == "onetime" else 0,
+                "expired": 0
+            }
+        )
