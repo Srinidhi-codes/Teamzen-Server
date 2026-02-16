@@ -20,6 +20,11 @@ class UpdateProfileInput:
     uan_number: str | None = None
 
 @strawberry.input
+class UserStatusInput:
+    user_id: str
+    is_active: bool
+
+@strawberry.input
 class CreateUserInput:
     email: str
     password: str
@@ -48,7 +53,6 @@ class CreateUserInput:
 @strawberry.input
 class UpdateUserInput:
     email: str
-    password: str
     first_name: str
     last_name: str
     role: str = "employee"
@@ -184,3 +188,14 @@ class UserMutation:
             return UserPayload(error="User not found")
         except Exception as e:
             return UserPayload(error=str(e))
+
+    @strawberry.mutation
+    def user_status(self, info: Info, input: UserStatusInput) -> UserType:
+        request_user = info.context.request.user
+        if not request_user.is_authenticated or request_user.role not in ["admin", "hr", "manager"]:
+            raise Exception("Not authorized")
+        
+        user_to_update = User.objects.get(id=input.user_id)
+        user_to_update.is_active = input.is_active
+        user_to_update.save(update_fields=['is_active'])
+        return user_to_update

@@ -20,8 +20,8 @@ class UserFilterInput:
 
 @strawberry.input
 class UserSortInput:
-    field: str = "created_at"   # default sort field
-    direction: str = "desc"     # asc | desc
+    field: str = "created_at"   
+    direction: str = "desc"    
 
 
 # =====================================================
@@ -122,36 +122,10 @@ class UserQuery:
                 )
 
         # -------------------------
-        # TOTAL COUNT (before pagination)
+        # PAGINATION & SORTING
         # -------------------------
-        total = qs.count()
-
-        # -------------------------
-        # SORTING
-        # -------------------------
-        if sort:
-            direction = "" if sort.direction == "asc" else "-"
-            qs = qs.order_by(f"{direction}{sort.field}")
-        else:
-            qs = qs.order_by("-created_at")
-
-        # -------------------------
-        # PAGINATION
-        # -------------------------
-        if page < 1:
-            page = 1
-
-        if page_size < 1:
-            page_size = 10
-
-        start = (page - 1) * page_size
-        end = start + page_size
-
-        results = qs[start:end]
-
-        return PaginatedUserResponse(
-            results=results,
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
+        from graphql_utils.pagination import get_paginated_results
+        
+        paginated = get_paginated_results(qs, page, page_size, sort)
+        
+        return PaginatedUserResponse(**paginated)

@@ -106,6 +106,7 @@ class LeaveTypeInput:
 @strawberry.input
 class UpdateLeaveTypeInput:
     id: strawberry.ID
+    organization_id: strawberry.ID
     name: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
@@ -159,18 +160,18 @@ class LeaveMutation:
     def update_leave_type(
         self, info, input: UpdateLeaveTypeInput
     ) -> LeaveTypeType:
-        leave_type = LeaveType.objects.get(id=input.id)
+        leave_type = LeaveType.objects.get(organization_id=input.organization_id, id=input.id)
 
         update_data = {
             k: v for k, v in input.__dict__.items()
-            if k != "id"
+            if k != "organization_id" and k != "id"
         }
 
         return update_instance(leave_type, update_data)
 
     @strawberry.mutation
     def delete_leave_type(self, info, id: strawberry.ID) -> bool:
-        LeaveType.objects.filter(id=id).update(is_active=False)
+        LeaveType.objects.filter(id=id).delete()
         return True
 
     # ----------------------------
@@ -198,7 +199,7 @@ class LeaveMutation:
 
     @strawberry.mutation
     def delete_leave_balance(self, info, id: strawberry.ID) -> bool:
-        LeaveBalance.objects.filter(id=id).update(is_active=False)
+        LeaveBalance.objects.filter(id=id).delete()
         return True
 
     # ----------------------------
