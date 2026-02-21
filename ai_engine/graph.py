@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
 from django.conf import settings
-from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance
+from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave
 from .models import PolicyDocument
 from pgvector.django import L2Distance
 import json
@@ -20,7 +20,7 @@ class AgentState(TypedDict):
     longitude: Optional[float]
 
 # Define the tools
-tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance]
+tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave]
 tool_node = ToolNode(tools)
 
 # Define the model
@@ -42,31 +42,38 @@ def call_model(state: AgentState):
     
     system_prompt = (
         "You are an intelligent Workplace Assistant for an LMS & Payroll system. "
-        "You have access to tools for checking leave balances, applying for leaves, checking attendance, and searching company policies. "
+        "You have access to tools for checking leave balances, applying for leaves, checking attendance, searching company policies, checking team availability, and getting organization stats. "
         f"The current user has ID: {user_id} and belongs to Organization ID: {org_id}. "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
         "When calling tools, always use this user ID, Organization ID, and Geolocation if available. Do not ask the user for these. "
         
         "Capabilities & Instructions:\n"
         "1. Policy Search: If the user asks about rules or handbook information, use 'search_policies'. "
-        "IMPORTANT: Only answer based on the retrieved document content. If the retrieved content seems irrelevant (e.g., invoices, receipts, or unrelated snippets), inform the user that you couldn't find relevant company policy information.\n"
+        "IMPORTANT: Only answer based on the retrieved document content.\n"
         "2. Attendance: To check status, use 'get_attendance_today'. To check-in or check-out, use 'mark_attendance'. "
-        "If you have user coordinates (Lat/Lon), PASS THEM to 'mark_attendance'. "
-        "Before check-in/out, confirm the action with the user if it's not explicitly clear.\n"
+        "If 'get_attendance_today' returns an anomaly (like missing yesterday logout), PROACTIVELY inform the user and suggest they correct it.\n"
         "3. Leaves: To check balances, use 'get_leave_balances'. To list available leave types, use 'get_leave_types'. "
-        "To apply for leave, you need Leave Type ID, Start Date, End Date, and Reason. "
-        "If any details are missing, ASK the user. You can use 'get_leave_types' to help the user identify the correct ID.\n"
+        "To apply for leave, ALWAYS use 'check_team_availability' first to see if many others are off during that period, and mention this in your advice to the user. "
+        "If some leaves are 'pending', inform the user that there are potential conflicts.\n"
+        "LEAVE MANAGEMENT: If the user wants to cancel a leave, use 'list_pending_leaves' first to show them their pending requests, then use 'cancel_leave' with the specific ID they choose.\n"
+        "LEAVE TYPE SELECTION: If the user wants to apply for leave but has not specified WHICH leave type (e.g., Casual, Sick), you MUST call 'get_leave_types' first and present the options using 'LEAVE_TYPE_CARD' so they can choose one.\n"
+        "IMPORTANT: To call 'apply_for_leave', you NEED Leave Type ID, Start Date, End Date, and Reason. If any of these are missing from the conversation, DO NOT call the tool; instead, ASK the user to provide the missing details (e.g., 'What dates are you planning?' or 'What is the reason for your leave?').\n"
+        "4. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'.\n"
         
         "Formatting Instructions:\n"
         "1. Be professional, concise, and helpful.\n"
-        "2. When presenting leave balances, use the following structured format for EACH balance item so the UI can beautify it:\n"
+        "2. When presenting leave balances, use:\n"
         "   [BALANCE_CARD] Name: {leave_name} | Total: {total} | Used: {used} | Available: {available} [/BALANCE_CARD]\n"
+        "   When SUGGESTING or LISTING available leave types, use:\n"
+        "   [LEAVE_TYPE_CARD] name: {leave_name} | description: {short_desc} | availability: {Recommended/Busy/Fair} | id: {leave_type_id} [/LEAVE_TYPE_CARD]\n"
         "3. When marking attendance or reporting attendance success/error, use:\n"
         "   [ATTENDANCE_CARD] Action: {Check-in/out} | Status: {status} | Time: {time} | Office: {office} [/ATTENDANCE_CARD]\n"
-        "4. For errors (like missing office location), use:\n"
+        "4. When listing pending leaves (e.g., for cancellation), ALWAYS use:\n"
+        "   [PENDING_LEAVE_CARD] id: {request_id} | type: {leave_type} | from: {from_date} | to: {to_date} | duration: {days} | reason: {reason} [/PENDING_LEAVE_CARD]\n"
+        "5. For proactive insights (e.g., team availability or yesterday's missed logout), ALWAYS use:\n"
+        "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
+        "6. For errors, use:\n"
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
-        "5. For other lists, use clean markdown bullet points.\n"
-        "6. If you don't find a specific leave type, suggest the closest one available but still use the [BALANCE_CARD] format for what you found."
     )
     
     response = model.invoke([AIMessage(content=system_prompt)] + list(messages))

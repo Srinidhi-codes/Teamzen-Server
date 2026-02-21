@@ -125,13 +125,14 @@ def create_leave_request(user, leave_type, from_date, to_date, reason):
     )
 
 def approve_leave_request(request, approver, comments=None):
-    consume_balance(request.leavebalance, request.duration_days)
+    balance = get_balance(request.user, request.leave_type, request.from_date.year)
+    if not balance:
+        raise Exception("Leave balance record not found.")
+        
+    consume_balance(balance, request.duration_days)
 
-    request.status = "approved"
-    request.approved_by = approver
-    request.approval_comments = comments
-    request.approved_at = timezone.now()
-    request.save(update_fields=["status", "approved_by", "approval_comments", "approved_at"])
+    request.approve(approved_by=approver, comments=comments)
+    request.save()
 
 def carry_forward(balance):
     lt = balance.leave_type
@@ -144,9 +145,21 @@ def carry_forward(balance):
     return cf
 
 def cancel_leave_request(request):
-    release_balance(request.leavebalance, request.duration_days)
-    request.status = "cancelled"
-    request.save(update_fields=["status"])
+    if request._status == 'cancelled':
+        return
+        
+    balance = get_balance(request.user, request.leave_type, request.from_date.year)
+    if not balance:
+        raise Exception("Leave balance record not found.")
+
+    if request._status == 'approved':
+        balance.used -= request.duration_days
+        balance.save(update_fields=['used'])
+    elif request._status == 'pending':
+        release_balance(balance, request.duration_days)
+        
+    request.cancel()
+    request.save()
 
 def audit_request(request, action, actor, comment=None):
     LeaveAuditLog.objects.create(

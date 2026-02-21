@@ -256,19 +256,10 @@ class LeaveMutation:
     def cancel_leave_request(
         self, info, requestId: strawberry.ID
     ) -> LeaveRequestType:
-        req = LeaveRequest.objects.select_related(
-            "leave_type", "user"
-        ).get(id=requestId)
+        from leaves.services import cancel_leave_request as cancel_service
+        req = LeaveRequest.objects.get(id=requestId)
 
         with transaction.atomic():
-            balance = get_or_create_balance(req.user, req.leave_type)
-            
-            # If it was already approved, we need to release consumed balance
-            # If it was pending, we release reserved balance
-            # (Note: release_balance service should handle both or we check state)
-            release_balance(balance, req.duration_days)
-
-            req.cancel()
-            req.save()
+            cancel_service(req)
 
         return req
