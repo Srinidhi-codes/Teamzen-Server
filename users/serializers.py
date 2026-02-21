@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from users.models import CustomUser
+from organizations.serializers import OfficeLocationSerializer
 
 class UserSerializer(serializers.ModelSerializer):
     """User serializer"""
@@ -10,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = [
             'id', 'email', 'first_name', 'last_name', 'phone_number',
-            'employee_id', 'role', 'department', 'designation',
+            'employee_id', 'role', 'department', 'designation', 'office_location',
             'date_of_joining', 'employment_type', 'is_active',
             'organization', 'organization_name'
         ]
@@ -22,6 +23,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_name = serializers.CharField(source='designation.name', read_only=True)
     organization_name = serializers.CharField(source='organization.name', read_only=True)
+    office_location_details = OfficeLocationSerializer(source='office_location', read_only=True)
     
     class Meta:
         model = CustomUser
@@ -29,7 +31,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'id', 'email', 'username', 'first_name', 'last_name',
             'phone_number', 'date_of_birth', 'gender', 'employee_id',
             'department', 'department_name', 'designation', 'designation_name',
-            'manager', 'office_location', 'role', 'employment_type',
+            'manager', 'office_location', 'office_location_details', 'role', 'employment_type',
             'date_of_joining', 'date_of_leaving', 'bank_account_number',
             'bank_ifsc_code', 'aadhar_number', 'pan_number', 'uan_number',
             'profile_picture', 'is_verified', 'is_active', 'created_at',

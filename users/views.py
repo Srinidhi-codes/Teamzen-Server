@@ -10,10 +10,10 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from users.serializers import UserSerializer, UserDetailSerializer, RegisterSerializer, LoginSerializer
 from django.conf import settings
 
-def get_cookie_settings():
+def get_cookie_settings(httponly=True):
     """Get cookie settings based on environment"""
     return {
-        'httponly': True,
+        'httponly': httponly,
         'secure': not settings.DEBUG,
         'samesite': 'None' if not settings.DEBUG else 'Lax',
         'path': '/',
@@ -92,6 +92,14 @@ class RegisterView(generics.CreateAPIView):
             **cookie_settings
         )
 
+        # Set a non-httponly cookie so JS can check if it should attempt a refresh
+        response.set_cookie(
+            key="session_can_refresh",
+            value="true",
+            max_age=7 * 24 * 60 * 60,
+            **get_cookie_settings(httponly=False)
+        )
+
         return response
 
 
@@ -123,6 +131,14 @@ class LoginView(generics.GenericAPIView):
             value=str(refresh),
             max_age=7 * 24 * 60 * 60,
             **cookie_settings
+        )
+
+        # Set a non-httponly cookie so JS can check if it should attempt a refresh
+        response.set_cookie(
+            key="session_can_refresh",
+            value="true",
+            max_age=7 * 24 * 60 * 60,
+            **get_cookie_settings(httponly=False)
         )
 
         return response
@@ -186,6 +202,14 @@ class CookieTokenRefreshView(TokenRefreshView):
                 **cookie_settings
             )
             
+        # Ensure session flag is present
+        response.set_cookie(
+            key="session_can_refresh",
+            value="true",
+            max_age=7 * 24 * 60 * 60,
+            **get_cookie_settings(httponly=False)
+        )
+            
         return response
 
 
@@ -205,4 +229,5 @@ class LogoutView(APIView):
         response = Response({"detail": "Logged out successfully"}, status=200)
         response.delete_cookie("access_token", path='/')
         response.delete_cookie("refresh_token", path='/')
+        response.delete_cookie("session_can_refresh", path='/')
         return response

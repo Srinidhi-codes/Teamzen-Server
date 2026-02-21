@@ -20,6 +20,11 @@ class UpdateProfileInput:
     uan_number: str | None = None
 
 @strawberry.input
+class UserStatusInput:
+    user_id: str
+    is_active: bool
+
+@strawberry.input
 class CreateUserInput:
     email: str
     password: str
@@ -28,18 +33,6 @@ class CreateUserInput:
     role: str = "employee"
     organization_id: str | None = None
     department_id: str | None = None
-    designation_id: str | None = None
-    manager_id: str | None = None
-    employment_type: str = "full_time"
-    date_of_joining: str | None = None
-    is_active: bool = True
-
-@strawberry.input
-class UpdateUserInput:
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    phone_number: str | None = None
     date_of_birth: str | None = None
     gender: str | None = None
     bank_account_number: str | None = None
@@ -47,17 +40,42 @@ class UpdateUserInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
-    role: str | None = None
-    department_id: str | None = None
+    phone_number: str | None = None
     designation_id: str | None = None
+    office_location_id: str | None = None
     manager_id: str | None = None
-    organization_id: str | None = None
-    employment_type: str | None = None
+    employment_type: str = "full_time"
     date_of_joining: str | None = None
     date_of_exit: str | None = None
-    is_active: bool | None = None
-    is_verified: bool | None = None
-    is_staff: bool | None = None
+    is_staff: bool = False
+    is_verified: bool = False
+    is_active: bool = True
+
+@strawberry.input
+class UpdateUserInput:
+    email: str
+    first_name: str
+    last_name: str
+    role: str = "employee"
+    organization_id: str | None = None
+    department_id: str | None = None
+    date_of_birth: str | None = None
+    gender: str | None = None
+    bank_account_number: str | None = None
+    bank_ifsc_code: str | None = None
+    pan_number: str | None = None
+    aadhar_number: str | None = None
+    uan_number: str | None = None
+    phone_number: str | None = None
+    designation_id: str | None = None
+    office_location_id: str | None = None
+    manager_id: str | None = None
+    employment_type: str = "full_time"
+    date_of_joining: str | None = None
+    date_of_exit: str | None = None
+    is_staff: bool = False
+    is_verified: bool = False
+    is_active: bool = True
 
 @strawberry.type
 class UserPayload:
@@ -112,7 +130,7 @@ class UserMutation:
     def create_user(self, info: Info, input: CreateUserInput) -> UserPayload:
         user = info.context.request.user
         # Only admin or HR/Manager can create users - simplistic check
-        if not user.is_authenticated:
+        if not user.role in ["admin", "hr", "manager"]:
              return UserPayload(error="Not authenticated")
         
         try:
@@ -133,6 +151,8 @@ class UserMutation:
                 new_user.department_id = input.department_id
             if input.designation_id:
                 new_user.designation_id = input.designation_id
+            if input.office_location_id:
+                new_user.office_location_id = input.office_location_id
             if input.manager_id:
                 new_user.manager_id = input.manager_id
             if input.date_of_joining:
@@ -160,7 +180,7 @@ class UserMutation:
                     value = None
                 
                 # Handle empty strings for relational fields
-                if field in ['department_id', 'designation_id', 'manager_id', 'organization_id'] and value == "":
+                if field in ['department_id', 'designation_id', 'office_location_id', 'manager_id', 'organization_id'] and value == "":
                     value = None
                     
                 if value is not None:
@@ -172,3 +192,14 @@ class UserMutation:
             return UserPayload(error="User not found")
         except Exception as e:
             return UserPayload(error=str(e))
+
+    @strawberry.mutation
+    def user_status(self, info: Info, input: UserStatusInput) -> UserType:
+        request_user = info.context.request.user
+        if not request_user.is_authenticated or request_user.role not in ["admin", "hr", "manager"]:
+            raise Exception("Not authorized")
+        
+        user_to_update = User.objects.get(id=input.user_id)
+        user_to_update.is_active = input.is_active
+        user_to_update.save(update_fields=['is_active'])
+        return user_to_update

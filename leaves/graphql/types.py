@@ -42,6 +42,7 @@ class LeaveBalanceType:
     accrued: auto
     expired: auto
     is_locked: auto
+    is_active: auto
     locked_at: auto
     last_updated: auto
     @strawberry.field
@@ -57,7 +58,7 @@ class LeaveRequestType:
     to_date: auto
     duration_days: auto
     reason: auto
-    status: auto
+    status: str
     approved_by: Optional[UserType]
     approval_comments: auto
     approved_at: auto

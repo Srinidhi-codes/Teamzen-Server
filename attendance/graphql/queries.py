@@ -1,17 +1,49 @@
 import strawberry
 from typing import List, Optional
 from datetime import date
+from django.db.models import Q
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from attendance.graphql.types import AttendanceRecordType, AttendanceCorrectionType
+
+# =====================================================
+# INPUT TYPES
+# =====================================================
 
 @strawberry.input
 class AttendanceInput:
     start_date: Optional[date]
     end_date: Optional[date]
 
+@strawberry.input
+class AttendanceCorrectionSortInput:
+    field: str = "created_at"
+    direction: str = "desc"
+
+@strawberry.input
+class AttendanceCorrectionFilterInput:
+    search: Optional[str] = None
+    status: Optional[str] = None
+
+# =====================================================
+# RESPONSE TYPES
+# =====================================================
+
+@strawberry.type
+class PaginatedAttendanceCorrectionResponse:
+    results: List[AttendanceCorrectionType]
+    total: int
+    page: int
+    page_size: int
+
+# =====================================================
+# QUERIES
+# =====================================================
+
 @strawberry.type
 class AttendanceQuery:
-
+    # -------------------------
+    # MY ATTENDANCE
+    # ------------------------
     @strawberry.field
     def my_attendance(
         self,
@@ -42,7 +74,9 @@ class AttendanceQuery:
 
         return qs
 
-
+    # -------------------------
+    # ATTENDANCE BY USER
+    # -------------------------
     @strawberry.field
     def attendance_by_user(
         self,
@@ -59,25 +93,70 @@ class AttendanceQuery:
 
         return AttendanceRecord.objects.filter(user_id=user_id)
 
+    # -------------------------
+    # ATTENDANCE CORRECTIONS
+    # -------------------------
     @strawberry.field
     def attendance_corrections(
         self,
         info,
-        status: Optional[str] = None
-    ) -> List[AttendanceCorrectionType]:
+        page: int = 1,
+        page_size: int = 10,
+        filters: Optional[AttendanceCorrectionFilterInput] = None,
+        sort: Optional[AttendanceCorrectionSortInput] = None,
+        input: Optional[AttendanceInput] = None
+    ) -> PaginatedAttendanceCorrectionResponse:
         
         user = info.context.request.user
-        qs = AttendanceCorrection.objects.all()
+
+        qs = AttendanceCorrection.objects.select_related(
+            "attendance_record",
+            "requested_by",
+            "approved_by",
+        )
 
         if user.role == "employee":
             qs = qs.filter(requested_by=user)
-        elif user.role in ["admin", "hr", "manager"]:
+        elif user.role == "admin":
             pass  # full queryset
+        elif user.role == "hr":
+            qs = qs.filter(requested_by__organization_id=user.organization_id)
+        elif user.role == "manager":
+            qs = qs.filter(requested_by__manager=user)
         else:
             raise Exception("Not authorized")
 
-        if status:
-            qs = qs.filter(status=status)
+        if filters:
+            if filters.status:
+                qs = qs.filter(status=filters.status)
 
-        return qs
+        if input:
+            if input.start_date and input.end_date:
+                qs = qs.filter(
+                    attendance_record__attendance_date__range=(input.start_date, input.end_date)
+                )
+            elif input.start_date:
+                 qs = qs.filter(attendance_record__attendance_date__gte=input.start_date)
+            elif input.end_date:
+                 qs = qs.filter(attendance_record__attendance_date__lte=input.end_date)
 
+        if filters:
+             if filters.search:
+                 search = filters.search.strip()
+                 qs = qs.filter(
+                     Q(requested_by__first_name__icontains=search) |
+                     Q(requested_by__last_name__icontains=search) |
+                     Q(requested_by__email__icontains=search) |
+                     Q(approved_by__first_name__icontains=search) |
+                     Q(approved_by__last_name__icontains=search) |
+                     Q(approved_by__email__icontains=search) |
+                     Q(attendance_record__attendance_date__icontains=search)
+                 )
+        # -------------------------
+        # PAGINATION & SORTING
+        # -------------------------
+        from graphql_utils.pagination import get_paginated_results
+        
+        paginated = get_paginated_results(qs, page, page_size, sort)
+
+        return PaginatedAttendanceCorrectionResponse(**paginated)

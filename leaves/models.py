@@ -1,9 +1,7 @@
-from django.db import models
-
 # Create your models here.
-
 from django.db import models
 from django.utils import timezone
+from viewflow.fsm import State
 from users.models import CustomUser
 from organizations.models import Organization
 
@@ -65,6 +63,7 @@ class LeaveBalance(models.Model):
     accrued = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     expired = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     is_locked = models.BooleanField(default=False) # Leaves freeze when user leaves the organization
+    is_active = models.BooleanField(default=True)
     locked_at = models.DateTimeField(null=True, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
 
@@ -100,7 +99,17 @@ class LeaveRequest(models.Model):
     to_date = models.DateField()
     duration_days = models.DecimalField(max_digits=5, decimal_places=2)
     reason = models.TextField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    _status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_column='status')
+    
+    status = State(states=STATUS_CHOICES, default='pending')
+
+    @status.getter()
+    def _status_get(self):
+        return self._status
+
+    @status.setter()
+    def _status_set(self, value):
+        self._status = value
     approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leaves')
     approval_comments = models.TextField(blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -112,6 +121,22 @@ class LeaveRequest(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.leave_type} ({self.from_date})"
+
+    @status.transition(source='pending', target='approved')
+    def approve(self, approved_by=None, comments=""):
+        self.approved_by = approved_by
+        self.approval_comments = comments
+        self.approved_at = timezone.now()
+
+    @status.transition(source='pending', target='rejected')
+    def reject(self, rejected_by=None, comments=""):
+        self.approved_by = rejected_by
+        self.approval_comments = comments
+        self.approved_at = timezone.now()
+
+    @status.transition(source=['pending', 'approved'], target='cancelled')
+    def cancel(self):
+        pass
 
 
 class CompanyHoliday(models.Model):

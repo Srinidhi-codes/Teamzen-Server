@@ -22,12 +22,12 @@ class AttendanceCorrectionAdmin(admin.ModelAdmin):
     list_display = (
         'attendance_record', 
         'requested_by', 
-        'status', 
+        '_status', 
         'corrected_login_time', 
         'corrected_logout_time',
         'created_at'
     )
-    list_filter = ('status', 'created_at')
+    list_filter = ('_status', 'created_at')
     search_fields = (
         'requested_by__email', 
         'requested_by__first_name', 
