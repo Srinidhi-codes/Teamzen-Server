@@ -239,17 +239,16 @@ class LeaveMutation:
 
         with transaction.atomic():
             balance = get_or_create_balance(req.user, req.leave_type)
+            admin_user = info.context.request.user
 
             if input.status == LeaveStatus.APPROVED:
                 consume_balance(balance, req.duration_days)
-                req.status = LeaveStatus.APPROVED
-
+                req.approve(approved_by=admin_user, comments=input.comments)
             elif input.status == LeaveStatus.REJECTED:
                 release_balance(balance, req.duration_days)
-                req.status = LeaveStatus.REJECTED
-
-            req.approval_comments = input.comments
-            req.save(update_fields=["status", "approval_comments"])
+                req.reject(rejected_by=admin_user, comments=input.comments)
+            
+            req.save()
 
         return req
 
@@ -263,9 +262,13 @@ class LeaveMutation:
 
         with transaction.atomic():
             balance = get_or_create_balance(req.user, req.leave_type)
+            
+            # If it was already approved, we need to release consumed balance
+            # If it was pending, we release reserved balance
+            # (Note: release_balance service should handle both or we check state)
             release_balance(balance, req.duration_days)
 
-            req.status = LeaveStatus.CANCELLED
-            req.save(update_fields=["status"])
+            req.cancel()
+            req.save()
 
         return req

@@ -73,7 +73,7 @@ class AttendanceCorrectionType:
     corrected_login_time: auto
     corrected_logout_time: auto
     reason: auto
-    status: auto
+    status: str
     approval_comments: auto
 
     created_at: auto

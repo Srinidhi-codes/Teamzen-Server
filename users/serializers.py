@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = [
             'id', 'email', 'first_name', 'last_name', 'phone_number',
-            'employee_id', 'role', 'department', 'designation',
+            'employee_id', 'role', 'department', 'designation', 'office_location',
             'date_of_joining', 'employment_type', 'is_active',
             'organization', 'organization_name'
         ]

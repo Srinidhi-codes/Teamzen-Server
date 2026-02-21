@@ -1,4 +1,5 @@
 from django.db import models, transaction
+from viewflow.fsm import State
 from users.models import CustomUser
 from organizations.models import OfficeLocation
 from datetime import datetime, date
@@ -74,7 +75,17 @@ class AttendanceCorrection(models.Model):
 
     reason = models.TextField()
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    _status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_column='status')
+    
+    status = State(states=STATUS_CHOICES, default='pending')
+
+    @status.getter()
+    def _status_get(self):
+        return self._status
+
+    @status.setter()
+    def _status_set(self, value):
+        self._status = value
     approved_by = models.ForeignKey(
         CustomUser,
         on_delete=models.SET_NULL,
@@ -89,34 +100,35 @@ class AttendanceCorrection(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    @status.transition(source='pending', target='approved')
     def approve(self, approver, comments=None):
         """
         Apply correction to attendance but KEEP correction record
         """
-        with transaction.atomic():
-            attendance = self.attendance_record
+        attendance = self.attendance_record
 
-            if self.corrected_login_time:
-                attendance.login_time = self.corrected_login_time
+        if self.corrected_login_time:
+            attendance.login_time = self.corrected_login_time
 
-            if self.corrected_logout_time:
-                attendance.logout_time = self.corrected_logout_time
+        if self.corrected_logout_time:
+            attendance.logout_time = self.corrected_logout_time
 
-            attendance.recalculate_worked_hours()
-            attendance.status = "present"
-            attendance.is_verified = True
-            attendance.save()
+        attendance.recalculate_worked_hours()
+        attendance.status = "present"
+        attendance.is_verified = True
+        attendance.save()
 
-            self.status = "approved"
-            self.approved_by = approver
-            self.approval_comments = comments
-            self.save()
-
-    def reject(self, approver, comments=None):
-        self.status = "rejected"
         self.approved_by = approver
         self.approval_comments = comments
-        self.save()
+
+    @status.transition(source='pending', target='rejected')
+    def reject(self, approver, comments=None):
+        self.approved_by = approver
+        self.approval_comments = comments
+
+    @status.transition(source='pending', target='cancelled')
+    def cancel(self):
+        pass
 
     def __str__(self):
         return f"Correction for {self.attendance_record}"

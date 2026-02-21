@@ -23,5 +23,6 @@ urlpatterns = [
     path("api/auth/register/", RegisterView.as_view(), name="token_obtain_pair"),
     path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),  
     path("api/users/", include("users.urls")),
+    path("api/ai/", include("ai_engine.urls")),
     path("api/", include("organizations.urls")),
 ]

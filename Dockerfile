@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . . 
 
-RUN python manage.py collectstatic --noinput
+# Static files will be collected at runtime to avoid build-time environment issues
 
 EXPOSE 8000
 

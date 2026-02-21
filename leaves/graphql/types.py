@@ -58,7 +58,7 @@ class LeaveRequestType:
     to_date: auto
     duration_days: auto
     reason: auto
-    status: auto
+    status: str
     approved_by: Optional[UserType]
     approval_comments: auto
     approved_at: auto

@@ -133,14 +133,15 @@ class AttendanceMutation:
             raise GraphQLError("This correction has already been processed")
 
         # ✅ Apply decision
-        if input.status == "approved":
-            correction.approve(approver, input.approval_comments)
-
-        elif input.status == "rejected":
-            correction.reject(approver, input.approval_comments)
-
-        else:
-            raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")
+        with transaction.atomic():
+            if input.status == "approved":
+                correction.approve(approver, input.approval_comments)
+            elif input.status == "rejected":
+                correction.reject(approver, input.approval_comments)
+            else:
+                raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")
+            
+            correction.save()
 
         return True
 
@@ -149,7 +150,7 @@ class AttendanceMutation:
     def cancel_attendance_correction(self, info, correctionId: strawberry.ID) -> AttendanceCorrectionType:
         correction = AttendanceCorrection.objects.get(id=correctionId)
 
-        correction.status = "cancelled"
-        correction.save(update_fields=["status"])
+        correction.cancel()
+        correction.save()
 
         return correction

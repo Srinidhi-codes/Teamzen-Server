@@ -42,6 +42,7 @@ class CreateUserInput:
     uan_number: str | None = None
     phone_number: str | None = None
     designation_id: str | None = None
+    office_location_id: str | None = None
     manager_id: str | None = None
     employment_type: str = "full_time"
     date_of_joining: str | None = None
@@ -67,6 +68,7 @@ class UpdateUserInput:
     uan_number: str | None = None
     phone_number: str | None = None
     designation_id: str | None = None
+    office_location_id: str | None = None
     manager_id: str | None = None
     employment_type: str = "full_time"
     date_of_joining: str | None = None
@@ -149,6 +151,8 @@ class UserMutation:
                 new_user.department_id = input.department_id
             if input.designation_id:
                 new_user.designation_id = input.designation_id
+            if input.office_location_id:
+                new_user.office_location_id = input.office_location_id
             if input.manager_id:
                 new_user.manager_id = input.manager_id
             if input.date_of_joining:
@@ -176,7 +180,7 @@ class UserMutation:
                     value = None
                 
                 # Handle empty strings for relational fields
-                if field in ['department_id', 'designation_id', 'manager_id', 'organization_id'] and value == "":
+                if field in ['department_id', 'designation_id', 'office_location_id', 'manager_id', 'organization_id'] and value == "":
                     value = None
                     
                 if value is not None:
