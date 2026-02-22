@@ -8,9 +8,12 @@ from leaves.graphql.queries import LeaveQuery
 from leaves.graphql.mutations import LeaveMutation
 from organizations.graphql.queries import OrganizationQuery
 from organizations.graphql.mutations import OrganizationMutation
+from notifications.graphql.queries import NotificationQuery
+from notifications.graphql.mutations import NotificationMutation
+from graphql_api.dashboard_queries import DashboardQuery
 
 @strawberry.type
-class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery):
+class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery):
     """
     Root Query:
     - me
@@ -21,7 +24,7 @@ class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery):
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation):
+class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation):
     """
     Root Mutation:
     - login (REST preferred)

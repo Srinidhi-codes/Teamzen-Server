@@ -37,6 +37,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -59,6 +60,8 @@ INSTALLED_APPS = [
     "leaves.apps.LeavesConfig",
     "ai_engine.apps.AiEngineConfig",
     "graphql",
+    "notifications",
+    "channels",
     ]
 
 MIDDLEWARE = [
@@ -140,6 +143,16 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [os.getenv('REDIS_URL', 'redis://localhost:6379/0')],
+        },
+    },
+}
 
 
 # Database
@@ -296,7 +309,7 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 # Celery Configuration
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'amqp://guest:guest@localhost:5672//')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_RESULT_SERIALIZER = 'json'
@@ -313,6 +326,10 @@ CELERY_BEAT_SCHEDULE = {
     'run-yearly-carry-forward': {
         'task': 'leaves.task.run_yearly_carry_forward',
         'schedule': crontab(day_of_month='1', month_of_year='1', hour=0, minute=0), # Run at midnight on Jan 1st
+    },
+    'cleanup-read-notifications': {
+        'task': 'notifications.tasks.cleanup_read_notifications',
+        'schedule': crontab(hour=0, minute=0), # Run every day at midnight
     },
 }
 

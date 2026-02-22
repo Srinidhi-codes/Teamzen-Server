@@ -219,15 +219,50 @@ class LeaveMutation:
             validate_balance(balance, duration)
             reserve_balance(balance, duration)
 
-            return LeaveRequest.objects.create(
+            req = LeaveRequest.objects.create(
                 user=user,
                 leave_type=leave_type,
                 from_date=input.from_date,
                 to_date=input.to_date,
                 duration_days=duration,
                 reason=input.reason,
-                status=LeaveStatus.PENDING,
             )
+
+            # --- NOTIFY ADMINS / MANAGERS ---
+            from notifications.tasks import send_notification
+            from users.models import CustomUser
+
+            recipients = []
+            
+            # 1. Notify Manager
+            if user.manager:
+                recipients.append(user.manager.id)
+            
+            # 2. Notify Organization Admins/HR (and global admins)
+            from django.db.models import Q
+            admins = CustomUser.objects.filter(
+                Q(organization=user.organization) | Q(organization__isnull=True),
+                role__in=['admin', 'hr']
+            ).exclude(id=user.id).values_list('id', flat=True)
+            
+            recipients.extend(list(admins))
+
+            print(f"DEBUG: Leave Request created by {user.email} (Org: {user.organization})")
+            print(f"DEBUG: Notifying recipients: {recipients}")
+
+            # Send notifications (unique recipients only)
+            message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days)."
+            for recipient_id in set(recipients):
+                send_notification.delay(
+                    recipient_id=recipient_id,
+                    verb="requested",
+                    message=message,
+                    actor_id=user.id,
+                    target_type="Leave Request",
+                    target_id=str(req.id)
+                )
+
+            return req
 
     @strawberry.mutation
     def leave_request_process(
@@ -244,9 +279,33 @@ class LeaveMutation:
             if input.status == LeaveStatus.APPROVED:
                 consume_balance(balance, req.duration_days)
                 req.approve(approved_by=admin_user, comments=input.comments)
+                # Send Notification
+                from notifications.tasks import send_notification
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been APPROVED."
+                send_notification.delay(
+                    recipient_id=req.user.id,
+                    verb="approved",
+                    message=message,
+                    actor_id=admin_user.id,
+                    target_type="Leave Request",
+                    target_id=str(req.id)
+                )
             elif input.status == LeaveStatus.REJECTED:
                 release_balance(balance, req.duration_days)
                 req.reject(rejected_by=admin_user, comments=input.comments)
+                # Send Notification
+                from notifications.tasks import send_notification
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been REJECTED."
+                if input.comments:
+                    message += f" Reason: {input.comments}"
+                send_notification.delay(
+                    recipient_id=req.user.id,
+                    verb="rejected",
+                    message=message,
+                    actor_id=admin_user.id,
+                    target_type="Leave Request",
+                    target_id=str(req.id)
+                )
             
             req.save()
 
