@@ -7,7 +7,7 @@ from .models import Notification
 User = get_user_model()
 
 @shared_task(name="notifications.tasks.send_notification")
-def send_notification(recipient_id, verb, message, actor_id=None, notification_type='BOTH', target_type=None, target_id=None):
+def send_notification(recipient_id, verb, message, actor_id=None, notification_type='BOTH', target_type=None, target_id=None, level='personal'):
     """
     Asynchronous task to send notifications via multiple channels.
     """
@@ -23,7 +23,8 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
             message=message,
             notification_type=notification_type,
             target_type=target_type,
-            target_id=target_id
+            target_id=target_id,
+            level=level
         )
 
         # 2. Send Email if requested
@@ -44,6 +45,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                         "id": str(notification.id),
                         "verb": verb,
                         "message": message,
+                        "level": level,
                         "createdAt": notification.created_at.isoformat(),
                         "isRead": notification.is_read,
                         "actor": {

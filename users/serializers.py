@@ -40,14 +40,18 @@ class UserDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+from organizations.models import Organization
+
 class RegisterSerializer(serializers.ModelSerializer):
     """User registration serializer"""
     password = serializers.CharField(write_only=True, min_length=8)
     password2 = serializers.CharField(write_only=True, min_length=8)
+    organization_name = serializers.CharField(write_only=True, required=False)
+    plan = serializers.CharField(write_only=True, required=False, default='free')
 
     class Meta:
         model = CustomUser
-        fields = ['email', 'username', 'password', 'password2', 'first_name', 'last_name', 'organization']
+        fields = ['email', 'username', 'password', 'password2', 'first_name', 'last_name', 'organization', 'organization_name', 'plan']
 
     def validate(self, data):
         if data['password'] != data['password2']:
@@ -56,6 +60,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password2')
+        organization_name = validated_data.pop('organization_name', None)
+        plan = validated_data.pop('plan', 'free')
+        
+        # If organization_name is provided, create a new org and set user as admin
+        if organization_name:
+            org = Organization.objects.create(name=organization_name, plan=plan)
+            validated_data['organization'] = org
+            validated_data['role'] = 'admin'
+        
         user = CustomUser.objects.create_user(**validated_data)
         return user
 

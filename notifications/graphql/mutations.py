@@ -69,7 +69,8 @@ class NotificationMutation:
             verb=verb,
             message=message,
             actor_id=user.id,
-            notification_type=notification_type
+            notification_type=notification_type,
+            level='personal'
         )
         return True
 
@@ -96,6 +97,7 @@ class NotificationMutation:
                 verb=verb,
                 message=message,
                 actor_id=user.id,
-                notification_type=notification_type
+                notification_type=notification_type,
+                level='personal'
             )
         return True

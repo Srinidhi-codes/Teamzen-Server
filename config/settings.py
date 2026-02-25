@@ -62,7 +62,8 @@ INSTALLED_APPS = [
     "graphql",
     "notifications",
     "channels",
-    ]
+    "django_celery_beat",
+]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

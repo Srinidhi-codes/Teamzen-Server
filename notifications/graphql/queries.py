@@ -6,15 +6,25 @@ from .types import NotificationType
 @strawberry.type
 class NotificationQuery:
     @strawberry.field
-    def my_notifications(self, info) -> List[NotificationType]:
+    def my_notifications(self, info, level: Optional[str] = None) -> List[NotificationType]:
         user = info.context.request.user
         if not user.is_authenticated:
             return []
-        return Notification.objects.filter(recipient=user).order_by('-created_at')[:50]
+        
+        queryset = Notification.objects.filter(recipient=user).order_by('-created_at')
+        if level:
+            queryset = queryset.filter(level=level)
+            
+        return queryset[:50]
 
     @strawberry.field
-    def unread_notification_count(self, info) -> int:
+    def unread_notification_count(self, info, level: Optional[str] = None) -> int:
         user = info.context.request.user
         if not user.is_authenticated:
             return 0
-        return Notification.objects.filter(recipient=user, is_read=False).count()
+        
+        queryset = Notification.objects.filter(recipient=user, is_read=False)
+        if level:
+            queryset = queryset.filter(level=level)
+            
+        return queryset.count()

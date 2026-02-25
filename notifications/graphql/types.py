@@ -14,6 +14,7 @@ class NotificationType:
     target_id: Optional[str]
     message: str
     notification_type: str
+    level: str
     is_read: bool
     created_at: datetime
     updated_at: datetime

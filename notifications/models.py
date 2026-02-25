@@ -8,6 +8,11 @@ class Notification(models.Model):
         ('BOTH', 'Both'),
     ]
 
+    LEVEL_CHOICES = [
+        ('personal', 'Personal'),
+        ('admin', 'Admin'),
+    ]
+
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -26,6 +31,7 @@ class Notification(models.Model):
     
     message = models.TextField()
     notification_type = models.CharField(max_length=10, choices=NOTIFICATION_TYPES, default='BOTH')
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='personal')
     
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -71,7 +71,7 @@ class DashboardQuery:
     @strawberry.field
     def admin_dashboard_stats(self, info) -> AdminDashboardStats:
         user = info.context.request.user
-        if not user.is_authenticated or user.role not in ['admin', 'hr']:
+        if not user.is_authenticated or user.role not in ['admin', 'hr', 'manager']:
             raise Exception("Unauthorized")
 
         # 1. Basic Stats
@@ -80,9 +80,10 @@ class DashboardQuery:
         pending_leaves = LeaveRequest.objects.filter(user__organization=user.organization, _status='pending').count()
         
         today = date.today()
+        attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
         present_today = AttendanceRecord.objects.filter(
             attendance_date=today, 
-            status='present',
+            status__in=attendance_statuses,
             user__organization=user.organization
         ).count()
         
@@ -158,8 +159,9 @@ class DashboardQuery:
             raise Exception("Unauthorized")
 
         # 1. Attendance Rate (Last 30 records)
+        attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
         total_records = AttendanceRecord.objects.filter(user=user).count()
-        present_records = AttendanceRecord.objects.filter(user=user, status='present').count()
+        present_records = AttendanceRecord.objects.filter(user=user, status__in=attendance_statuses).count()
         attendance_rate = (present_records / total_records * 100) if total_records > 0 else 0
 
         # 2. Leave Balances
@@ -225,28 +227,50 @@ class DashboardQuery:
 
         # 5. Last 7 Days Status
         last_7_days = []
+        today = date.today()
         for i in range(6, -1, -1):
-            d = date.today() - timedelta(days=i)
+            d = today - timedelta(days=i)
             day_str = d.strftime("%a")
             date_num = str(d.day)
             
-            # Check status
+            # 1. Base status
             status = 'absent'
             if d.weekday() >= 5: # Saturday/Sunday
                 status = 'weekend'
             
+            # 2. Check Record
             record = AttendanceRecord.objects.filter(user=user, attendance_date=d).first()
-            if record and record.status == 'present':
-                status = 'present'
+            if record:
+                if record.status in ['present', 'late_login', 'early_logout', 'half_day']:
+                    status = 'present'
+                elif record.status == 'leave':
+                    status = 'leave'
+            else:
+                # If it's today and no record yet, don't show as absent
+                if d == today:
+                    status = 'not_started'
+
+            # 3. Check for Pending Corrections (Overrides absent/not_started)
+            if status in ['absent', 'not_started']:
+                from attendance.models import AttendanceCorrection
+                has_pending = AttendanceCorrection.objects.filter(
+                    attendance_record__user=user,
+                    attendance_record__attendance_date=d,
+                    _status='pending'
+                ).exists()
+                if has_pending:
+                    status = 'pending'
             
-            on_leave = LeaveRequest.objects.filter(
-                user=user, 
-                _status='approved',
-                from_date__lte=d,
-                to_date__gte=d
-            ).exists()
-            if on_leave:
-                status = 'leave'
+            # 4. Check for Approved Leaves (Alternative)
+            if status != 'present':
+                on_leave = LeaveRequest.objects.filter(
+                    user=user, 
+                    _status='approved',
+                    from_date__lte=d,
+                    to_date__gte=d
+                ).exists()
+                if on_leave:
+                    status = 'leave'
                 
             last_7_days.append(DayStatus(
                 date=date_num,
@@ -285,7 +309,7 @@ class DashboardQuery:
                 attendance_date__range=[month_start, month_end]
             )
             total_days = (month_end - month_start).days + 1
-            present_days = records.filter(status='present').count()
+            present_days = records.filter(status__in=attendance_statuses).count()
             
             rate = (present_days / total_days * 100) if total_days > 0 else 0
             trend.append(MonthlyStat(month=month_name, value=round(rate)))

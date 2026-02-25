@@ -32,16 +32,14 @@ def check_in_user(user, office_id, latitude, longitude, time):
         attendance_date=date.today(),
         office_location=office,
     )
-    if distance > office.geo_radius_meters:
-        attendance.is_within_geofence = False
-
-    login_time = normalize_time(time)
-    attendance.login_time = login_time
-    attendance.actual_login_time = login_time
+    is_within = distance <= office.geo_radius_meters
+    
+    attendance.login_time = normalize_time(time)
+    attendance.actual_login_time = attendance.login_time
     attendance.login_latitude = latitude
     attendance.login_longitude = longitude
-    attendance.is_within_geofence = True
     attendance.login_distance = distance
+    attendance.is_within_geofence = is_within
     if attendance.login_time > office.login_time:
         attendance.status = "late_login"
     else:
@@ -69,21 +67,43 @@ def check_out_user(user, latitude, longitude, time):
     attendance.logout_latitude = latitude
     attendance.logout_longitude = longitude
     attendance.logout_distance = distance
+    
+    # Maintain geofence integrity: if either check-in or check-out is outside, flag is False
+    if distance > office.geo_radius_meters:
+        attendance.is_within_geofence = False
+    
     if attendance.login_time:
-        login_dt = datetime.combine(date.today(), attendance.login_time)
-        logout_dt = datetime.combine(date.today(), logout_time)
+        login_dt = datetime.combine(attendance.attendance_date, attendance.login_time)
+        logout_dt = datetime.combine(attendance.attendance_date, logout_time)
+        
+        # Handle cross-day logout if it ever happens (Logout < Login on same date)
+        if logout_dt < login_dt:
+            # Assume it's the next day
+            from datetime import timedelta
+            logout_dt += timedelta(days=1)
 
-        attendance.worked_hours = round(
-            (logout_dt - login_dt).total_seconds() / 3600,
-            2
-        )
+        duration = (logout_dt - login_dt).total_seconds() / 3600
+        attendance.worked_hours = round(duration, 2)
 
-    if attendance.logout_time < office.logout_time and attendance.status == "late_login":
-        attendance.status = "absent"
-    elif attendance.logout_time < office.logout_time:
-        attendance.status = "early_logout"
-    else:
-        attendance.status = "present"
+        # Robust Status Logic
+        if duration < 1.0: # Less than 1 hour is effectively absent
+            attendance.status = "absent"
+        elif duration < 4.5: # 1 to 4.5 hours is a half day
+            attendance.status = "half_day"
+        else:
+            # Check for shift violations
+            is_late = attendance.login_time > office.login_time
+            is_early = logout_time < office.logout_time
+            
+            if is_late and is_early:
+                attendance.status = "half_day" # Both violations = Half Day
+            elif is_late:
+                attendance.status = "late_login"
+            elif is_early:
+                attendance.status = "early_logout"
+            else:
+                attendance.status = "present"
+    
     attendance.save()
     return attendance, distance
 

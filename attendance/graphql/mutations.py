@@ -91,19 +91,33 @@ class AttendanceMutation:
     ) -> AttendanceCorrectionType:
 
         user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Not authenticated")
 
         record = AttendanceRecord.objects.get(id=input.attendance_record_id)
 
-        return AttendanceCorrection.objects.create(
+        # Create correction record first
+        correction = AttendanceCorrection.objects.create(
             attendance_record=record,
             requested_by=user,
             corrected_login_time=input.corrected_login_time or record.login_time,
             corrected_logout_time=input.corrected_logout_time or record.logout_time,
-            status="pending",
             reason=input.reason,
         )
 
-        
+        # Notify Management
+        from notifications.utils import notify_management
+        message = f"New attendance correction request from {user.first_name} {user.last_name} for {record.attendance_date}."
+        notify_management(
+            user=user,
+            verb="requested",
+            message=message,
+            target_type="Attendance Correction",
+            target_id=str(correction.id)
+        )
+
+        return correction
+
     @strawberry.mutation
     def approve_or_reject_attendance_correction(
         self,
@@ -123,7 +137,7 @@ class AttendanceMutation:
         # 🔎 Fetch correction
         try:
             correction = AttendanceCorrection.objects.select_related(
-                "attendance_record"
+                "attendance_record", "requested_by"
             ).get(id=input.correction_id)
         except AttendanceCorrection.DoesNotExist:
             raise GraphQLError("Attendance correction not found")
@@ -136,12 +150,30 @@ class AttendanceMutation:
         with transaction.atomic():
             if input.status == "approved":
                 correction.approve(approver, input.approval_comments)
+                verb = "approved"
             elif input.status == "rejected":
                 correction.reject(approver, input.approval_comments)
+                verb = "rejected"
             else:
                 raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")
             
             correction.save()
+
+            # Notify User
+            from notifications.utils import notify_user
+            message = f"Your attendance correction for {correction.attendance_record.attendance_date} has been {verb.upper()}."
+            if input.approval_comments:
+                message += f" Reason: {input.approval_comments}"
+            
+            notify_user(
+                recipient_id=correction.requested_by.id,
+                verb=verb,
+                message=message,
+                actor_id=approver.id,
+                target_type="Attendance Correction",
+                target_id=str(correction.id),
+                level='personal'
+            )
 
         return True
 
