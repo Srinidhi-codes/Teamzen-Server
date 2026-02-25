@@ -11,6 +11,7 @@ class OrganizationType:
     pan_number: auto
     registration_number: auto
     headquarters_address: auto
+    plan: auto
     employee_count: int
     is_active: auto
     created_at: auto

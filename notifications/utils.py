@@ -1,0 +1,55 @@
+from django.db.models import Q
+from users.models import CustomUser
+from notifications.tasks import send_notification
+
+def get_management_ids(user):
+    """
+    Returns a list of unique recipient IDs who should be notified 
+    about a user's action (Manager + Admin/HR/Super Admin).
+    """
+    recipients = []
+    
+    # 1. Add Manager if exists
+    if user.manager:
+        recipients.append(user.manager.id)
+        
+    # 2. Add Admins, HR, and Super Admins of the same organization
+    admins = CustomUser.objects.filter(
+        Q(organization=user.organization) | Q(organization__isnull=True),
+        role__in=['super_admin', 'admin', 'hr', 'manager']
+    ).exclude(id=user.id).values_list('id', flat=True)
+    
+    recipients.extend(list(admins))
+    
+    # Return unique IDs only
+    return list(set(recipients))
+
+def notify_user(recipient_id, verb, message, actor_id=None, target_type=None, target_id=None, level='personal'):
+    """
+    Wrapper for send_notification task.
+    """
+    send_notification.delay(
+        recipient_id=recipient_id,
+        verb=verb,
+        message=message,
+        actor_id=actor_id,
+        target_type=target_type,
+        target_id=target_id,
+        level=level
+    )
+
+def notify_management(user, verb, message, target_type=None, target_id=None):
+    """
+    Helps notify all relevant management staff about a user's request.
+    """
+    recipient_ids = get_management_ids(user)
+    for recipient_id in recipient_ids:
+        notify_user(
+            recipient_id=recipient_id,
+            verb=verb,
+            message=message,
+            actor_id=user.id,
+            target_type=target_type,
+            target_id=target_id,
+            level='admin'
+        )

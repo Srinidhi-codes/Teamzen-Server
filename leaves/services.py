@@ -1,8 +1,26 @@
-from datetime import date
-from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest 
+import decimal
+from datetime import date, timedelta
+from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday
 
-def get_or_create_balance(user, leave_type: LeaveType):
-    year = date.today().year
+def get_working_days(start_date, end_date, organization):
+    """
+    Calculate duration excluding weekends and organization holidays.
+    """
+    holidays = CompanyHoliday.objects.filter(
+        organization=organization,
+        holiday_date__range=[start_date, end_date]
+    ).values_list('holiday_date', flat=True)
+    
+    working_days = 0
+    curr = start_date
+    while curr <= end_date:
+        if curr.weekday() < 5 and curr not in holidays:
+            working_days += 1
+        curr += timedelta(days=1)
+    return working_days
+
+def get_or_create_balance(user, leave_type: LeaveType, year=None):
+    year = year or date.today().year
 
     balance, _ = LeaveBalance.objects.get_or_create(
         user=user,
@@ -21,18 +39,18 @@ def get_or_create_balance(user, leave_type: LeaveType):
 
 
 def reserve_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval += days
+    balance.pending_approval += decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
 def consume_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= days
-    balance.used += days
+    balance.pending_approval -= decimal.Decimal(str(days))
+    balance.used += decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval', 'used'])
 
 
 def release_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= days
+    balance.pending_approval -= decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
@@ -106,10 +124,10 @@ def perform_accrual(balance: LeaveBalance):
     balance.save(update_fields=["total_entitled", "accrued", "last_accrued_date"])
 
 def create_leave_request(user, leave_type, from_date, to_date, reason):
-    duration = (to_date - from_date).days + 1
+    duration = get_working_days(from_date, to_date, user.organization)
     year = from_date.year
 
-    balance = LeaveBalance.objects.get(user=user, leave_type=leave_type, year=year)
+    balance = get_or_create_balance(user, leave_type, year)
 
     validate_balance(balance, duration)
     reserve_balance(balance, duration)

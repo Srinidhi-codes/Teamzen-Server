@@ -98,3 +98,7 @@ langchain-text-splitters
 PyPDF2
 langchain-community
 django-viewflow
+channels
+daphne
+channels-redis
+django_celery_beat

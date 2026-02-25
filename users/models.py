@@ -11,6 +11,7 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS = ["username"]
 
     ROLE_CHOICES = [
+        ('superadmin', 'Superadmin'),
         ('admin', 'Admin'),
         ('hr', 'HR'),
         ('manager', 'Manager'),

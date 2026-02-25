@@ -27,6 +27,7 @@ from leaves.services import (
     release_balance,
     initialize_leave_type_for_all_users,
 )
+from notifications.tasks import send_notification
 
 # =====================================================
 # CONSTANTS
@@ -214,20 +215,30 @@ class LeaveMutation:
         duration = (input.to_date - input.from_date).days + 1
         leave_type = LeaveType.objects.get(id=input.leave_type_id)
 
+        from leaves.services import create_leave_request as create_request_service
+        
         with transaction.atomic():
-            balance = get_or_create_balance(user, leave_type)
-            validate_balance(balance, duration)
-            reserve_balance(balance, duration)
-
-            return LeaveRequest.objects.create(
+            req = create_request_service(
                 user=user,
                 leave_type=leave_type,
                 from_date=input.from_date,
                 to_date=input.to_date,
-                duration_days=duration,
-                reason=input.reason,
-                status=LeaveStatus.PENDING,
+                reason=input.reason
             )
+            duration = req.duration_days # get calculated duration
+
+            # --- NOTIFY ADMINS / MANAGERS ---
+            from notifications.utils import notify_management
+            message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days)."
+            notify_management(
+                user=user,
+                verb="requested",
+                message=message,
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
+
+            return req
 
     @strawberry.mutation
     def leave_request_process(
@@ -238,15 +249,46 @@ class LeaveMutation:
         ).get(id=input.request_id)
 
         with transaction.atomic():
-            balance = get_or_create_balance(req.user, req.leave_type)
+            from leaves.services import (
+                get_or_create_balance,
+                consume_balance,
+                release_balance
+            )
+            balance = get_or_create_balance(req.user, req.leave_type, req.from_date.year)
             admin_user = info.context.request.user
 
             if input.status == LeaveStatus.APPROVED:
                 consume_balance(balance, req.duration_days)
                 req.approve(approved_by=admin_user, comments=input.comments)
+                # Send Notification
+                from notifications.utils import notify_user
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been APPROVED."
+                notify_user(
+                    recipient_id=req.user.id,
+                    verb="approved",
+                    message=message,
+                    actor_id=admin_user.id,
+                    target_type="Leave Request",
+                    target_id=str(req.id),
+                    level='personal'
+                )
             elif input.status == LeaveStatus.REJECTED:
                 release_balance(balance, req.duration_days)
                 req.reject(rejected_by=admin_user, comments=input.comments)
+                # Send Notification
+                from notifications.utils import notify_user
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been REJECTED."
+                if input.comments:
+                    message += f" Reason: {input.comments}"
+                notify_user(
+                    recipient_id=req.user.id,
+                    verb="rejected",
+                    message=message,
+                    actor_id=admin_user.id,
+                    target_type="Leave Request",
+                    target_id=str(req.id),
+                    level='personal'
+                )
             
             req.save()
 

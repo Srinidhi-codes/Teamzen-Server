@@ -47,8 +47,8 @@ class AttendanceRecord(models.Model):
         Recalculate worked hours from login & logout time
         """
         if self.login_time and self.logout_time:
-            start = datetime.combine(date.today(), self.login_time)
-            end = datetime.combine(date.today(), self.logout_time)
+            start = datetime.combine(self.attendance_date, self.login_time)
+            end = datetime.combine(self.attendance_date, self.logout_time)
             self.worked_hours = round(
                 (end - start).total_seconds() / 3600,
                 2
