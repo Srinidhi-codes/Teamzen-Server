@@ -5,7 +5,7 @@ from django.utils import timezone
 from typing import List, Optional
 from users.models import CustomUser
 from leaves.models import LeaveRequest, LeaveBalance
-from attendance.models import AttendanceRecord
+from attendance.models import AttendanceRecord, AttendanceCorrection
 from organizations.models import Department
 from notifications.models import Notification
 
@@ -35,6 +35,26 @@ class ActivityStat:
     time: str
 
 @strawberry.type
+class UpcomingEvent:
+    id: str
+    user: str
+    profile_picture: Optional[str]
+    type: str # 'birthday' or 'anniversary'
+    date: str
+    days_until: int
+
+@strawberry.type
+class UpcomingLeave:
+    id: strawberry.ID
+    user: str
+    profile_picture: Optional[str]
+    leave_type: str
+    from_date: str
+    to_date: str
+    duration: float
+    status: str
+
+@strawberry.type
 class AdminDashboardStats:
     total_employees: int
     active_employees: int
@@ -44,6 +64,9 @@ class AdminDashboardStats:
     department_distribution: List[DepartmentStat]
     leave_flux: List[LeaveFluxStat]
     recent_activities: List[ActivityStat]
+    upcoming_events: List[UpcomingEvent]
+    upcoming_leaves: List[UpcomingLeave]
+    wish_message: Optional[str]
 
 @strawberry.type
 class UserLeaveBalance:
@@ -65,6 +88,8 @@ class UserDashboardStats:
     recent_activities: List[ActivityStat]
     last_7_days: List[DayStatus]
     attendance_trend: List[MonthlyStat]
+    upcoming_events: List[UpcomingEvent]
+    wish_message: Optional[str]
 
 @strawberry.type
 class DashboardQuery:
@@ -80,6 +105,9 @@ class DashboardQuery:
         pending_leaves = LeaveRequest.objects.filter(user__organization=user.organization, _status='pending').count()
         
         today = date.today()
+        # Ensure we use timezone aware datetimes for comparisons
+        now = timezone.now()
+        
         attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
         present_today = AttendanceRecord.objects.filter(
             attendance_date=today, 
@@ -94,9 +122,14 @@ class DashboardQuery:
         for i in range(5, -1, -1):
             target_date = today - timedelta(days=i*30)
             month_name = target_date.strftime("%b")
+            
+            # Create an aware datetime for the pivot point
+            pivot_dt = timezone.make_aware(timezone.datetime(target_date.year, target_date.month, 1))
+            # Move to next month's start for simpler logic or just use end of month
+            
             count = CustomUser.objects.filter(
                 organization=user.organization,
-                created_at__lte=timezone.datetime(target_date.year, target_date.month, 28)
+                created_at__lte=pivot_dt + timedelta(days=30) # Roughly end of that month
             ).count()
             growth.append(MonthlyStat(month=month_name, value=count))
 
@@ -105,12 +138,13 @@ class DashboardQuery:
         colors = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4"]
         departments = Department.objects.filter(organization=user.organization)
         for i, dept in enumerate(departments):
-            count = CustomUser.objects.filter(department=dept).count()
-            dept_dist.append(DepartmentStat(
-                name=dept.name, 
-                value=count, 
-                color=colors[i % len(colors)]
-            ))
+            count = CustomUser.objects.filter(department=dept, organization=user.organization).count()
+            if count > 0: # Only show departments with employees
+                dept_dist.append(DepartmentStat(
+                    name=dept.name, 
+                    value=count, 
+                    color=colors[i % len(colors)]
+                ))
 
         # 4. Leave Flux
         flux = []
@@ -131,7 +165,17 @@ class DashboardQuery:
 
         # 5. Recent Activities
         activities = []
-        # Combine recent leaves and user joins
+        # Join New Users
+        recent_users = CustomUser.objects.filter(organization=user.organization).order_by('-created_at')[:5]
+        for u in recent_users:
+            activities.append(ActivityStat(
+                id=strawberry.ID(f"user-{u.id}"),
+                user=f"{u.first_name} {u.last_name}",
+                action="joined the organization",
+                time=u.created_at.isoformat()
+            ))
+
+        # Combine recent leaves
         recent_leaves = LeaveRequest.objects.filter(user__organization=user.organization).order_by('-created_at')[:5]
         for l in recent_leaves:
             activities.append(ActivityStat(
@@ -139,6 +183,105 @@ class DashboardQuery:
                 user=f"{l.user.first_name} {l.user.last_name}",
                 action=f"requested {l.leave_type.name} leave",
                 time=l.created_at.isoformat()
+            ))
+
+        # Recent Attendance Corrections
+        recent_corrections = AttendanceCorrection.objects.filter(
+            attendance_record__user__organization=user.organization
+        ).order_by('-created_at')[:5]
+        for c in recent_corrections:
+            formatted_date = c.attendance_record.attendance_date.strftime("%b %d, %Y")
+            activities.append(ActivityStat(
+                id=strawberry.ID(f"corr-{c.id}"),
+                user=f"{c.requested_by.first_name} {c.requested_by.last_name}",
+                action=f"requested attendance correction for {formatted_date}",
+                time=c.created_at.isoformat()
+            ))
+
+        # 6. Upcoming Events (Birthdays & Anniversaries)
+        upcoming_events = []
+        today = date.today()
+        
+        # We look for events in the next 30 days
+        all_users = CustomUser.objects.filter(organization=user.organization, is_active=True)
+        for u in all_users:
+            if u.date_of_birth:
+                # Calculate next birthday
+                try:
+                    bday_this_year = u.date_of_birth.replace(year=today.year)
+                except ValueError: # Leap year case
+                    bday_this_year = u.date_of_birth.replace(year=today.year, day=28)
+                
+                if bday_this_year < today:
+                    bday_next = bday_this_year.replace(year=today.year + 1)
+                else:
+                    bday_next = bday_this_year
+                
+                days_until = (bday_next - today).days
+                if days_until <= 30:
+                    upcoming_events.append(UpcomingEvent(
+                        id=f"bday-{u.id}",
+                        user=f"{u.first_name} {u.last_name}",
+                        profile_picture=u.profile_picture.url if u.profile_picture else None,
+                        type="birthday",
+                        date=bday_next.isoformat(),
+                        days_until=days_until
+                    ))
+            
+            if u.date_of_joining:
+                # Calculate next anniversary
+                try:
+                    anniv_this_year = u.date_of_joining.replace(year=today.year)
+                except ValueError: # Leap year case
+                    anniv_this_year = u.date_of_joining.replace(year=today.year, day=28)
+                
+                if anniv_this_year < today:
+                    anniv_next = anniv_this_year.replace(year=today.year + 1)
+                else:
+                    anniv_next = anniv_this_year
+                
+                days_until = (anniv_next - today).days
+                # Don't show anniversary for users who joined this year
+                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                    years = anniv_next.year - u.date_of_joining.year
+                    upcoming_events.append(UpcomingEvent(
+                        id=f"anniv-{u.id}",
+                        user=f"{u.first_name} {u.last_name}",
+                        profile_picture=u.profile_picture.url if u.profile_picture else None,
+                        type="anniversary",
+                        date=anniv_next.isoformat(),
+                        days_until=days_until
+                    ))
+
+        # 7. Add anniversaries to activities
+        for u in all_users:
+            if u.date_of_joining and u.date_of_joining.month == today.month and u.date_of_joining.day == today.day and u.date_of_joining.year < today.year:
+                years = today.year - u.date_of_joining.year
+                activities.append(ActivityStat(
+                    id=strawberry.ID(f"act-anniv-{u.id}"),
+                    user=f"{u.first_name} {u.last_name}",
+                    action=f"celebrates {years} year{'s' if years > 1 else ''} with the team!",
+                    time=timezone.now().isoformat()
+                ))
+
+        # 8. Upcoming Leaves (Approved and Pending)
+        upcoming_leaves = []
+        leaves_qs = LeaveRequest.objects.filter(
+            user__organization=user.organization,
+            _status__in=['approved', 'pending'],
+            to_date__gte=today
+        ).select_related('user', 'leave_type').order_by('from_date')[:5]
+        
+        for l in leaves_qs:
+            upcoming_leaves.append(UpcomingLeave(
+                id=strawberry.ID(str(l.id)),
+                user=f"{l.user.first_name} {l.user.last_name}",
+                profile_picture=l.user.profile_picture.url if l.user.profile_picture else None,
+                leave_type=l.leave_type.name,
+                from_date=l.from_date.isoformat(),
+                to_date=l.to_date.isoformat(),
+                duration=float(l.duration_days),
+                status=l._status
             ))
 
         return AdminDashboardStats(
@@ -149,7 +292,10 @@ class DashboardQuery:
             employee_growth=growth,
             department_distribution=dept_dist,
             leave_flux=flux,
-            recent_activities=sorted(activities, key=lambda x: x.time, reverse=True)[:5]
+            recent_activities=sorted(activities, key=lambda x: x.time, reverse=True)[:5],
+            upcoming_events=sorted(upcoming_events, key=lambda x: x.days_until),
+            upcoming_leaves=upcoming_leaves,
+            wish_message=None # Admins get a generic dashboard, or we could add a greeting here too
         )
 
     @strawberry.field
@@ -157,6 +303,64 @@ class DashboardQuery:
         user = info.context.request.user
         if not user.is_authenticated:
             raise Exception("Unauthorized")
+
+        today = date.today()
+        wish_message = None
+        
+        # Check for user's own birthday/anniversary
+        if user.date_of_birth and user.date_of_birth.month == today.month and user.date_of_birth.day == today.day:
+            wish_message = f"Happy Birthday, {user.first_name}! 🎂 Wishing you a fantastic day ahead!"
+        elif user.date_of_joining and user.date_of_joining.month == today.month and user.date_of_joining.day == today.day and user.date_of_joining.year < today.year:
+            years = today.year - user.date_of_joining.year
+            wish_message = f"Happy {years} Year Anniversary, {user.first_name}! 🎉 Thank you for being an amazing part of our team!"
+
+        # Upcoming Events for User Dashboard (Team mates)
+        upcoming_events = []
+        team_members = CustomUser.objects.filter(organization=user.organization, is_active=True).exclude(id=user.id)
+        for u in team_members:
+            # Birthday logic
+            if u.date_of_birth:
+                try:
+                    bday_this_year = u.date_of_birth.replace(year=today.year)
+                except ValueError: bday_this_year = u.date_of_birth.replace(year=today.year, day=28)
+                
+                if bday_this_year < today:
+                    bday_next = bday_this_year.replace(year=today.year + 1)
+                else:
+                    bday_next = bday_this_year
+                
+                days_until = (bday_next - today).days
+                if days_until <= 30:
+                    upcoming_events.append(UpcomingEvent(
+                        id=f"bday-{u.id}",
+                        user=f"{u.first_name} {u.last_name}",
+                        profile_picture=u.profile_picture.url if u.profile_picture else None,
+                        type="birthday",
+                        date=bday_next.isoformat(),
+                        days_until=days_until
+                    ))
+            
+            # Joining logic
+            if u.date_of_joining:
+                try:
+                    anniv_this_year = u.date_of_joining.replace(year=today.year)
+                except ValueError: anniv_this_year = u.date_of_joining.replace(year=today.year, day=28)
+                
+                if anniv_this_year < today:
+                    anniv_next = anniv_this_year.replace(year=today.year + 1)
+                else:
+                    anniv_next = anniv_this_year
+                
+                days_until = (anniv_next - today).days
+                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                    upcoming_events.append(UpcomingEvent(
+                        id=f"anniv-{u.id}",
+                        user=f"{u.first_name} {u.last_name}",
+                        profile_picture=u.profile_picture.url if u.profile_picture else None,
+                        type="anniversary",
+                        date=anniv_next.isoformat(),
+                        days_until=days_until
+                    ))
 
         # 1. Attendance Rate (Last 30 records)
         attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
@@ -185,28 +389,29 @@ class DashboardQuery:
         for a in recent_attendance:
             dt = timezone.make_aware(
                 timezone.datetime.combine(
-                a.attendance_date,
-                a.login_time or timezone.datetime.min.time()
+                    a.attendance_date,
+                    a.login_time or timezone.datetime.min.time()
+                )
             )
-        )
-
-        activities.append({
-            "id": strawberry.ID(f"att-{a.id}"),
-            "user": "You",
-            "action": f"checked in at {a.login_time}" if a.login_time else "marked present",
-            "time": dt
-        })
-
-
-        recent_notifs = Notification.objects.filter(recipient=user)\
-            .order_by('-created_at')[:5]
-
-        for n in recent_notifs:
+            formatted_date = a.attendance_date.strftime("%b %d, %Y")
             activities.append({
-                "id": strawberry.ID(f"notif-{n.id}"),
-                "user": n.actor.first_name if n.actor else "System",
-                "action": n.message,
-                "time": n.created_at
+                "id": strawberry.ID(f"att-{a.id}"),
+                "user": "You",
+                "action": f"checked in at {a.login_time} on {formatted_date}" if a.login_time else f"marked present on {formatted_date}",
+                "time": dt
+            })
+
+
+        # Recent Attendance Correction Requests (Proactive user action)
+        recent_corrections = AttendanceCorrection.objects.filter(attendance_record__user=user)\
+            .order_by('-created_at')[:5]
+        for c in recent_corrections:
+            formatted_date = c.attendance_record.attendance_date.strftime("%b %d, %Y")
+            activities.append({
+                "id": strawberry.ID(f"corr-{c.id}"),
+                "user": "You",
+                "action": f"requested attendance correction for {formatted_date}",
+                "time": c.created_at
             })
 
 
@@ -235,7 +440,7 @@ class DashboardQuery:
             
             # 1. Base status
             status = 'absent'
-            if d.weekday() >= 5: # Saturday/Sunday
+            if d.weekday() == 6: # Sunday only
                 status = 'weekend'
             
             # 2. Check Record
@@ -252,7 +457,6 @@ class DashboardQuery:
 
             # 3. Check for Pending Corrections (Overrides absent/not_started)
             if status in ['absent', 'not_started']:
-                from attendance.models import AttendanceCorrection
                 has_pending = AttendanceCorrection.objects.filter(
                     attendance_record__user=user,
                     attendance_record__attendance_date=d,
@@ -321,5 +525,66 @@ class DashboardQuery:
             days_present=present_records,
             recent_activities=activities,
             last_7_days=last_7_days,
-            attendance_trend=trend
+            attendance_trend=trend,
+            upcoming_events=sorted(upcoming_events, key=lambda x: x.days_until),
+            wish_message=wish_message
         )
+
+    @strawberry.field
+    def user_activities(self, info) -> List[ActivityStat]:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return []
+
+        activities = []
+        # 1. Attendance Records
+        recent_attendance = AttendanceRecord.objects.filter(user=user).order_by('-attendance_date', '-login_time')[:20]
+        for a in recent_attendance:
+            dt = timezone.make_aware(
+                timezone.datetime.combine(
+                    a.attendance_date,
+                    a.login_time or timezone.datetime.min.time()
+                )
+            )
+            formatted_date = a.attendance_date.strftime("%b %d, %Y")
+            activities.append({
+                "id": strawberry.ID(f"att-{a.id}"),
+                "user": "You",
+                "action": f"checked in at {a.login_time} on {formatted_date}" if a.login_time else f"marked present on {formatted_date}",
+                "time": dt
+            })
+
+        # 2. Attendance Correction Requests
+        recent_corrections = AttendanceCorrection.objects.filter(attendance_record__user=user)\
+            .order_by('-created_at')[:20]
+        for c in recent_corrections:
+            formatted_date = c.attendance_record.attendance_date.strftime("%b %d, %Y")
+            activities.append({
+                "id": strawberry.ID(f"corr-{c.id}"),
+                "user": "You",
+                "action": f"requested attendance correction for {formatted_date}",
+                "time": c.created_at
+            })
+        
+        # 3. Leave Requests
+        recent_leaves = LeaveRequest.objects.filter(user=user).order_by('-created_at')[:20]
+        for l in recent_leaves:
+            formatted_date = l.from_date.strftime("%b %d, %Y")
+            activities.append({
+                "id": strawberry.ID(f"leave-{l.id}"),
+                "user": "You",
+                "action": f"requested {l.leave_type.name} leave starting {formatted_date}",
+                "time": l.created_at
+            })
+
+        # Sort and return
+        activities.sort(key=lambda x: x["time"], reverse=True)
+        return [
+            ActivityStat(
+                id=item["id"],
+                user=item["user"],
+                action=item["action"],
+                time=item["time"].isoformat()
+            )
+            for item in activities[:50]
+        ]

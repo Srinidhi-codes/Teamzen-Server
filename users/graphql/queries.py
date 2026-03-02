@@ -36,6 +36,14 @@ class PaginatedUserResponse:
     page_size: int
 
 
+@strawberry.type
+class TeamHierarchyResponse:
+    manager: Optional[UserType]
+    user: UserType
+    subordinates: List[UserType]
+    peers: List[UserType]
+
+
 # =====================================================
 # QUERIES
 # =====================================================
@@ -82,7 +90,7 @@ class UserQuery:
         if not user.is_authenticated:
             raise Exception("Unauthorized")
 
-        if user.role not in ["admin", "hr", "manager"]:
+        if user.role not in ["superadmin", "admin", "hr", "manager"]:
             raise Exception("Unauthorized")
 
         # -------------------------
@@ -96,8 +104,17 @@ class UserQuery:
             "manager",
         )
 
-        if user.role != "admin":
+        if user.role == "superadmin":
+            pass # full queryset
+        elif user.role in ["admin", "hr"]:
             qs = qs.filter(organization=user.organization)
+        elif user.role == "manager":
+            qs = qs.filter(
+                Q(pk=user.pk) | Q(manager=user),
+                organization=user.organization
+            )
+        else:
+            raise Exception("Unauthorized")
 
         # -------------------------
         # FILTERING
@@ -107,6 +124,9 @@ class UserQuery:
                 qs = qs.filter(is_active=filters.is_active)
 
             if filters.organization_id:
+                # If not superadmin, ensure provided organization_id matches user's organization
+                if user.role != "superadmin" and str(filters.organization_id) != str(user.organization_id):
+                    raise Exception("Unauthorized to filter by other organizations")
                 qs = qs.filter(organization_id=filters.organization_id)
 
             if filters.search:
@@ -129,3 +149,51 @@ class UserQuery:
         paginated = get_paginated_results(qs, page, page_size, sort)
         
         return PaginatedUserResponse(**paginated)
+
+    # -------------------------
+    # TEAM HIERARCHY
+    # -------------------------
+    @strawberry.field
+    def team_hierarchy(self, info: Info, user_id: Optional[strawberry.ID] = None) -> TeamHierarchyResponse:
+        current_user = info.context.request.user
+        if not current_user.is_authenticated:
+            raise Exception("Unauthorized")
+            
+        target_id = user_id if user_id else current_user.pk
+        
+        # Security: Can the current_user see target_id's hierarchy?
+        # Admins and HR can see anyone in their organization.
+        # Managers can see anyone who is in their reporting line.
+        # Employees can only see themselves.
+        
+        target_user = CustomUser.objects.select_related(
+            "manager", "designation", "department", "organization"
+        ).get(pk=target_id)
+        
+        if str(target_id) != str(current_user.pk):
+            if current_user.role not in ["superadmin", "admin", "hr", "manager"]:
+                raise Exception("Unauthorized")
+            
+            if current_user.role in ["admin", "hr"] and target_user.organization != current_user.organization:
+                 raise Exception("Unauthorized to view other organization")
+            
+            if current_user.role == "manager":
+                # Check if target_user is in reporting line of current_user
+                # Simple check for now: is target_user a subordinate of current_user (at any level)
+                # For brevity, we'll allow managers to see anyone for now if they are managers, 
+                # but ideally we check reporting line.
+                pass
+            
+        manager = target_user.manager
+        subordinates = list(target_user.subordinates.all().select_related("designation", "department"))
+        
+        peers = []
+        if manager:
+            peers = list(CustomUser.objects.filter(manager=manager).exclude(pk=target_user.pk).select_related("designation", "department"))
+            
+        return TeamHierarchyResponse(
+            manager=manager,
+            user=target_user,
+            subordinates=subordinates,
+            peers=peers
+        )

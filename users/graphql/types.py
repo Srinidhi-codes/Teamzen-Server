@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 import strawberry
 from strawberry import auto
 import strawberry.django
@@ -25,6 +25,7 @@ class UserType:
     employee_id: auto
     employment_type: auto
     manager: Optional['UserType']
+    subordinates: List['UserType']
     organization: Optional['OrganizationType']
     
     # Relationships

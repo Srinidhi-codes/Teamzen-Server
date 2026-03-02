@@ -43,6 +43,7 @@ class LeaveBalanceType:
     expired: auto
     is_locked: auto
     is_active: auto
+    carried_forward: auto
     locked_at: auto
     last_updated: auto
     @strawberry.field

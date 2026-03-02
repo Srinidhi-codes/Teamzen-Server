@@ -1,5 +1,5 @@
 # users/views.py
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, parsers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -9,6 +9,13 @@ from users.models import CustomUser
 from rest_framework_simplejwt.views import TokenRefreshView
 from users.serializers import UserSerializer, UserDetailSerializer, RegisterSerializer, LoginSerializer
 from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 def get_cookie_settings(httponly=True):
     """Get cookie settings based on environment"""
@@ -35,14 +42,17 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['put'])
+    @action(detail=False, methods=['put', 'patch'], parser_classes=[parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser])
     def update_profile(self, request):
         """Update user profile"""
+        print(f"Update profile request data: {request.data.keys()}")
+        print(f"Update profile files: {request.FILES.keys()}")
         user = request.user
         serializer = UserDetailSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
+        print(f"Update profile errors: {serializer.errors}") # Debugging
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
@@ -231,3 +241,59 @@ class LogoutView(APIView):
         response.delete_cookie("refresh_token", path='/')
         response.delete_cookie("session_can_refresh", path='/')
         return response
+
+class PasswordResetRequestView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({"error": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            
+            # frontend_url = f"{settings.CLIENT_URL}/reset-password?uid={uid}&token={token}"
+            # For robustness, handle both User and Admin clients or just one central reset page
+            reset_url = f"{settings.CLIENT_URL}/reset-password?uid={uid}&token={token}"
+            
+            message = f"Click the link below to reset your password:\n{reset_url}"
+            send_mail(
+                "Password Reset - Payroll System",
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            return Response({"success": "Password reset link sent to your email."}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            # Don't reveal if user exists or not for security, but return same success msg
+            return Response({"success": "If an account exists with this email, a reset link has been sent."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        uidb64 = request.data.get('uid')
+        token = request.data.get('token')
+        new_password = request.data.get('password')
+
+        if not all([uidb64, token, new_password]):
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            
+            if default_token_generator.check_token(user, token):
+                user.set_password(new_password)
+                user.save()
+                return Response({"success": "Password has been reset successfully."}, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({"error": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST)

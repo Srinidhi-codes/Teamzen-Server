@@ -14,7 +14,7 @@ def get_working_days(start_date, end_date, organization):
     working_days = 0
     curr = start_date
     while curr <= end_date:
-        if curr.weekday() < 5 and curr not in holidays:
+        if curr.weekday() < 6 and curr not in holidays:
             working_days += 1
         curr += timedelta(days=1)
     return working_days
@@ -139,13 +139,11 @@ def create_leave_request(user, leave_type, from_date, to_date, reason):
         to_date=to_date,
         duration_days=duration,
         reason=reason,
-        status="pending",
+        _status="pending",
     )
 
 def approve_leave_request(request, approver, comments=None):
-    balance = get_balance(request.user, request.leave_type, request.from_date.year)
-    if not balance:
-        raise Exception("Leave balance record not found.")
+    balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
         
     consume_balance(balance, request.duration_days)
 
@@ -166,9 +164,7 @@ def cancel_leave_request(request):
     if request._status == 'cancelled':
         return
         
-    balance = get_balance(request.user, request.leave_type, request.from_date.year)
-    if not balance:
-        raise Exception("Leave balance record not found.")
+    balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
 
     if request._status == 'approved':
         balance.used -= request.duration_days

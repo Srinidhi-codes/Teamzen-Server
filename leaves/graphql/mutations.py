@@ -262,7 +262,7 @@ class LeaveMutation:
                 req.approve(approved_by=admin_user, comments=input.comments)
                 # Send Notification
                 from notifications.utils import notify_user
-                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been APPROVED."
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')} has been APPROVED."
                 notify_user(
                     recipient_id=req.user.id,
                     verb="approved",
@@ -277,7 +277,7 @@ class LeaveMutation:
                 req.reject(rejected_by=admin_user, comments=input.comments)
                 # Send Notification
                 from notifications.utils import notify_user
-                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%d-%m-%Y')} to {req.to_date.strftime('%d-%m-%Y')} has been REJECTED."
+                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')} has been REJECTED."
                 if input.comments:
                     message += f" Reason: {input.comments}"
                 notify_user(

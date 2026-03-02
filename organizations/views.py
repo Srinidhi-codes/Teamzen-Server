@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, parsers
 from rest_framework.permissions import IsAuthenticated
 
 from .models import Organization, OfficeLocation, Department, Designation
@@ -14,6 +14,7 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
 
 class OfficeLocationViewSet(viewsets.ModelViewSet):

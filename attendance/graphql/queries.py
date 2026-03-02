@@ -54,6 +54,8 @@ class AttendanceQuery:
         Logged-in user's attendance
         """
         user = info.context.request.user
+        if not user.is_authenticated:
+            return []
 
         qs = AttendanceRecord.objects.filter(user=user)
 
@@ -87,9 +89,23 @@ class AttendanceQuery:
         HR / Manager view
         """
         requester = info.context.request.user
+        if not requester.is_authenticated:
+            raise Exception("Not authorized")
+
+        if requester.role == "superadmin":
+            return AttendanceRecord.objects.filter(user_id=user_id)
 
         if requester.role not in ["hr", "admin", "manager"]:
             raise Exception("Not authorized")
+
+        # Ensure user being queried is in the same organization
+        from users.models import CustomUser
+        try:
+            target_user = CustomUser.objects.get(pk=user_id)
+            if target_user.organization_id != requester.organization_id:
+                raise Exception("Not authorized to view users from other organizations")
+        except CustomUser.DoesNotExist:
+             return []
 
         return AttendanceRecord.objects.filter(user_id=user_id)
 
@@ -108,6 +124,8 @@ class AttendanceQuery:
     ) -> PaginatedAttendanceCorrectionResponse:
         
         user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Not authorized")
 
         qs = AttendanceCorrection.objects.select_related(
             "attendance_record",
@@ -115,20 +133,23 @@ class AttendanceQuery:
             "approved_by",
         )
 
-        if user.role == "employee":
+        if user.role == "superadmin":
+            pass # full queryset
+        elif user.role == "employee":
             qs = qs.filter(requested_by=user)
-        elif user.role == "admin":
-            pass  # full queryset
-        elif user.role == "hr":
+        elif user.role in ["admin", "hr"]:
             qs = qs.filter(requested_by__organization_id=user.organization_id)
         elif user.role == "manager":
-            qs = qs.filter(requested_by__manager=user)
+            qs = qs.filter(
+                Q(requested_by=user) | Q(requested_by__manager=user),
+                requested_by__organization_id=user.organization_id
+            )
         else:
             raise Exception("Not authorized")
 
         if filters:
             if filters.status:
-                qs = qs.filter(status=filters.status)
+                qs = qs.filter(_status=filters.status)
 
         if input:
             if input.start_date and input.end_date:

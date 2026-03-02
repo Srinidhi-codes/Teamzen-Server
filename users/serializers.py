@@ -32,12 +32,17 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'phone_number', 'date_of_birth', 'gender', 'employee_id',
             'department', 'department_name', 'designation', 'designation_name',
             'manager', 'office_location', 'office_location_details', 'role', 'employment_type',
-            'date_of_joining', 'date_of_leaving', 'bank_account_number',
+            'date_of_joining', 'date_of_exit', 'bank_account_number',
             'bank_ifsc_code', 'aadhar_number', 'pan_number', 'uan_number',
             'profile_picture', 'is_verified', 'is_active', 'created_at',
             'organization', 'organization_name'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = [
+            'id', 'created_at', 'role', 'is_verified', 'is_active', 
+            'organization', 'department', 'designation', 'manager', 
+            'office_location', 'employee_id', 'date_of_joining', 'date_of_exit',
+            'email', 'username'
+        ]
 
 
 from organizations.models import Organization
