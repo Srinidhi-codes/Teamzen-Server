@@ -1,19 +1,21 @@
 from channels.db import database_sync_to_async
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
-from rest_framework_simplejwt.tokens import AccessToken
 import urllib.parse
-
-User = get_user_model()
 
 @database_sync_to_async
 def get_user_from_token(token):
+    # Defer model imports until the app registry is ready (ASGI startup safety)
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.models import AnonymousUser
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    User = get_user_model()
     try:
         access_token = AccessToken(token)
         user_id = access_token['user_id']
         return User.objects.get(id=user_id)
     except Exception:
         return AnonymousUser()
+
 
 class JWTAuthMiddleware:
     """
