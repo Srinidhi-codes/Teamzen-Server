@@ -17,6 +17,11 @@ def get_user_from_token(token):
         return AnonymousUser()
 
 
+@database_sync_to_async
+def get_anonymous_user():
+    from django.contrib.auth.models import AnonymousUser
+    return AnonymousUser()
+
 class JWTAuthMiddleware:
     """
     Custom middleware that takes a token from the cookie and populates scope["user"]
@@ -40,6 +45,6 @@ class JWTAuthMiddleware:
         if token:
             scope['user'] = await get_user_from_token(token)
         else:
-            scope['user'] = AnonymousUser()
+            scope['user'] = await get_anonymous_user()
 
         return await self.inner(scope, receive, send)
