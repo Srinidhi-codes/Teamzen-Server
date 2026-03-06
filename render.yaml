@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: payroll-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render injects $PORT automatically; Daphne reads it via ${PORT:-8000}
+    # DO NOT set a hardcoded startCommand here — the Dockerfile CMD handles binding.
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: DEBUG
+        value: "False"
+      # Add remaining env vars via the Render dashboard (secrets)

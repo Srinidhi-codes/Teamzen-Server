@@ -11,4 +11,6 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
+# Render injects $PORT. Daphne (ASGI) must bind to 0.0.0.0:$PORT so Render
+# can detect the open port. Shell form is needed to expand the $PORT variable.
+CMD daphne -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application
