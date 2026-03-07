@@ -42,6 +42,12 @@ class JWTAuthMiddleware:
         
         token = cookies.get('access_token')
         
+        # Fallback to query string if cookie is absent (needed for Next.js proxy cross-origin websockets)
+        if not token:
+            query_string = scope.get('query_string', b'').decode()
+            query_params = urllib.parse.parse_qs(query_string)
+            token = query_params.get('token', [None])[0]
+        
         if token:
             scope['user'] = await get_user_from_token(token)
         else:
