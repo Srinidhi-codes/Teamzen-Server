@@ -75,18 +75,28 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
 @shared_task(name="notifications.tasks.send_email_notification")
 def send_email_notification(recipient_id, subject, message):
     """
-    Dedicated task for sending emails.
+    Dedicated task for sending emails with a strict timeout to prevent SMTP freezes.
     """
     try:
         recipient = User.objects.get(id=recipient_id)
-        send_mail(
+        
+        # Free Render IPs are frequently heavily rate-limited or blocked by smtp.gmail.com.
+        # We must enforce a strict connection timeout so the Celery worker doesn't hang for 135 seconds.
+        from django.core.mail import EmailMessage
+        email = EmailMessage(
             subject=subject,
-            message=message,
+            body=message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient.email],
-            fail_silently=False,
+            to=[recipient.email],
         )
-        return f"Email sent to {recipient.email}"
+        # 10 second timeout to fail fast if Gmail drops the connection
+        import socket
+        socket.setdefaulttimeout(10)
+        
+        email.send(fail_silently=False)
+        return f"Email sent successfully to {recipient.email}"
+    except socket.timeout:
+        return f"CRITICAL: Email to {recipient.email} FAILED. smtp.gmail.com blocked the Render IP (10s Connection Timeout)."
     except Exception as e:
         return f"Error sending email: {str(e)}"
 
