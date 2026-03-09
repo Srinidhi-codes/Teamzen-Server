@@ -364,8 +364,10 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
+# SMTP is no longer used, but kept for fallback or legacy logic
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
