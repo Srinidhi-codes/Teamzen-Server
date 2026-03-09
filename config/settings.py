@@ -15,7 +15,14 @@ from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
-from urllib.parse import urlparse, parse_qsl
+from urllib.parse import urlparse, urlunparse, parse_qsl
+
+def get_redis_url_with_db(url: str, db_index: int) -> str:
+    if not url:
+        return f"redis://localhost:6379/{db_index}"
+    parsed = urlparse(url)
+    # The path contains the db index like '/0' or is empty
+    return urlunparse(parsed._replace(path=f"/{db_index}"))
 
 load_dotenv()
 
@@ -153,7 +160,8 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [os.getenv('REDIS_URL', 'redis://localhost:6379/1').replace('/0', '/1')],
+            "hosts": [os.getenv('REDIS_URL')],
+            "prefix": "teamzen_ws:",
         },
     },
 }
@@ -313,7 +321,7 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 # Celery Configuration
-# Use Redis as the primary message broker
+# Use Redis as the primary message broker on DB 0 explicitly
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL'))
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL'))
 CELERY_CACHE_BACKEND = 'django-cache'
