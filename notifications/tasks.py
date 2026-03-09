@@ -27,12 +27,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
             level=level
         )
 
-        # 2. Send Email if requested
-        if notification_type in ['EMAIL', 'BOTH']:
-            # Call synchronously since we are already executing inside a background worker
-            send_email_notification(recipient_id, "Notification: " + verb, message)
-            
-        # 3. Send Push if requested (Implementation for Channels)
+        # 2. Send Push if requested (Implementation for Channels)
         if notification_type in ['PUSH', 'BOTH']:
             import asyncio
             from channels.layers import get_channel_layer
@@ -67,6 +62,11 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                 # fallback to asgiref as a last resort.
                 from asgiref.sync import async_to_sync
                 async_to_sync(push_to_channel)()
+                
+        # 3. Send Email if requested
+        if notification_type in ['EMAIL', 'BOTH']:
+            # Dispatch to a separate background worker to prevent slow SMTP connections from blocking this thread
+            send_email_notification.delay(recipient_id, "Notification: " + verb, message)
             
         return f"Notification {notification.id} processed for {recipient.email}"
     except Exception as e:
