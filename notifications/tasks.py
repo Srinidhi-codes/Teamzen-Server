@@ -33,29 +33,39 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
             
         # 3. Send Push if requested (Implementation for Channels)
         if notification_type in ['PUSH', 'BOTH']:
+            import asyncio
             from channels.layers import get_channel_layer
-            from asgiref.sync import async_to_sync
             
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f"user_{recipient_id}",
-                {
-                    "type": "send_notification",
-                    "message": {
-                        "id": str(notification.id),
-                        "verb": verb,
-                        "message": message,
-                        "level": level,
-                        "createdAt": notification.created_at.isoformat(),
-                        "isRead": notification.is_read,
-                        "actor": {
-                            "id": str(actor.id) if actor else None,
-                            "firstName": actor.first_name if actor else "System",
-                            "lastName": actor.last_name if actor else ""
+            async def push_to_channel():
+                channel_layer = get_channel_layer()
+                await channel_layer.group_send(
+                    f"user_{recipient_id}",
+                    {
+                        "type": "send_notification",
+                        "message": {
+                            "id": str(notification.id),
+                            "verb": verb,
+                            "message": message,
+                            "level": level,
+                            "createdAt": notification.created_at.isoformat(),
+                            "isRead": notification.is_read,
+                            "actor": {
+                                "id": str(actor.id) if actor else None,
+                                "firstName": actor.first_name if actor else "System",
+                                "lastName": actor.last_name if actor else ""
+                            }
                         }
                     }
-                }
-            )
+                )
+            
+            try:
+                # Use native asyncio to avoid asgiref thread-deadlocks inside Celery
+                asyncio.run(push_to_channel())
+            except RuntimeError:
+                # If an event loop is already running (e.g., in some test environments or specific worker pools),
+                # fallback to asgiref as a last resort.
+                from asgiref.sync import async_to_sync
+                async_to_sync(push_to_channel)()
             
         return f"Notification {notification.id} processed for {recipient.email}"
     except Exception as e:
