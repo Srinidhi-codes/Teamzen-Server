@@ -96,7 +96,7 @@ def send_email_notification(recipient_id, subject, message):
         email.send(fail_silently=False)
         return f"Email sent successfully to {recipient.email}"
     except socket.timeout:
-        return f"CRITICAL: Email to {recipient.email} FAILED. smtp.gmail.com blocked the Render IP (10s Connection Timeout)."
+        return f"CRITICAL: Email to {recipient.email} FAILED. {settings.EMAIL_HOST}:{settings.EMAIL_PORT} blocked the Render IP (10s Connection Timeout)."
     except Exception as e:
         return f"Error sending email: {str(e)}"
 
