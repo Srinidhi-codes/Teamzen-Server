@@ -29,7 +29,8 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
 
         # 2. Send Email if requested
         if notification_type in ['EMAIL', 'BOTH']:
-            send_email_notification.delay(recipient_id, "Notification: " + verb, message)
+            # Call synchronously since we are already executing inside a background worker
+            send_email_notification(recipient_id, "Notification: " + verb, message)
             
         # 3. Send Push if requested (Implementation for Channels)
         if notification_type in ['PUSH', 'BOTH']:
