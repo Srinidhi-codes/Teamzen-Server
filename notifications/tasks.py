@@ -66,16 +66,17 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
         # 3. Send Email if requested
         if notification_type in ['EMAIL', 'BOTH']:
             # Dispatch to a separate background worker to prevent slow SMTP connections from blocking this thread
-            send_email_notification.delay(recipient_id, "Notification: " + verb, message)
+            send_email_notification.delay(recipient_id, "Notification: " + verb, message, target_type, target_id)
             
         return f"Notification {notification.id} processed for {recipient.email}"
     except Exception as e:
         return f"Error sending notification: {str(e)}"
 
 @shared_task(name="notifications.tasks.send_email_notification")
-def send_email_notification(recipient_id, subject, message):
+def send_email_notification(recipient_id, subject, message, target_type=None, target_id=None):
     """
     Dedicated task for sending emails with a strict timeout to prevent SMTP freezes.
+    Supports dynamic HTML templates if target_type is provided.
     """
     try:
         recipient = User.objects.get(id=recipient_id)
@@ -83,13 +84,34 @@ def send_email_notification(recipient_id, subject, message):
         # Free Render IPs are frequently heavily rate-limited or blocked by smtp.gmail.com.
         # We must enforce a strict connection timeout so the Celery worker doesn't hang for 135 seconds.
         from django.core.mail import EmailMessage
+        from django.template.loader import render_to_string
+        
+        html_content = None
+        if target_type == "Leave Request" and target_id:
+            from leaves.models import LeaveRequest
+            try:
+                req = LeaveRequest.objects.select_related('user').get(id=int(target_id))
+                context = {
+                    'employeeName': f"{req.user.first_name} {req.user.last_name}",
+                    'managerName': recipient.first_name or "Manager",
+                    'status': req.status,
+                    'dates': f"{req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')}",
+                    'dashboardUrl': "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
+                }
+                html_content = render_to_string('emails/LeaveRequestAlert.html', context)
+            except Exception as e:
+                print(f"Failed to render HTML email for Leave Request {target_id}: {e}")
+
         email = EmailMessage(
             subject=subject,
-            body=message,
+            body=html_content if html_content else message,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[recipient.email],
         )
-        # 10 second timeout to fail fast if Gmail drops the connection
+        if html_content:
+            email.content_subtype = "html"
+
+        # 10 second timeout to fail fast if connection drops
         import socket
         socket.setdefaulttimeout(10)
         
