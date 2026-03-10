@@ -1,8 +1,19 @@
 from celery import shared_task
-from django.core.mail import send_mail
-from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils import timezone
+from datetime import timedelta
+import socket
+import re
+import os
+
 from .models import Notification
+from .email_backends import BrevoHTTPBackend
+
+# Lazy imports for models to avoid circular dependencies if any
+def get_leave_request_model():
+    from leaves.models import LeaveRequest
+    return LeaveRequest
 
 User = get_user_model()
 
@@ -78,20 +89,13 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
     Dedicated task for sending emails with a strict timeout to prevent SMTP freezes.
     Supports dynamic HTML templates if target_type is provided.
     """
-    import socket
     try:
         recipient = User.objects.get(id=recipient_id)
-        
-        # Free Render IPs are frequently heavily rate-limited or blocked by smtp.gmail.com.
-        # We must enforce a strict connection timeout so the Celery worker doesn't hang for 135 seconds.
-        from django.core.mail import EmailMultiAlternatives
-        from django.template.loader import render_to_string
-        
         html_content = None
         
-        # Determine the correct template based on target_type
+        # 1. Generate HTML content based on target_type
         if target_type == "Leave Request" and target_id:
-            from leaves.models import LeaveRequest
+            LeaveRequest = get_leave_request_model()
             try:
                 req = LeaveRequest.objects.select_related('user').get(id=int(target_id))
                 employee_name = f"{req.user.first_name} {req.user.last_name}"
@@ -152,7 +156,6 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         elif target_type == "Announcement":
             try:
                 from temp_email.announcement_email import get_announcement_email_html
-                # For now, we use a generic mapping or if target_id is notification level
                 html_content = get_announcement_email_html(
                     employee_name=f"{recipient.first_name} {recipient.last_name}",
                     announcement_title=subject,
@@ -163,15 +166,8 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             except Exception as e:
                 print(f"Failed to route Announcement: {e}")
                 
-        elif target_type == "Attendance Report":
-            # Fallback to plain text for now or implement report_email.py
-            pass
-
-
         elif target_type == "Welcome":
             from temp_email.welcome_email import get_welcome_email_html
-            # In a real scenario we'd pass kwargs securely or handle kwargs out of message, 
-            # but routing framework ensures target_type fires appropriately
             html_content = get_welcome_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}",
                 employee_email=recipient.email,
@@ -181,7 +177,6 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             
         elif target_type == "Password Reset":
             from temp_email.password_reset_email import get_password_reset_email_html
-            # Target ID holds the token in this architectural design mapping
             html_content = get_password_reset_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}",
                 reset_url=f"https://teamzen-client.vercel.app/reset-password?token={target_id}" if target_id else "#",
@@ -190,7 +185,6 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             
         elif target_type == "Payroll":
             from temp_email.payroll_email import get_payroll_email_html
-            # Target ID holds the payslip reference id or month index
             html_content = get_payroll_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}",
                 month=target_id if target_id else "Current Month",
@@ -199,12 +193,10 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 logo_url="https://teamzen-admin.vercel.app/logo.png"
             )
 
-        from notifications.email_backends import BrevoHTTPBackend
-        import socket
-        
+        # 2. Build and send the email
         email = EmailMultiAlternatives(
             subject=subject,
-            body=message, # Plain text fallback strictly for spam filter compliance
+            body=message, # Plain text fallback
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[recipient.email],
             connection=BrevoHTTPBackend()
@@ -217,9 +209,12 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         socket.setdefaulttimeout(15)
         email.send(fail_silently=False)
         return f"Email sent successfully via Brevo HTTP to {recipient.email}"
+
     except socket.timeout:
-        return f"CRITICAL: Email to {recipient.email} FAILED. {settings.EMAIL_HOST}:{settings.EMAIL_PORT} blocked the Render IP (10s Connection Timeout)."
+        return f"CRITICAL: Email to {recipient.email} FAILED. {settings.EMAIL_HOST}:{settings.EMAIL_PORT} blocked the Render IP (Connection Timeout)."
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return f"Error sending email: {str(e)}"
 
 @shared_task(name="notifications.tasks.cleanup_read_notifications")
