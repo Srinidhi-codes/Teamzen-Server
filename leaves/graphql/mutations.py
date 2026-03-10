@@ -303,5 +303,17 @@ class LeaveMutation:
 
         with transaction.atomic():
             cancel_service(req)
+            
+            # --- NOTIFY ADMINS / MANAGERS ---
+            from notifications.utils import notify_management
+            user = req.user
+            message = f"{user.first_name} {user.last_name} has cancelled their leave request for {req.leave_type.name} ({req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')})."
+            notify_management(
+                user=user,
+                verb="cancelled",
+                message=message,
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
 
         return req
