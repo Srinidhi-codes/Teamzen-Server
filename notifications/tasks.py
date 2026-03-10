@@ -66,18 +66,19 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
         # 3. Send Email if requested
         if notification_type in ['EMAIL', 'BOTH']:
             # Dispatch to a separate background worker to prevent slow SMTP connections from blocking this thread
-            send_email_notification.delay(recipient_id, "Notification: " + verb, message, target_type, target_id)
+            send_email_notification.delay(recipient_id, "Notification: " + verb, message, target_type, target_id, actor_id=actor_id)
             
         return f"Notification {notification.id} processed for {recipient.email}"
     except Exception as e:
         return f"Error sending notification: {str(e)}"
 
 @shared_task(name="notifications.tasks.send_email_notification")
-def send_email_notification(recipient_id, subject, message, target_type=None, target_id=None):
+def send_email_notification(recipient_id, subject, message, target_type=None, target_id=None, actor_id=None):
     """
     Dedicated task for sending emails with a strict timeout to prevent SMTP freezes.
     Supports dynamic HTML templates if target_type is provided.
     """
+    import socket
     try:
         recipient = User.objects.get(id=recipient_id)
         
@@ -87,20 +88,99 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         from django.template.loader import render_to_string
         
         html_content = None
+        
+        # Determine the correct template based on target_type
         if target_type == "Leave Request" and target_id:
             from leaves.models import LeaveRequest
             try:
                 req = LeaveRequest.objects.select_related('user').get(id=int(target_id))
-                context = {
-                    'employeeName': f"{req.user.first_name} {req.user.last_name}",
-                    'managerName': recipient.first_name or "Manager",
-                    'status': req.status,
-                    'dates': f"{req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')}",
-                    'dashboardUrl': "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
-                }
-                html_content = render_to_string('emails/LeaveRequestAlert.html', context)
+                employee_name = f"{req.user.first_name} {req.user.last_name}"
+                manager_name = recipient.first_name or "Manager"
+                dates = f"{req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')}"
+                duration_str = str(req.duration_days).rstrip('0').rstrip('.') if '.' in str(req.duration_days) else str(req.duration_days)
+                leave_type = req.leave_type.name
+                dashboard_url = "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
+                
+                actor_name = ""
+                if actor_id:
+                    actor = User.objects.filter(id=actor_id).first()
+                    if actor:
+                        actor_name = f"{actor.first_name} {actor.last_name}"
+
+                if req._status == 'rejected':
+                    from temp_email.leave_rejected_email import get_leave_rejected_email_html
+                    reason = req.approval_comments if req.approval_comments else ""
+                    html_content = get_leave_rejected_email_html(
+                        employee_name=employee_name,
+                        leave_type=leave_type,
+                        start_date=req.from_date.strftime('%b %d, %Y'),
+                        end_date=req.to_date.strftime('%b %d, %Y'),
+                        duration=duration_str,
+                        rejected_by=actor_name,
+                        reason=reason,
+                        dashboard_url=dashboard_url,
+                        logo_url="https://teamzen-admin.vercel.app/logo.png"
+                    )
+                elif req._status == 'approved':
+                    from temp_email.leave_approved_email import get_leave_approved_email_html
+                    remarks = req.approval_comments if req.approval_comments else ""
+                    html_content = get_leave_approved_email_html(
+                        employee_name=employee_name,
+                        leave_type=leave_type,
+                        start_date=req.from_date.strftime('%b %d, %Y'),
+                        end_date=req.to_date.strftime('%b %d, %Y'),
+                        duration=duration_str,
+                        approved_by=actor_name,
+                        remarks=remarks,
+                        dashboard_url=dashboard_url,
+                        logo_url="https://teamzen-admin.vercel.app/logo.png"
+                    )
+                else: # pending
+                    from temp_email.leave_request_email import get_leave_request_email_html
+                    html_content = get_leave_request_email_html(
+                        manager_name=manager_name,
+                        employee_name=employee_name,
+                        leave_type=leave_type,
+                        start_date=req.from_date.strftime('%b %d, %Y'),
+                        end_date=req.to_date.strftime('%b %d, %Y'),
+                        duration=duration_str,
+                        reason=req.reason,
+                        approval_url=dashboard_url,
+                        logo_url="https://teamzen-admin.vercel.app/logo.png"
+                    )
             except Exception as e:
-                print(f"Failed to render HTML email for Leave Request {target_id}: {e}")
+                print(f"Failed to route Leave Request {target_id}: {e}")
+                
+        elif target_type == "Welcome":
+            from temp_email.welcome_email import get_welcome_email_html
+            # In a real scenario we'd pass kwargs securely or handle kwargs out of message, 
+            # but routing framework ensures target_type fires appropriately
+            html_content = get_welcome_email_html(
+                employee_name=f"{recipient.first_name} {recipient.last_name}",
+                employee_email=recipient.email,
+                login_url="https://teamzen-client.vercel.app/login",
+                logo_url="https://teamzen-admin.vercel.app/logo.png"
+            )
+            
+        elif target_type == "Password Reset":
+            from temp_email.password_reset_email import get_password_reset_email_html
+            # Target ID holds the token in this architectural design mapping
+            html_content = get_password_reset_email_html(
+                employee_name=f"{recipient.first_name} {recipient.last_name}",
+                reset_url=f"https://teamzen-client.vercel.app/reset-password?token={target_id}" if target_id else "#",
+                logo_url="https://teamzen-admin.vercel.app/logo.png"
+            )
+            
+        elif target_type == "Payroll":
+            from temp_email.payroll_email import get_payroll_email_html
+            # Target ID holds the payslip reference id or month index
+            html_content = get_payroll_email_html(
+                employee_name=f"{recipient.first_name} {recipient.last_name}",
+                month=target_id if target_id else "Current Month",
+                net_salary="Confidential", 
+                payslip_url="https://teamzen-client.vercel.app/payslips",
+                logo_url="https://teamzen-admin.vercel.app/logo.png"
+            )
 
         email = EmailMessage(
             subject=subject,
@@ -112,7 +192,6 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             email.content_subtype = "html"
 
         # 10 second timeout to fail fast if connection drops
-        import socket
         socket.setdefaulttimeout(10)
         
         email.send(fail_silently=False)

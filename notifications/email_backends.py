@@ -24,7 +24,7 @@ class BrevoHTTPBackend(BaseEmailBackend):
                 "sender": {"email": email.from_email},
                 "to": [{"email": to} for to in email.to],
                 "subject": email.subject,
-                "htmlContent": email.body.replace('\n', '<br>') if email.content_subtype == 'html' else None,
+                "htmlContent": email.body if email.content_subtype == 'html' else None,
                 "textContent": email.body if email.content_subtype != 'html' else None
             }
             
