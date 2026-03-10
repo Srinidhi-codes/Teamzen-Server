@@ -244,11 +244,11 @@ class LeaveMutation:
     def leave_request_process(
         self, info, input: LeaveRequestProcessInput
     ) -> LeaveRequestType:
-        req = LeaveRequest.objects.select_related(
-            "leave_type", "user"
-        ).get(id=input.request_id)
-
         with transaction.atomic():
+            req = LeaveRequest.objects.select_for_update().select_related(
+                "leave_type", "user"
+            ).get(id=input.request_id)
+
             from leaves.services import (
                 get_or_create_balance,
                 consume_balance,
@@ -299,9 +299,9 @@ class LeaveMutation:
         self, info, requestId: strawberry.ID
     ) -> LeaveRequestType:
         from leaves.services import cancel_leave_request as cancel_service
-        req = LeaveRequest.objects.get(id=requestId)
-
         with transaction.atomic():
+            # Use select_for_update to handle race conditions during cancellation
+            req = LeaveRequest.objects.select_for_update().get(id=requestId)
             cancel_service(req)
             
             # --- NOTIFY ADMINS / MANAGERS ---

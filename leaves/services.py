@@ -1,5 +1,6 @@
 import decimal
 from datetime import date, timedelta
+from django.db.models import F
 from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday
 
 def get_working_days(start_date, end_date, organization):
@@ -39,18 +40,18 @@ def get_or_create_balance(user, leave_type: LeaveType, year=None):
 
 
 def reserve_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval += decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') + decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
 def consume_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= decimal.Decimal(str(days))
-    balance.used += decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') - decimal.Decimal(str(days))
+    balance.used = F('used') + decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval', 'used'])
 
 
 def release_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') - decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
@@ -167,7 +168,7 @@ def cancel_leave_request(request):
     balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
 
     if request._status == 'approved':
-        balance.used -= request.duration_days
+        balance.used = F('used') - request.duration_days
         balance.save(update_fields=['used'])
     elif request._status == 'pending':
         release_balance(balance, request.duration_days)
