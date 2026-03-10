@@ -127,25 +127,83 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
 
                 import re
                 import os
+                import re
+                import os
                 from django.conf import settings
                 
-                admin_dir = settings.BASE_DIR.parent / "admin"
-                template_path = os.path.join(admin_dir, template_name)
+                template_dir = settings.BASE_DIR / "templates" / "emails"
+                template_path = os.path.join(template_dir, template_name)
                 
-                with open(template_path, 'r', encoding='utf-8') as f:
-                    raw_html = f.read()
+                if os.path.exists(template_path):
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        raw_html = f.read()
 
-                # Native logic to inject string bindings by mimicking Django engine variables
-                clean_html = re.sub(r'{{.*?}}', lambda m: m.group(0).replace('<!-- -->', ''), raw_html, flags=re.DOTALL)
-                html_content = re.sub(r'{{\s*(.*?)\s*}}', r'{{\1}}', clean_html, flags=re.DOTALL)
-                html_content = re.sub(r'{%.*?%}', '', html_content, flags=re.DOTALL)
-                
-                for key, value in context.items():
-                    html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+                    # Native logic to inject string bindings by mimicking Django engine variables
+                    clean_html = re.sub(r'{{.*?}}', lambda m: m.group(0).replace('<!-- -->', ''), raw_html, flags=re.DOTALL)
+                    html_content = re.sub(r'{{\s*(.*?)\s*}}', r'{{\1}}', clean_html, flags=re.DOTALL)
+                    html_content = re.sub(r'{%.*?%}', '', html_content, flags=re.DOTALL)
+                    
+                    for key, value in context.items():
+                        html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+                else:
+                    print(f"Template not found at: {template_path}")
                     
             except Exception as e:
                 print(f"Failed to route Leave Request {target_id}: {e}")
+        
+        elif target_type == "Announcement" and target_id:
+            # Handle Announcement similarly with internal file reading
+            try:
+                from notifications.models import Notification
+                # Find the announcement details if needed, but for now we use a generic approach
+                # usually target_id would be the announcement ID
+                template_name = 'AnnouncementAlert.html'
+                template_dir = settings.BASE_DIR / "templates" / "emails"
+                template_path = os.path.join(template_dir, template_name)
                 
+                if os.path.exists(template_path):
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        raw_html = f.read()
+                    
+                    # Basic context for announcement
+                    context = {
+                        'employeeName': f"{recipient.first_name} {recipient.last_name}",
+                        'message': message,
+                        'actionUrl': "https://teamzen-client.vercel.app/notifications"
+                    }
+                    
+                    clean_html = re.sub(r'{{.*?}}', lambda m: m.group(0).replace('<!-- -->', ''), raw_html, flags=re.DOTALL)
+                    html_content = re.sub(r'{{\s*(.*?)\s*}}', r'{{\1}}', clean_html, flags=re.DOTALL)
+                    
+                    for key, value in context.items():
+                        html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+            except Exception as e:
+                print(f"Failed to route Announcement {target_id}: {e}")
+                
+        elif target_type == "Attendance Report":
+            try:
+                template_name = 'AttendanceReportAlert.html'
+                template_dir = settings.BASE_DIR / "templates" / "emails"
+                template_path = os.path.join(template_dir, template_name)
+                
+                if os.path.exists(template_path):
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        raw_html = f.read()
+                    
+                    context = {
+                        'employeeName': f"{recipient.first_name} {recipient.last_name}",
+                        'reportDate': target_id if target_id else "",
+                        'dashboardUrl': "https://teamzen-client.vercel.app/attendance"
+                    }
+                    
+                    clean_html = re.sub(r'{{.*?}}', lambda m: m.group(0).replace('<!-- -->', ''), raw_html, flags=re.DOTALL)
+                    html_content = re.sub(r'{{\s*(.*?)\s*}}', r'{{\1}}', clean_html, flags=re.DOTALL)
+                    
+                    for key, value in context.items():
+                        html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+            except Exception as e:
+                print(f"Failed to route Attendance Report: {e}")
+
         elif target_type == "Welcome":
             from temp_email.welcome_email import get_welcome_email_html
             # In a real scenario we'd pass kwargs securely or handle kwargs out of message, 

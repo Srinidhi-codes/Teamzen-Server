@@ -15,47 +15,43 @@
     </head>
     <body>
         <div class="container">
-            <div class="hero" style="background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 50%, #C7D2FE 100%);">
-                <div style="font-size: 48px; margin-bottom: 12px;">🏖️</div>
-                <div style="text-align: center; margin-bottom: 8px;"><span style="background: #DBEAFE; color: #1E40AF; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: bold; text-transform: uppercase;">PENDING</span></div>
-                <h1 style="color: #1E293B; font-size: 24px; font-weight: 800; margin: 0;">Leave Request Submitted</h1>
-                <p style="color: #64748B; font-size: 14px; margin-top: 8px; margin-bottom: 0;"></p>
+            <div class="hero" style="background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 50%, #BFDBFE 100%);">
+                <div style="font-size: 48px; margin-bottom: 12px;">⏰</div>
+                
+                <h1 style="color: #1E293B; font-size: 24px; font-weight: 800; margin: 0;">Check-in Reminder</h1>
+                <p style="color: #64748B; font-size: 14px; margin-top: 8px; margin-bottom: 0;">{{ date }}</p>
             </div>
             <div class="content">
                 
             {/* Message Area */}
             <div className="px-[40px] pt-[28px] pb-[16px]">
                 <p>
-                    Hi <strong>{"{{ managerName }}"}</strong>,
+                    Good morning, <strong>{"{{ employeeName }}"}</strong>! 👋
                 </p>
                 <p>
-                    You have a new leave request from <strong>{"{{ employeeName }}"}</strong>
-                    that requires your approval. Here are the details:
+                    This is a friendly reminder to mark your attendance for today. Your shift starts at <strong className="text-[#2563EB]">{"{{ shiftTime }}"}</strong>.
                 </p>
             </div>
 
-            {/* Leave Details */}
+            {/* Quick Info */}
             <div className="px-[40px] pt-[16px] pb-[24px]">
                 <Section className="bg-[#F8FAFC] border border-solid border-[#E2E8F0] rounded-xl p-[24px]">
                     <p>
-                        📋 Request Details
+                        <strong className="text-[#2563EB]">📅 Date:</strong> {"{{ date }}"}
                     </p>
                     <p>
-                        <strong style={{ color: "#3B82F6" }}>🏷️ Leave Type:</strong> {"{{ leaveType }}"}
+                        <strong className="text-[#2563EB]">🕘 Shift Start:</strong> {"{{ shiftTime }}"}
                     </p>
                     <p>
-                        <strong style={{ color: "#3B82F6" }}>📅 Dates:</strong> {"{{ dates }}"}
-                    </p>
-                    <p>
-                        <strong style={{ color: "#3B82F6" }}>⏱️ Duration:</strong> {"{{ duration }}"} days
+                        <strong className="text-[#2563EB]">📍 Status:</strong> <span className="text-[#9A3412] bg-[#FFEDD5] px-2 py-0.5 rounded-full text-xs font-semibold">Not Checked In</span>
                     </p>
                 </div>
             </Section>
 
             {/* CTA */}
             <div className="px-[40px] pb-[40px] text-center">
-                <div style="padding: 24px; text-align: center;"><a href="{{ dashboardUrl " class="bg-[#4F46E5] rounded-md text-white px-[24px] py-[12px] font-semibold no-underline text-center inline-block btn">
-                    ✅ Review Request
+                <div style="padding: 24px; text-align: center;"><a href="{{ dashboardUrl " class="bg-[#2563EB] rounded-md text-white px-[24px] py-[12px] font-semibold no-underline text-center inline-block btn">
+                    ✅ Check In Now
                 </a></div>
             </div>
         

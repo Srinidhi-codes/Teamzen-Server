@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+            body { background: #F8FAFC; font-family: 'Inter', sans-serif; margin: 0; padding: 32px 8px; }
+            .container { max-width: 500px; margin: 40px auto; background: white; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+            .hero { padding: 40px; text-align: center; }
+            .content { padding: 0; }
+            .footer { padding: 24px 40px; background: #F8FAFC; text-align: center; border-top: 1px solid #E2E8F0; }
+            p { font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 16px 0; }
+            .btn { display: inline-block; padding: 12px 24px; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; text-align: center; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="hero" style="background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 50%, #BBF7D0 100%);">
+                <div style="font-size: 48px; margin-bottom: 12px;">💰</div>
+                
+                <h1 style="color: #1E293B; font-size: 24px; font-weight: 800; margin: 0;">Salary Processed</h1>
+                <p style="color: #64748B; font-size: 14px; margin-top: 8px; margin-bottom: 0;">{{ month }}</p>
+            </div>
+            <div class="content">
+                
+            {/* Net Salary Highlight */}
+            <div className="px-[40px] pt-[28px] pb-[8px] text-center">
+                <Section className="bg-gradient-to-br from-[#065F46] to-[#047857] rounded-[16px] py-[28px] px-[24px] text-center">
+                    <p>
+                        Net Salary Credited
+                    </p>
+                    <p>
+                        {"{{ netSalary }}"}
+                    </p>
+                    {"{% if paymentDate %}"}
+                    <p>
+                        {"{{ paymentMode }}"} · {"{{ paymentDate }}"}
+                    </p>
+                    {"{% endif %}"}
+                </div>
+            </Section>
+
+            {/* Message Area */}
+            <div className="px-[40px] pt-[16px] pb-[16px]">
+                <p>
+                    Hi <strong>{"{{ employeeName }}"}</strong>, your salary for <strong>{"{{ month }}"}</strong> has been processed successfully. Here's the breakdown:
+                </p>
+            </div>
+
+            {/* Employee Info */}
+            {"{% if hasEmployeeInfo %}"}
+            <div className="px-[40px] pb-[16px]">
+                <Section className="bg-[#F8FAFC] border border-solid border-[#E2E8F0] rounded-xl p-[16px]">
+                    {"{% if employeeId %}"}
+                    <p>
+                        <strong className="text-[#047857]">🆔 Employee ID:</strong> {"{{ employeeId }}"}
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if designation %}"}
+                    <p>
+                        <strong className="text-[#047857]">💼 Designation:</strong> {"{{ designation }}"}
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if department %}"}
+                    <p>
+                        <strong className="text-[#047857]">🏢 Department:</strong> {"{{ department }}"}
+                    </p>
+                    {"{% endif %}"}
+                </div>
+            </Section>
+            {"{% endif %}"}
+
+            {/* Earnings */}
+            {"{% if hasEarnings %}"}
+            <div className="px-[40px] pb-[8px]">
+                <Section className="bg-[#F0FDF4] border border-solid border-[#BBF7D0] rounded-xl p-[16px]">
+                    <p>
+                        💵 Earnings
+                    </p>
+                    {/* Rendered earnings rows dynamically injected via Python string replace or fixed block logic */}
+                    <p>
+                        Basic Salary: <strong className="text-[#1E293B] float-right">{"{{ basicSalary }}"}</strong>
+                    </p>
+                    {"{% if hra %}"}
+                    <p>
+                        HRA: <strong className="text-[#1E293B] float-right">{"{{ hra }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if specialAllowance %}"}
+                    <p>
+                        Special Allowance: <strong className="text-[#1E293B] float-right">{"{{ specialAllowance }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if otherEarnings %}"}
+                    <p>
+                        Other Earnings: <strong className="text-[#1E293B] float-right">{"{{ otherEarnings }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+
+                    <p>
+                        Gross Salary: <strong className="text-[#16A34A] font-extrabold float-right">{"{{ grossSalary }}"}</strong>
+                    </p>
+                </div>
+            </Section>
+            {"{% endif %}"}
+
+            {/* Deductions */}
+            {"{% if hasDeductions %}"}
+            <div className="px-[40px] pb-[24px]">
+                <Section className="bg-[#FEF2F2] border border-solid border-[#FECACA] rounded-xl p-[16px]">
+                    <p>
+                        📉 Deductions
+                    </p>
+                    {"{% if pfDeduction %}"}
+                    <p>
+                        Provident Fund: <strong className="text-[#DC2626] float-right">- {"{{ pfDeduction }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if taxDeduction %}"}
+                    <p>
+                        Income Tax (TDS): <strong className="text-[#DC2626] float-right">- {"{{ taxDeduction }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+                    {"{% if otherDeductions %}"}
+                    <p>
+                        Other Deductions: <strong className="text-[#DC2626] float-right">- {"{{ otherDeductions }}"}</strong>
+                    </p>
+                    {"{% endif %}"}
+
+                    <p>
+                        Total Deductions: <strong className="text-[#DC2626] font-extrabold float-right">- {"{{ totalDeductions }}"}</strong>
+                    </p>
+                </div>
+            </Section>
+            {"{% endif %}"}
+
+            {/* CTA */}
+            <div className="px-[40px] pb-[40px] text-center">
+                <div style="padding: 24px; text-align: center;"><a href="{{ payslipUrl " class="bg-[#16A34A] rounded-md text-white px-[24px] py-[12px] font-semibold no-underline text-center inline-block btn">
+                    📄 Download Payslip
+                </a></div>
+            </div>
+        
+            </div>
+            <div class="footer">
+                <p style="color: #64748B; font-size: 12px; margin: 0;">This notification was generated by TeamZen HRMS.</p>
+            </div>
+        </div>
+    </body>
+</html>
