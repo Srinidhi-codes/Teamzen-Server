@@ -177,14 +177,17 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 logo_url="https://teamzen-admin.vercel.app/logo.png"
             )
 
-        email = EmailMessage(
+        from django.core.mail import EmailMultiAlternatives
+        
+        email = EmailMultiAlternatives(
             subject=subject,
-            body=html_content if html_content else message,
+            body=message, # Plain text fallback strictly for spam filter compliance
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[recipient.email],
         )
+        
         if html_content:
-            email.content_subtype = "html"
+            email.attach_alternative(html_content, "text/html")
 
         # 10 second timeout to fail fast if connection drops
         socket.setdefaulttimeout(10)
