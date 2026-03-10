@@ -20,19 +20,29 @@ class BrevoHTTPBackend(BaseEmailBackend):
         
         num_sent = 0
         for email in email_messages:
+            html_content = None
+            text_content = email.body if email.content_subtype != 'html' else None
+
+            # Handle basic EmailMessage
+            if getattr(email, 'content_subtype', '') == 'html':
+                html_content = email.body
+                
+            # Handle EmailMultiAlternatives
+            if hasattr(email, 'alternatives'):
+                for alt_content, alt_mimetype in email.alternatives:
+                    if alt_mimetype == 'text/html':
+                        html_content = alt_content
+
             payload = {
                 "sender": {"email": email.from_email},
                 "to": [{"email": to} for to in email.to],
                 "subject": email.subject,
-                "htmlContent": email.body if email.content_subtype == 'html' else None,
-                "textContent": email.body if email.content_subtype != 'html' else None
             }
             
-            # Clean up None values
-            if payload["htmlContent"] is None:
-                del payload["htmlContent"]
-            if payload["textContent"] is None:
-                del payload["textContent"]
+            if html_content:
+                payload["htmlContent"] = html_content
+            else:
+                payload["textContent"] = text_content or getattr(email, 'body', '')
 
             req = urllib.request.Request(
                 self.api_url, 

@@ -177,23 +177,24 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 logo_url="https://teamzen-admin.vercel.app/logo.png"
             )
 
-        from django.core.mail import EmailMultiAlternatives
+        from notifications.email_backends import BrevoHTTPBackend
+        import socket
         
         email = EmailMultiAlternatives(
             subject=subject,
             body=message, # Plain text fallback strictly for spam filter compliance
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[recipient.email],
+            connection=BrevoHTTPBackend()
         )
         
         if html_content:
             email.attach_alternative(html_content, "text/html")
-
-        # 10 second timeout to fail fast if connection drops
-        socket.setdefaulttimeout(10)
         
+        # Setting a 15-second timeout on the standard socket module just in case
+        socket.setdefaulttimeout(15)
         email.send(fail_silently=False)
-        return f"Email sent successfully to {recipient.email}"
+        return f"Email sent successfully via Brevo HTTP to {recipient.email}"
     except socket.timeout:
         return f"CRITICAL: Email to {recipient.email} FAILED. {settings.EMAIL_HOST}:{settings.EMAIL_PORT} blocked the Render IP (10s Connection Timeout)."
     except Exception as e:
