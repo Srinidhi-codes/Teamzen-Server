@@ -94,60 +94,55 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             from leaves.models import LeaveRequest
             try:
                 req = LeaveRequest.objects.select_related('user').get(id=int(target_id))
-                employee_name = f"{req.user.first_name} {req.user.last_name}"
-                manager_name = recipient.first_name or "Manager"
-                dates = f"{req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')}"
-                duration_str = str(req.duration_days).rstrip('0').rstrip('.') if '.' in str(req.duration_days) else str(req.duration_days)
-                leave_type = req.leave_type.name
-                dashboard_url = "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
-                
-                actor_name = ""
-                if actor_id:
-                    actor = User.objects.filter(id=actor_id).first()
-                    if actor:
-                        actor_name = f"{actor.first_name} {actor.last_name}"
+                context = {
+                    'employeeName': f"{req.user.first_name} {req.user.last_name}",
+                    'managerName': recipient.first_name or "Manager",
+                    'status': req._status,
+                    'dates': f"{req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')}",
+                    'duration': str(req.duration_days).rstrip('0').rstrip('.') if '.' in str(req.duration_days) else str(req.duration_days),
+                    'leaveType': req.leave_type.name,
+                    'dashboardUrl': "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
+                }
 
                 if req._status == 'rejected':
-                    from temp_email.leave_rejected_email import get_leave_rejected_email_html
-                    reason = req.approval_comments if req.approval_comments else ""
-                    html_content = get_leave_rejected_email_html(
-                        employee_name=employee_name,
-                        leave_type=leave_type,
-                        start_date=req.from_date.strftime('%b %d, %Y'),
-                        end_date=req.to_date.strftime('%b %d, %Y'),
-                        duration=duration_str,
-                        rejected_by=actor_name,
-                        reason=reason,
-                        dashboard_url=dashboard_url,
-                        logo_url="https://teamzen-admin.vercel.app/logo.png"
-                    )
+                    if req.approval_comments:
+                        context['reason'] = req.approval_comments
+                    if actor_id:
+                        actor = User.objects.filter(id=actor_id).first()
+                        if actor:
+                            context['rejectedBy'] = f"{actor.first_name} {actor.last_name}"
+                    template_name = 'LeaveRejectedAlert.html'
                 elif req._status == 'approved':
-                    from temp_email.leave_approved_email import get_leave_approved_email_html
-                    remarks = req.approval_comments if req.approval_comments else ""
-                    html_content = get_leave_approved_email_html(
-                        employee_name=employee_name,
-                        leave_type=leave_type,
-                        start_date=req.from_date.strftime('%b %d, %Y'),
-                        end_date=req.to_date.strftime('%b %d, %Y'),
-                        duration=duration_str,
-                        approved_by=actor_name,
-                        remarks=remarks,
-                        dashboard_url=dashboard_url,
-                        logo_url="https://teamzen-admin.vercel.app/logo.png"
-                    )
-                else: # pending
-                    from temp_email.leave_request_email import get_leave_request_email_html
-                    html_content = get_leave_request_email_html(
-                        manager_name=manager_name,
-                        employee_name=employee_name,
-                        leave_type=leave_type,
-                        start_date=req.from_date.strftime('%b %d, %Y'),
-                        end_date=req.to_date.strftime('%b %d, %Y'),
-                        duration=duration_str,
-                        reason=req.reason,
-                        approval_url=dashboard_url,
-                        logo_url="https://teamzen-admin.vercel.app/logo.png"
-                    )
+                    if req.approval_comments:
+                        context['remarks'] = req.approval_comments
+                    if actor_id:
+                        actor = User.objects.filter(id=actor_id).first()
+                        if actor:
+                            context['approvedBy'] = f"{actor.first_name} {actor.last_name}"
+                    template_name = 'LeaveApprovedAlert.html'
+                else:
+                    if req.reason:
+                        context['reason'] = req.reason
+                    template_name = 'LeaveRequestAlert.html'
+
+                import re
+                import os
+                from django.conf import settings
+                
+                admin_dir = settings.BASE_DIR.parent / "admin"
+                template_path = os.path.join(admin_dir, template_name)
+                
+                with open(template_path, 'r', encoding='utf-8') as f:
+                    raw_html = f.read()
+
+                # Native logic to inject string bindings by mimicking Django engine variables
+                clean_html = re.sub(r'{{.*?}}', lambda m: m.group(0).replace('<!-- -->', ''), raw_html, flags=re.DOTALL)
+                html_content = re.sub(r'{{\s*(.*?)\s*}}', r'{{\1}}', clean_html, flags=re.DOTALL)
+                html_content = re.sub(r'{%.*?%}', '', html_content, flags=re.DOTALL)
+                
+                for key, value in context.items():
+                    html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+                    
             except Exception as e:
                 print(f"Failed to route Leave Request {target_id}: {e}")
                 
