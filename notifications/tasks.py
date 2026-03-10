@@ -84,7 +84,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         
         # Free Render IPs are frequently heavily rate-limited or blocked by smtp.gmail.com.
         # We must enforce a strict connection timeout so the Celery worker doesn't hang for 135 seconds.
-        from django.core.mail import EmailMessage
+        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         
         html_content = None
