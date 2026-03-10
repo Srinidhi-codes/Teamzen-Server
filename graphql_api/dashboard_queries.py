@@ -218,7 +218,7 @@ class DashboardQuery:
                     bday_next = bday_this_year
                 
                 days_until = (bday_next - today).days
-                if days_until <= 30:
+                if 0 <= days_until <= 30:
                     upcoming_events.append(UpcomingEvent(
                         id=f"bday-{u.id}",
                         user=f"{u.first_name} {u.last_name}",
@@ -242,7 +242,7 @@ class DashboardQuery:
                 
                 days_until = (anniv_next - today).days
                 # Don't show anniversary for users who joined this year
-                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                if 0 <= days_until <= 30 and u.date_of_joining.year < today.year:
                     years = anniv_next.year - u.date_of_joining.year
                     upcoming_events.append(UpcomingEvent(
                         id=f"anniv-{u.id}",
@@ -330,7 +330,7 @@ class DashboardQuery:
                     bday_next = bday_this_year
                 
                 days_until = (bday_next - today).days
-                if days_until <= 30:
+                if 0 <= days_until <= 30:
                     upcoming_events.append(UpcomingEvent(
                         id=f"bday-{u.id}",
                         user=f"{u.first_name} {u.last_name}",
@@ -352,7 +352,7 @@ class DashboardQuery:
                     anniv_next = anniv_this_year
                 
                 days_until = (anniv_next - today).days
-                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                if 0 <= days_until <= 30 and u.date_of_joining.year < today.year:
                     upcoming_events.append(UpcomingEvent(
                         id=f"anniv-{u.id}",
                         user=f"{u.first_name} {u.last_name}",
