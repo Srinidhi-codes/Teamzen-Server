@@ -140,6 +140,18 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                         remarks=remarks,
                         dashboard_url=dashboard_url
                     )
+                elif req._status == 'cancelled':
+                    from temp_email.leave_cancelled_email import get_leave_cancelled_email_html
+                    html_content = get_leave_cancelled_email_html(
+                        employee_name=employee_name,
+                        manager_name=manager_name,
+                        leave_type=leave_type,
+                        start_date=start_date,
+                        end_date=end_date,
+                        duration=duration_str,
+                        cancelled_by=actor_name,
+                        dashboard_url=dashboard_url
+                    )
                 else: # pending
                     from temp_email.leave_request_email import get_leave_request_email_html
                     html_content = get_leave_request_email_html(
