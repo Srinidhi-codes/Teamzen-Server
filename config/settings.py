@@ -357,6 +357,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.tasks.cleanup_read_notifications',
         'schedule': crontab(hour=0, minute=0), # Run every day at midnight
     },
+    'square-off-incomplete-checkouts': {
+        'task': 'attendance.tasks.square_off_incomplete_checkouts',
+        'schedule': crontab(hour=0, minute=1),  # Run at 00:01 AM daily (Asia/Kolkata)
+    },
 }
 
 # AI Configuration

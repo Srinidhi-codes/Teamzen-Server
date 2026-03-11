@@ -70,8 +70,10 @@ class AdminDashboardStats:
 
 @strawberry.type
 class UserLeaveBalance:
+    name: str
     leave_type: str
     balance: float
+    total: float
 
 @strawberry.type
 class DayStatus:
@@ -309,10 +311,10 @@ class DashboardQuery:
         
         # Check for user's own birthday/anniversary
         if user.date_of_birth and user.date_of_birth.month == today.month and user.date_of_birth.day == today.day:
-            wish_message = f"Happy Birthday, {user.first_name}! 🎂 Wishing you a fantastic day ahead!"
+            wish_message = f"Happy Birthday, {user.first_name}! Wishing you a fantastic day ahead!"
         elif user.date_of_joining and user.date_of_joining.month == today.month and user.date_of_joining.day == today.day and user.date_of_joining.year < today.year:
             years = today.year - user.date_of_joining.year
-            wish_message = f"Happy {years} Year Anniversary, {user.first_name}! 🎉 Thank you for being an amazing part of our team!"
+            wish_message = f"Happy {years} Year Anniversary, {user.first_name}! Thank you for being an amazing part of our team!"
 
         # Upcoming Events for User Dashboard (Team mates)
         upcoming_events = []
@@ -373,8 +375,10 @@ class DashboardQuery:
         user_balances = LeaveBalance.objects.filter(user=user, year=date.today().year)
         for b in user_balances:
             balances.append(UserLeaveBalance(
+                name=b.leave_type.name,
                 leave_type=b.leave_type.name,
-                balance=float(b.get_available_balance())
+                balance=float(b.get_available_balance()),
+                total=float(b.total_entitled)
             ))
         
         # 3. Pending Requests
