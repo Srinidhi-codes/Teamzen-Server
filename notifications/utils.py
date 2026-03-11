@@ -51,5 +51,20 @@ def notify_management(user, verb, message, target_type=None, target_id=None):
             actor_id=user.id,
             target_type=target_type,
             target_id=target_id,
-            level='admin'
         )
+
+def notify_self(user, verb, message, target_type=None, target_id=None):
+    """
+    Sends a PUSH-only notification to the actor themselves.
+    Useful for synchronizing UI across multiple tabs/sessions.
+    """
+    send_notification.delay(
+        recipient_id=user.id,
+        verb=verb,
+        message=message,
+        actor_id=user.id,
+        target_type=target_type,
+        target_id=target_id,
+        notification_type='PUSH',
+        level='personal'
+    )

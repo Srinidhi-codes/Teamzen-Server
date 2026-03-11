@@ -238,6 +238,17 @@ class LeaveMutation:
                 target_id=str(req.id)
             )
 
+            # --- INVOKE REAL-TIME REFRESH FOR ACTOR (Multi-tab sync) ---
+            from notifications.utils import notify_self
+            notify_self(
+                user=user,
+                verb="requested_self",
+                message="Your leave request has been submitted.",
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
+
+
             return req
 
     @strawberry.mutation
@@ -316,4 +327,13 @@ class LeaveMutation:
                 target_id=str(req.id)
             )
 
-        return req
+            from notifications.utils import notify_self
+            notify_self(
+                user=user,
+                verb="cancelled_self",
+                message="Your leave request has been cancelled.",
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
+
+            return req
