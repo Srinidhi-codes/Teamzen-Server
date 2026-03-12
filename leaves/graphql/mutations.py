@@ -66,6 +66,7 @@ class LeaveRequestInput:
     from_date: date
     to_date: date
     reason: str
+    half_day_period: Optional[str] = "full_day"
 
 
 @strawberry.input
@@ -212,7 +213,6 @@ class LeaveMutation:
         self, info, input: LeaveRequestInput
     ) -> LeaveRequestType:
         user = info.context.request.user
-        duration = (input.to_date - input.from_date).days + 1
         leave_type = LeaveType.objects.get(id=input.leave_type_id)
 
         from leaves.services import create_leave_request as create_request_service
@@ -223,7 +223,8 @@ class LeaveMutation:
                 leave_type=leave_type,
                 from_date=input.from_date,
                 to_date=input.to_date,
-                reason=input.reason
+                reason=input.reason,
+                half_day_period=input.half_day_period
             )
             duration = req.duration_days # get calculated duration
 

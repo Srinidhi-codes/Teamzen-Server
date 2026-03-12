@@ -93,11 +93,18 @@ class LeaveRequest(models.Model):
         ('cancelled', 'Cancelled'),
     ]
 
+    REASON_CHOICES = [
+        ('full_day', 'Full Day'),
+        ('first_half', 'First Half'),
+        ('second_half', 'Second Half'),
+    ]
+
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     leave_type = models.ForeignKey(LeaveType, on_delete=models.CASCADE)
     from_date = models.DateField()
     to_date = models.DateField()
     duration_days = models.DecimalField(max_digits=5, decimal_places=2)
+    half_day_period = models.CharField(max_length=20, choices=REASON_CHOICES, default='full_day')
     reason = models.TextField()
     _status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_column='status')
     

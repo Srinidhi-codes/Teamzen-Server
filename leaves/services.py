@@ -124,8 +124,13 @@ def perform_accrual(balance: LeaveBalance):
     balance.last_accrued_date = date.today()
     balance.save(update_fields=["total_entitled", "accrued", "last_accrued_date"])
 
-def create_leave_request(user, leave_type, from_date, to_date, reason):
+def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_period="full_day"):
     duration = get_working_days(from_date, to_date, user.organization)
+    
+    # If same day and half day period selected, set duration to 0.5
+    if from_date == to_date and half_day_period != "full_day":
+        duration = 0.5
+
     year = from_date.year
 
     balance = get_or_create_balance(user, leave_type, year)
@@ -139,6 +144,7 @@ def create_leave_request(user, leave_type, from_date, to_date, reason):
         from_date=from_date,
         to_date=to_date,
         duration_days=duration,
+        half_day_period=half_day_period,
         reason=reason,
         _status="pending",
     )
