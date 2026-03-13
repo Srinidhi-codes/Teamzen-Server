@@ -220,7 +220,7 @@ class DashboardQuery:
                     bday_next = bday_this_year
                 
                 days_until = (bday_next - today).days
-                if days_until <= 30:
+                if 0 <= days_until <= 30:
                     upcoming_events.append(UpcomingEvent(
                         id=f"bday-{u.id}",
                         user=f"{u.first_name} {u.last_name}",
@@ -244,7 +244,7 @@ class DashboardQuery:
                 
                 days_until = (anniv_next - today).days
                 # Don't show anniversary for users who joined this year
-                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                if 0 <= days_until <= 30 and u.date_of_joining.year < today.year:
                     years = anniv_next.year - u.date_of_joining.year
                     upcoming_events.append(UpcomingEvent(
                         id=f"anniv-{u.id}",
@@ -327,10 +327,10 @@ class DashboardQuery:
         
         # Check for user's own birthday/anniversary
         if user.date_of_birth and user.date_of_birth.month == today.month and user.date_of_birth.day == today.day:
-            wish_message = f"Happy Birthday, {user.first_name}! 🎂 Wishing you a fantastic day ahead!"
+            wish_message = f"Happy Birthday, {user.first_name}! Wishing you a fantastic day ahead!"
         elif user.date_of_joining and user.date_of_joining.month == today.month and user.date_of_joining.day == today.day and user.date_of_joining.year < today.year:
             years = today.year - user.date_of_joining.year
-            wish_message = f"Happy {years} Year Anniversary, {user.first_name}! 🎉 Thank you for being an amazing part of our team!"
+            wish_message = f"Happy {years} Year Anniversary, {user.first_name}! Thank you for being an amazing part of our team!"
 
         # Upcoming Events for User Dashboard (Team mates)
         upcoming_events = []
@@ -348,7 +348,7 @@ class DashboardQuery:
                     bday_next = bday_this_year
                 
                 days_until = (bday_next - today).days
-                if days_until <= 30:
+                if 0 <= days_until <= 30:
                     upcoming_events.append(UpcomingEvent(
                         id=f"bday-{u.id}",
                         user=f"{u.first_name} {u.last_name}",
@@ -370,7 +370,7 @@ class DashboardQuery:
                     anniv_next = anniv_this_year
                 
                 days_until = (anniv_next - today).days
-                if 0 < days_until <= 30 and u.date_of_joining.year < today.year:
+                if 0 <= days_until <= 30 and u.date_of_joining.year < today.year:
                     upcoming_events.append(UpcomingEvent(
                         id=f"anniv-{u.id}",
                         user=f"{u.first_name} {u.last_name}",

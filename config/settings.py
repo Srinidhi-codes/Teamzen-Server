@@ -1,3 +1,4 @@
+
 """
 Django settings for config project.
 
@@ -14,7 +15,14 @@ from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
-from urllib.parse import urlparse, parse_qsl
+from urllib.parse import urlparse, urlunparse, parse_qsl
+
+def get_redis_url_with_db(url: str, db_index: int) -> str:
+    if not url:
+        return f"redis://localhost:6379/{db_index}"
+    parsed = urlparse(url)
+    # The path contains the db index like '/0' or is empty
+    return urlunparse(parsed._replace(path=f"/{db_index}"))
 
 load_dotenv()
 
@@ -152,7 +160,8 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [os.getenv('REDIS_URL', 'redis://localhost:6379/0')],
+            "hosts": [os.getenv('REDIS_URL')],
+            "prefix": "teamzen_ws:",
         },
     },
 }
@@ -312,8 +321,22 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 # Celery Configuration
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'amqp://guest:guest@localhost:5672//')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+# Use Redis as the primary message broker on DB 0 explicitly
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL'))
+CELERY_CACHE_BACKEND = 'django-cache'
+
+# Aggressive TCP keepalives to prevent Cloud Redis Labs from silently dropping idle connections
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'visibility_timeout': 3600,
+    'socket_timeout': 5,
+    'socket_connect_timeout': 5,
+    'socket_keepalive': True,
+    'retry_on_timeout': True,
+}
+CELERY_REDIS_RETRY_ON_TIMEOUT = True
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TASK_SERIALIZER = 'json'
@@ -334,6 +357,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.tasks.cleanup_read_notifications',
         'schedule': crontab(hour=0, minute=0), # Run every day at midnight
     },
+    'square-off-incomplete-checkouts': {
+        'task': 'attendance.tasks.square_off_incomplete_checkouts',
+        'schedule': crontab(hour=0, minute=1),  # Run at 00:01 AM daily (Asia/Kolkata)
+    },
 }
 
 # AI Configuration
@@ -341,8 +368,10 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
+# SMTP is no longer used, but kept for fallback or legacy logic
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')

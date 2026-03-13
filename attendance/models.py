@@ -49,6 +49,12 @@ class AttendanceRecord(models.Model):
         if self.login_time and self.logout_time:
             start = datetime.combine(self.attendance_date, self.login_time)
             end = datetime.combine(self.attendance_date, self.logout_time)
+            
+            # Handle cross-day logout
+            if end < start:
+                from datetime import timedelta
+                end += timedelta(days=1)
+                
             self.worked_hours = round(
                 (end - start).total_seconds() / 3600,
                 2
@@ -56,8 +62,54 @@ class AttendanceRecord(models.Model):
         else:
             self.worked_hours = None
 
+    def recalculate_status(self):
+        """
+        Main logic for status determination based on shift times and duration.
+        """
+        if not self.login_time:
+            self.status = 'absent'
+            return
+
+        office = self.office_location
+        if not office:
+            return
+
+        # 1. Login Violation
+        is_late = self.login_time > office.login_time
+        
+        if not self.logout_time:
+            # Still clocked in
+            self.status = 'late_login' if is_late else 'present'
+            return
+
+        # 2. Logout Violation
+        is_early = self.logout_time < office.logout_time
+        
+        # 3. Duration-based overrides
+        # worked_hours is calculated in save() before this
+        hours = float(self.worked_hours or 0)
+        
+        if hours < 1.0:
+            self.status = 'absent'
+        elif hours < 4.0:
+            self.status = 'half_day'
+        elif is_late and is_early:
+            self.status = 'half_day'  # Double violation is penalized
+        elif is_late:
+            self.status = 'late_login'
+        elif is_early:
+            self.status = 'early_logout'
+        else:
+            self.status = 'present'
+
+    def save(self, *args, **kwargs):
+        # Auto-calc before saving
+        self.recalculate_worked_hours()
+        self.recalculate_status()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.user} - {self.attendance_date}"
+        return f"{self.user} - {self.attendance_date} ({self.status})"
 
 class AttendanceCorrection(models.Model):
     STATUS_CHOICES = [
@@ -113,8 +165,6 @@ class AttendanceCorrection(models.Model):
         if self.corrected_logout_time:
             attendance.logout_time = self.corrected_logout_time
 
-        attendance.recalculate_worked_hours()
-        attendance.status = "present"
         attendance.is_verified = True
         attendance.save()
 

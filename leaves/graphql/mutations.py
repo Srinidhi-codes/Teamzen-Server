@@ -66,6 +66,7 @@ class LeaveRequestInput:
     from_date: date
     to_date: date
     reason: str
+    half_day_period: Optional[str] = "full_day"
 
 
 @strawberry.input
@@ -231,7 +232,6 @@ class LeaveMutation:
         self, info, input: LeaveRequestInput
     ) -> LeaveRequestType:
         user = info.context.request.user
-        duration = (input.to_date - input.from_date).days + 1
         leave_type = LeaveType.objects.get(id=input.leave_type_id)
 
         from leaves.services import create_leave_request as create_request_service
@@ -242,7 +242,8 @@ class LeaveMutation:
                 leave_type=leave_type,
                 from_date=input.from_date,
                 to_date=input.to_date,
-                reason=input.reason
+                reason=input.reason,
+                half_day_period=input.half_day_period
             )
             duration = req.duration_days # get calculated duration
 
@@ -257,17 +258,28 @@ class LeaveMutation:
                 target_id=str(req.id)
             )
 
+            # --- INVOKE REAL-TIME REFRESH FOR ACTOR (Multi-tab sync) ---
+            from notifications.utils import notify_self
+            notify_self(
+                user=user,
+                verb="requested_self",
+                message="Your leave request has been submitted.",
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
+
+
             return req
 
     @strawberry.mutation
     def leave_request_process(
         self, info, input: LeaveRequestProcessInput
     ) -> LeaveRequestType:
-        req = LeaveRequest.objects.select_related(
-            "leave_type", "user"
-        ).get(id=input.request_id)
-
         with transaction.atomic():
+            req = LeaveRequest.objects.select_for_update().select_related(
+                "leave_type", "user"
+            ).get(id=input.request_id)
+
             from leaves.services import (
                 get_or_create_balance,
                 consume_balance,
@@ -318,12 +330,34 @@ class LeaveMutation:
         self, info, requestId: strawberry.ID
     ) -> LeaveRequestType:
         from leaves.services import cancel_leave_request as cancel_service
-        req = LeaveRequest.objects.get(id=requestId)
-
         with transaction.atomic():
+            # Use select_for_update to handle race conditions during cancellation
+            req = LeaveRequest.objects.select_for_update().get(id=requestId)
             cancel_service(req)
+            
+            # --- NOTIFY ADMINS / MANAGERS ---
+            from notifications.utils import notify_management
+            user = req.user
+            message = f"{user.first_name} {user.last_name} has cancelled their leave request for {req.leave_type.name} ({req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')})."
+            notify_management(
+                user=user,
+                verb="cancelled",
+                message=message,
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
 
-        return req
+            # --- INVOKE REAL-TIME REFRESH FOR ACTOR (Multi-tab sync) ---
+            from notifications.utils import notify_self
+            notify_self(
+                user=user,
+                verb="cancelled_self",
+                message="Your leave request has been cancelled.",
+                target_type="Leave Request",
+                target_id=str(req.id)
+            )
+
+            return req
 
     # ----------------------------
     # COMPANY HOLIDAY
@@ -354,3 +388,4 @@ class LeaveMutation:
     def delete_company_holiday(self, info, id: strawberry.ID) -> bool:
         CompanyHoliday.objects.filter(id=id).delete()
         return True
+

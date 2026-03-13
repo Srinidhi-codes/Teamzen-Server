@@ -145,11 +145,9 @@ class PolicyProcessingService:
         try:
             import cloudinary.uploader
             public_id = policy_file.file.public_id
-            print(f"🗑️ Deleting from Cloudinary: {public_id}")
             cloudinary.uploader.destroy(public_id, resource_type="raw")
             return True
         except Exception as e:
-            print(f"❌ Error deleting from Cloudinary: {str(e)}")
             return False
 
     def _extract_text_from_pdf(self, pdf_path: str) -> str:

@@ -68,7 +68,6 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         attendance.login_latitude = latitude
         attendance.login_longitude = longitude
         attendance.is_within_geofence = is_within_geofence
-        attendance.status = 'present'
         attendance.save()
 
         return Response({
@@ -125,13 +124,6 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         attendance.logout_longitude = longitude
         attendance.logout_distance = logout_distance  # optional field
         attendance.is_within_geofence_logout = is_within_geofence  # optional field
-
-        # 5. Calculate worked hours
-        if attendance.login_time:
-            attendance.worked_hours = round(
-                (attendance.logout_time - attendance.login_time).total_seconds() / 3600,
-                2
-            )
 
         attendance.save()
 
