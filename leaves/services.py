@@ -1,5 +1,6 @@
 import decimal
 from datetime import date, timedelta
+from django.db.models import F
 from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday
 
 def get_working_days(start_date, end_date, organization):
@@ -39,18 +40,18 @@ def get_or_create_balance(user, leave_type: LeaveType, year=None):
 
 
 def reserve_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval += decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') + decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
 def consume_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= decimal.Decimal(str(days))
-    balance.used += decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') - decimal.Decimal(str(days))
+    balance.used = F('used') + decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval', 'used'])
 
 
 def release_balance(balance: LeaveBalance, days: float):
-    balance.pending_approval -= decimal.Decimal(str(days))
+    balance.pending_approval = F('pending_approval') - decimal.Decimal(str(days))
     balance.save(update_fields=['pending_approval'])
 
 
@@ -123,8 +124,13 @@ def perform_accrual(balance: LeaveBalance):
     balance.last_accrued_date = date.today()
     balance.save(update_fields=["total_entitled", "accrued", "last_accrued_date"])
 
-def create_leave_request(user, leave_type, from_date, to_date, reason):
+def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_period="full_day"):
     duration = get_working_days(from_date, to_date, user.organization)
+    
+    # If same day and half day period selected, set duration to 0.5
+    if from_date == to_date and half_day_period != "full_day":
+        duration = 0.5
+
     year = from_date.year
 
     balance = get_or_create_balance(user, leave_type, year)
@@ -138,6 +144,7 @@ def create_leave_request(user, leave_type, from_date, to_date, reason):
         from_date=from_date,
         to_date=to_date,
         duration_days=duration,
+        half_day_period=half_day_period,
         reason=reason,
         _status="pending",
     )
@@ -167,7 +174,7 @@ def cancel_leave_request(request):
     balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
 
     if request._status == 'approved':
-        balance.used -= request.duration_days
+        balance.used = F('used') - request.duration_days
         balance.save(update_fields=['used'])
     elif request._status == 'pending':
         release_balance(balance, request.duration_days)

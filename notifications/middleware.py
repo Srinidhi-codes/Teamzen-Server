@@ -1,19 +1,26 @@
 from channels.db import database_sync_to_async
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
-from rest_framework_simplejwt.tokens import AccessToken
 import urllib.parse
-
-User = get_user_model()
 
 @database_sync_to_async
 def get_user_from_token(token):
+    # Defer model imports until the app registry is ready (ASGI startup safety)
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.models import AnonymousUser
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    User = get_user_model()
     try:
         access_token = AccessToken(token)
         user_id = access_token['user_id']
         return User.objects.get(id=user_id)
     except Exception:
         return AnonymousUser()
+
+
+@database_sync_to_async
+def get_anonymous_user():
+    from django.contrib.auth.models import AnonymousUser
+    return AnonymousUser()
 
 class JWTAuthMiddleware:
     """
@@ -35,9 +42,15 @@ class JWTAuthMiddleware:
         
         token = cookies.get('access_token')
         
+        # Fallback to query string if cookie is absent (needed for Next.js proxy cross-origin websockets)
+        if not token:
+            query_string = scope.get('query_string', b'').decode()
+            query_params = urllib.parse.parse_qs(query_string)
+            token = query_params.get('token', [None])[0]
+        
         if token:
             scope['user'] = await get_user_from_token(token)
         else:
-            scope['user'] = AnonymousUser()
+            scope['user'] = await get_anonymous_user()
 
         return await self.inner(scope, receive, send)
