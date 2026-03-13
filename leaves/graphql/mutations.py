@@ -135,6 +135,25 @@ class UpdateLeaveBalanceInput:
     is_active: Optional[bool] = None
 
 
+@strawberry.input
+class CompanyHolidayInput:
+    organization_id: strawberry.ID
+    name: str
+    holiday_date: date
+    is_optional: bool = False
+    description: Optional[str] = ""
+
+
+@strawberry.input
+class UpdateCompanyHolidayInput:
+    id: strawberry.ID
+    organization_id: strawberry.ID
+    name: Optional[str] = None
+    holiday_date: Optional[date] = None
+    is_optional: Optional[bool] = None
+    description: Optional[str] = None
+
+
 # =====================================================
 # MUTATIONS
 # =====================================================
@@ -305,3 +324,33 @@ class LeaveMutation:
             cancel_service(req)
 
         return req
+
+    # ----------------------------
+    # COMPANY HOLIDAY
+    # ----------------------------
+
+    @strawberry.mutation
+    def create_company_holiday(
+        self, info, input: CompanyHolidayInput
+    ) -> CompanyHolidayType:
+        return CompanyHoliday.objects.create(**input.__dict__)
+
+    @strawberry.mutation
+    def update_company_holiday(
+        self, info, input: UpdateCompanyHolidayInput
+    ) -> CompanyHolidayType:
+        holiday = CompanyHoliday.objects.get(
+            organization_id=input.organization_id, id=input.id
+        )
+
+        update_data = {
+            k: v for k, v in input.__dict__.items()
+            if k != "organization_id" and k != "id"
+        }
+
+        return update_instance(holiday, update_data)
+
+    @strawberry.mutation
+    def delete_company_holiday(self, info, id: strawberry.ID) -> bool:
+        CompanyHoliday.objects.filter(id=id).delete()
+        return True

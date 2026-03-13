@@ -4,7 +4,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from typing import List, Optional
 from users.models import CustomUser
-from leaves.models import LeaveRequest, LeaveBalance
+from leaves.models import LeaveRequest, LeaveBalance, CompanyHoliday
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from organizations.models import Department
 from notifications.models import Notification
@@ -70,8 +70,10 @@ class AdminDashboardStats:
 
 @strawberry.type
 class UserLeaveBalance:
+    name: str
     leave_type: str
     balance: float
+    total: float
 
 @strawberry.type
 class DayStatus:
@@ -253,6 +255,22 @@ class DashboardQuery:
                         days_until=days_until
                     ))
 
+        # Holidays in next 30 days
+        holidays = CompanyHoliday.objects.filter(
+            organization=user.organization,
+            holiday_date__range=[today, today + timedelta(days=30)]
+        )
+        for h in holidays:
+            days_until = (h.holiday_date - today).days
+            upcoming_events.append(UpcomingEvent(
+                id=f"holiday-{h.id}",
+                user=h.name,
+                profile_picture=None,
+                type="holiday",
+                date=h.holiday_date.isoformat(),
+                days_until=days_until
+            ))
+
         # 7. Add anniversaries to activities
         for u in all_users:
             if u.date_of_joining and u.date_of_joining.month == today.month and u.date_of_joining.day == today.day and u.date_of_joining.year < today.year:
@@ -362,6 +380,22 @@ class DashboardQuery:
                         days_until=days_until
                     ))
 
+        # Holidays in next 30 days
+        holidays = CompanyHoliday.objects.filter(
+            organization=user.organization,
+            holiday_date__range=[today, today + timedelta(days=30)]
+        )
+        for h in holidays:
+            days_until = (h.holiday_date - today).days
+            upcoming_events.append(UpcomingEvent(
+                id=f"holiday-{h.id}",
+                user=h.name,
+                profile_picture=None,
+                type="holiday",
+                date=h.holiday_date.isoformat(),
+                days_until=days_until
+            ))
+
         # 1. Attendance Rate (Last 30 records)
         attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
         total_records = AttendanceRecord.objects.filter(user=user).count()
@@ -373,8 +407,10 @@ class DashboardQuery:
         user_balances = LeaveBalance.objects.filter(user=user, year=date.today().year)
         for b in user_balances:
             balances.append(UserLeaveBalance(
+                name=b.leave_type.name,
                 leave_type=b.leave_type.name,
-                balance=float(b.get_available_balance())
+                balance=float(b.get_available_balance()),
+                total=float(b.total_entitled)
             ))
         
         # 3. Pending Requests
@@ -451,12 +487,21 @@ class DashboardQuery:
                 elif record.status == 'leave':
                     status = 'leave'
             else:
+                # 2.5 Check for Holiday
+                on_holiday = CompanyHoliday.objects.filter(
+                    organization=user.organization,
+                    holiday_date=d
+                ).exists()
+                if on_holiday:
+                    status = 'leave'
+                
                 # If it's today and no record yet, don't show as absent
-                if d == today:
+                elif d == today:
                     status = 'not_started'
 
-            # 3. Check for Pending Corrections (Overrides absent/not_started)
-            if status in ['absent', 'not_started']:
+            # 3. Check for Pending Corrections (Overrides absent/not_started/holiday??)
+            # Actually, if they requested correction, they want it shown as pending.
+            if status in ['absent', 'not_started', 'leave']:
                 has_pending = AttendanceCorrection.objects.filter(
                     attendance_record__user=user,
                     attendance_record__attendance_date=d,
@@ -466,7 +511,7 @@ class DashboardQuery:
                     status = 'pending'
             
             # 4. Check for Approved Leaves (Alternative)
-            if status != 'present':
+            if status not in ['present', 'pending']:
                 on_leave = LeaveRequest.objects.filter(
                     user=user, 
                     _status='approved',
