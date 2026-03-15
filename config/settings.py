@@ -361,22 +361,6 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'attendance.tasks.square_off_incomplete_checkouts',
         'schedule': crontab(hour=0, minute=1),  # Run at 00:01 AM daily (Asia/Kolkata)
     },
-    'ai-notify-expiring-leaves': {
-        'task': 'notifications.ai_tasks.notify_expiring_leaves',
-        'schedule': crontab(day_of_week='monday', month_of_year='12', hour=10, minute=0),
-    },
-    'ai-notify-missing-checkout': {
-        'task': 'notifications.ai_tasks.notify_missing_checkout',
-        'schedule': crontab(hour=9, minute=0),
-    },
-    'ai-alert-low-attendance': {
-        'task': 'notifications.ai_tasks.alert_low_attendance',
-        'schedule': crontab(day_of_week='monday', hour=10, minute=30),
-    },
-    'ai-notify-manager-team-absence': {
-        'task': 'notifications.ai_tasks.notify_manager_team_absence',
-        'schedule': crontab(day_of_week='sunday', hour=19, minute=0),
-    },
 }
 
 # AI Configuration

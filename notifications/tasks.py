@@ -11,7 +11,6 @@ import os
 
 from .models import Notification
 from .email_backends import BrevoHTTPBackend
-from . import ai_tasks
 
 # Lazy imports for models to avoid circular dependencies if any
 def get_leave_request_model():
