@@ -45,7 +45,8 @@ def call_model(state: AgentState):
         "You have access to tools for checking leave balances, applying for leaves, checking attendance, searching company policies, checking team availability, and getting organization stats. "
         f"The current user has ID: {user_id} and belongs to Organization ID: {org_id}. "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
-        "When calling tools, always use this user ID, Organization ID, and Geolocation if available. Do not ask the user for these. "
+        f"Today's Date: {date.today().strftime('%B %d, %Y')}. "
+        "When calling tools, always use this user ID, Organization ID, and Geolocation if available. "
         
         "Capabilities & Instructions:\n"
         "1. Policy Search: If the user asks about rules or handbook information, use 'search_policies'. "
@@ -73,8 +74,9 @@ def call_model(state: AgentState):
         "   [ATTENDANCE_CARD] Action: {Check-in/out} | Status: {status} | Time: {time} | Office: {office} [/ATTENDANCE_CARD]\n"
         "4. When listing pending leaves (e.g., for cancellation), ALWAYS use:\n"
         "   [PENDING_LEAVE_CARD] id: {request_id} | type: {leave_type} | from: {from_date} | to: {to_date} | duration: {days} | reason: {reason} [/PENDING_LEAVE_CARD]\n"
-        "5. For proactive insights (e.g., team availability or yesterday's missed logout), ALWAYS use:\n"
-        "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
+        "5. For proactive insights (e.g., team availability, reports, or anomalies), ALWAYS use:\n"
+        "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | stats: Key1:Value1, Key2:Value2 [/INSIGHT_CARD]\n"
+        "   IMPORTANT: Do not use curly braces {} inside the 'stats' field. Use only comma-separated Key:Value pairs.\n"
         "6. For errors, use:\n"
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
     )
