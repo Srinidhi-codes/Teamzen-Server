@@ -245,3 +245,6 @@ def cleanup_read_notifications():
     # updated_at will change when is_read is set to True
     deleted_count, _ = Notification.objects.filter(is_read=True, updated_at__lte=threshold).delete()
     return f"Deleted {deleted_count} old notifications."
+
+# Late import to avoid circular dependency during registry
+from . import ai_tasks
