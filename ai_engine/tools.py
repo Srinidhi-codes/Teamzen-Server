@@ -1,10 +1,11 @@
 from langchain_core.tools import tool
 from leaves.models import LeaveBalance, LeaveType, LeaveRequest
 from attendance.models import AttendanceRecord
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from django.db import transaction
 from django.utils import timezone
 import decimal
+import calendar
 
 @tool
 def get_leave_balances(user_id: int):
@@ -356,6 +357,126 @@ def search_policies(query: str, organization_id: int):
     results = []
     for doc in similar_docs:
         results.append(f"Source: {doc.title}\nContent: {doc.content}")
-        
     return "\n\n---\n\n".join(results)
+        
+@tool
+def suggest_leave_window(user_id: int, month: int = None):
+    """
+    Analyzes and suggests the best time for the user to take a leave in a specific month (defaults to current month).
+    Factors in: remaining leave balance, team availability, company holidays, and user history.
+    month: 1-12. If not provided, defaults to the current month.
+    Returns a suggestion with reasoning formatted as an INSIGHT_CARD.
+    """
+    from django.contrib.auth import get_user_model
+    from leaves.models import CompanyHoliday, LeaveBalance, LeaveRequest
+    
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=user_id)
+        today = date.today()
+        target_month = month if month else today.month
+        target_year = today.year
+        
+        # 1. Check Leave Balance
+        balances = LeaveBalance.objects.filter(user=user, year=target_year)
+        available_days = sum(float(bal.get_available_balance()) for bal in balances)
+        
+        if available_days <= 0:
+            return "[INSIGHT_CARD] title: Leave Recommendation | message: You don't have any leave balance remaining for this year. You might want to wait for the next accrual cycle. | type: warning [/INSIGHT_CARD]"
+
+        # 2. Get Company Holidays for the month
+        holidays = CompanyHoliday.objects.filter(
+            organization=user.organization,
+            holiday_date__year=target_year,
+            holiday_date__month=target_month
+        ).order_by('holiday_date')
+        
+        holiday_dates = [h.holiday_date for h in holidays]
+        
+        # 3. Analyze Team Availability for each day in the month
+        _, last_day = calendar.monthrange(target_year, target_month)
+        start_date = date(target_year, target_month, 1)
+        end_date = date(target_year, target_month, last_day)
+        
+        daily_absence = {}
+        if user.department:
+            team_leaves = LeaveRequest.objects.filter(
+                user__department=user.department,
+                _status__in=['approved', 'pending'],
+                from_date__lte=end_date,
+                to_date__gte=start_date
+            ).values('from_date', 'to_date')
+            
+            for d in range(1, last_day + 1):
+                curr_date = date(target_year, target_month, d)
+                count = 0
+                for leave in team_leaves:
+                    if leave['from_date'] <= curr_date <= leave['to_date']:
+                        count += 1
+                daily_absence[curr_date] = count
+
+        # 4. Find the "Best Window"
+        best_window = None
+        window_score = -100
+        
+        for d in range(1, last_day + 1):
+            curr_date = date(target_year, target_month, d)
+            # Skip if it's a weekend (Sat=5, Sun=6)
+            if curr_date.weekday() >= 5:
+                continue
+            # Skip if it's already a holiday
+            if curr_date in holiday_dates:
+                continue
+            # Skip past days
+            if curr_date <= today:
+                continue
+                
+            # Score this day
+            score = 0
+            # Higher score if next to a holiday
+            prev_day = curr_date - timedelta(days=1)
+            next_day = curr_date + timedelta(days=1)
+            if prev_day in holiday_dates or next_day in holiday_dates:
+                score += 15
+            
+            # Higher score if next to a weekend
+            if curr_date.weekday() == 0 or curr_date.weekday() == 4: # Mon or Fri
+                score += 10
+            
+            # Lower score if team absence is high
+            absence_count = daily_absence.get(curr_date, 0)
+            score -= (absence_count * 5)
+            
+            if score > window_score:
+                window_score = score
+                best_window = curr_date
+
+        if not best_window:
+            return "[INSIGHT_CARD] title: Leave Recommendation | message: No ideal leave windows found for this month. All weekdays seem equally busy or you have already taken significant time off. | type: info [/INSIGHT_CARD]"
+        
+        holiday_context = ""
+        if holiday_dates:
+            nearby_holiday_name = None
+            for h in holidays:
+                if abs((h.holiday_date - best_window).days) <= 2:
+                    nearby_holiday_name = h.name
+                    break
+            if nearby_holiday_name:
+                holiday_context = f" since it's close to the '{nearby_holiday_name}' holiday"
+
+        message = (
+            f"I recommend taking a leave on **{best_window.strftime('%A, %b %d')}**{holiday_context}. "
+            f"Team absence in your department is low on this day ({daily_absence.get(best_window, 0)} people out), "
+            f"and you still have {available_days} days of leave remaining for the year."
+        )
+        
+        return (
+            f"[INSIGHT_CARD] title: Leave Recommendation | "
+            f"message: {message} | "
+            f"type: stats | "
+            f"stats: Recommended Date:{best_window.strftime('%Y-%m-%d')}, Remaining Balance:{available_days} days [/INSIGHT_CARD]"
+        )
+
+    except Exception as e:
+        return f"Error calculating leave recommendation: {str(e)}"
 
