@@ -324,12 +324,34 @@ def get_team_stats(organization_id: int):
         from_date__lte=today,
         to_date__gte=today
     ).count()
+
+    # Extension: Find low attendance employees (last 30 days)
+    start_date = today - timedelta(days=30)
+    employees = User.objects.filter(organization_id=organization_id, is_active=True, role='employee')
+    low_attendance_list = []
+    
+    for emp in employees:
+        records = AttendanceRecord.objects.filter(
+            user=emp, 
+            attendance_date__range=[start_date, today]
+        )
+        total_work_days = 22 # Approx working days in a month
+        present_count = records.filter(status__in=['present', 'late_login', 'early_logout', 'half_day']).count()
+        rate = (present_count / total_work_days) * 100
+        
+        if rate < 85: # Threshold
+            low_attendance_list.append({
+                "name": f"{emp.first_name} {emp.last_name}",
+                "rate": f"{rate:.1f}%",
+                "days": present_count
+            })
     
     return {
         "total_employees": total_employees,
         "present_today": present_today,
         "on_leave_today": on_leave_today,
-        "attendance_rate_today": f"{(present_today/total_employees*100):.1f}%" if total_employees > 0 else "0%"
+        "attendance_rate_today": f"{(present_today/total_employees*100):.1f}%" if total_employees > 0 else "0%",
+        "low_attendance_alerts": low_attendance_list[:5] # Return top 5 for brevity
     }
 
 @tool
@@ -479,4 +501,76 @@ def suggest_leave_window(user_id: int, month: int = None):
 
     except Exception as e:
         return f"Error calculating leave recommendation: {str(e)}"
+
+@tool
+def get_attendance_trends(user_id: int, days: int = 30):
+    """
+    Analyzes historical attendance data for the user to detect anomalies and trends.
+    Detects: Repeated late arrivals (e.g., 3+ same-day-of-week lateness),
+    Repeated no-checkout pattern, and overall attendance rate drops.
+    Returns findings as an INSIGHT_CARD.
+    """
+    from attendance.models import AttendanceRecord
+    from collections import Counter
+    
+    try:
+        today = date.today()
+        start_date = today - timedelta(days=days)
+        records = AttendanceRecord.objects.filter(
+            user_id=user_id, 
+            attendance_date__range=[start_date, today]
+        ).order_by('attendance_date')
+
+        if not records.exists():
+            return "No attendance records found for the specified period."
+
+        total_days = days
+        present_count = records.filter(status__in=['present', 'late_login', 'early_logout', 'half_day']).count()
+        rate = (present_count / total_days) * 100
+        
+        # 1. Detect Repeated Laters
+        late_days = records.filter(status='late_login')
+        late_dow_counts = Counter([r.attendance_date.strftime("%A") for r in late_days])
+        repeated_late_day = None
+        for day, count in late_dow_counts.items():
+            if count >= 3:
+                repeated_late_day = day
+                break
+
+        # 2. Detect No-Checkout pattern
+        no_checkout_count = records.filter(login_time__isnull=False, logout_time__isnull=True).count()
+
+        # 3. Generate Insight
+        findings = []
+        severity = "info"
+        
+        if rate < 85:
+            findings.append(f"Your attendance rate ({rate:.1f}%) is below the company target of 85%.")
+            severity = "warning"
+        
+        if repeated_late_day:
+            findings.append(f"You've been late on {late_dow_counts[repeated_late_day]} {repeated_late_day}s recently. Is everything okay?")
+            severity = "warning"
+            
+        if no_checkout_count >= 2:
+            findings.append(f"I noticed you missed checking out {no_checkout_count} times this month. Don't forget to clock out!")
+            severity = "warning"
+
+        if not findings:
+            return (
+                f"[INSIGHT_CARD] title: Attendance Trends | "
+                f"message: Great job! Your attendance is very consistent. You have a {rate:.1f}% presence rate over the last {days} days. | "
+                f"type: stats | stats: Period:{days} Days, Presence Rate:{rate:.1f}% [/INSIGHT_CARD]"
+            )
+
+        message = " ".join(findings)
+        return (
+            f"[INSIGHT_CARD] title: Attendance Insights | "
+            f"message: {message} | "
+            f"type: {severity} | "
+            f"stats: Presence Rate:{rate:.1f}%, Incomplete Logs:{no_checkout_count} [/INSIGHT_CARD]"
+        )
+
+    except Exception as e:
+        return f"Error analyzing attendance trends: {str(e)}"
 
