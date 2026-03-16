@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
 from django.conf import settings
-from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave
+from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window
 from .models import PolicyDocument
 from pgvector.django import L2Distance
 import json
@@ -20,7 +20,7 @@ class AgentState(TypedDict):
     longitude: Optional[float]
 
 # Define the tools
-tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave]
+tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window]
 tool_node = ToolNode(tools)
 
 # Define the model
@@ -59,6 +59,7 @@ def call_model(state: AgentState):
         "LEAVE TYPE SELECTION: If the user wants to apply for leave but has not specified WHICH leave type (e.g., Casual, Sick), you MUST call 'get_leave_types' first and present the options using 'LEAVE_TYPE_CARD' so they can choose one.\n"
         "IMPORTANT: To call 'apply_for_leave', you NEED Leave Type ID, Start Date, End Date, and Reason. If any of these are missing from the conversation, DO NOT call the tool; instead, ASK the user to provide the missing details (e.g., 'What dates are you planning?' or 'What is the reason for your leave?').\n"
         "4. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'.\n"
+        "5. Leave Recommendations: If the user asks for advice on when to take a leave, or if they have a high leave balance, use 'suggest_leave_window'.\n"
         
         "Formatting Instructions:\n"
         "1. Be professional, concise, and helpful.\n"
