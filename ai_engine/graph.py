@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
 from django.conf import settings
+from datetime import date
 from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary
 from .models import PolicyDocument
 from pgvector.django import L2Distance
