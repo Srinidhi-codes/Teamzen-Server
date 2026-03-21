@@ -40,6 +40,9 @@ class UserType:
     aadhar_number: auto
     uan_number: auto
 
+    has_seen_onboarding: auto
+    has_seen_ai_onboarding: auto
+
     created_at: auto
     updated_at: auto
 

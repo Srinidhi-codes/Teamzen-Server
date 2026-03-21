@@ -18,6 +18,8 @@ class UpdateProfileInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
+    has_seen_onboarding: bool | None = None
+    has_seen_ai_onboarding: bool | None = None
 
 @strawberry.input
 class UserStatusInput:

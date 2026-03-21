@@ -59,6 +59,11 @@ class CustomUser(AbstractUser):
     
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    
+    # Onboarding Flags
+    has_seen_onboarding = models.BooleanField(default=False)
+    has_seen_ai_onboarding = models.BooleanField(default=False)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
