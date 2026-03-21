@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
 from django.conf import settings
-from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends
+from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary
 from .models import PolicyDocument
 from pgvector.django import L2Distance
 import json
@@ -20,7 +20,7 @@ class AgentState(TypedDict):
     longitude: Optional[float]
 
 # Define the tools
-tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends]
+tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary]
 tool_node = ToolNode(tools)
 
 # Define the model
@@ -46,7 +46,8 @@ def call_model(state: AgentState):
         "You have access to tools for checking leave balances, applying for leaves, checking attendance, searching company policies, checking team availability, and getting organization stats. "
         f"The current user has ID: {user_id} and belongs to Organization ID: {org_id}. "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
-        "When calling tools, always use this user ID, Organization ID, and Geolocation if available. Do not ask the user for these. "
+        f"Today's Date: {date.today().strftime('%B %d, %Y')}. "
+        "When calling tools, always use this user ID, Organization ID, and Geolocation if available. "
         
         "Capabilities & Instructions:\n"
         "1. Policy Search: If the user asks about rules or handbook information, use 'search_policies'. "
@@ -61,6 +62,7 @@ def call_model(state: AgentState):
         "LEAVE TYPE SELECTION: If the user wants to apply for leave but has not specified WHICH leave type (e.g., Casual, Sick), you MUST call 'get_leave_types' first and present the options using 'LEAVE_TYPE_CARD' so they can choose one.\n"
         "IMPORTANT: To call 'apply_for_leave', you NEED Leave Type ID, Start Date, End Date, and Reason. If any of these are missing from the conversation, DO NOT call the tool; instead, ASK the user to provide the missing details (e.g., 'What dates are you planning?' or 'What is the reason for your leave?').\n"
         "4. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'. This tool now also identifies employees with low attendance.\n"
+        "REPORTS: If a manager asks for a report or summary for a specific month (e.g., 'Give me the February report'), use 'generate_monthly_summary'. Use the result to present an [INSIGHT_CARD].\n"
         "5. Leave Recommendations: If the user asks for advice on when to take a leave, or if they have a high leave balance, use 'suggest_leave_window'.\n"
         "6. Attendance Trends & Anomalies: Use 'get_attendance_trends' to detect patterns in user attendance (laters, missing checkouts, or drop in rate). If a user asks 'How is my attendance?' or 'Do I have any issues?', use this tool.\n"
         

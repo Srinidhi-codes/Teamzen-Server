@@ -3,6 +3,7 @@ from leaves.models import LeaveBalance, LeaveType, LeaveRequest
 from attendance.models import AttendanceRecord
 from datetime import date, datetime, timedelta
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 import decimal
 import calendar
@@ -551,4 +552,88 @@ def get_attendance_trends(user_id: int, days: int = 30):
 
     except Exception as e:
         return f"Error analyzing attendance trends: {str(e)}"
+
+@tool
+def generate_monthly_summary(organization_id: int, month: int, year: int):
+    """
+    Generates a high-level executive summary of an organization's performance for a specific month.
+    Aggregates attendance rates, leave trends, and departmental activity.
+    Returns a human-readable professional summary paragraph.
+    Only available for Managers and Admins.
+    """
+    from attendance.models import AttendanceRecord
+    from leaves.models import LeaveRequest
+    from organizations.models import Department
+    from django.contrib.auth import get_user_model
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from django.conf import settings
+    
+    User = get_user_model()
+    try:
+        # 1. Gather Data
+        _, last_day = calendar.monthrange(year, month)
+        start_date = date(year, month, 1)
+        end_date = date(year, month, last_day)
+        
+        # Attendance Data
+        records = AttendanceRecord.objects.filter(
+            user__organization_id=organization_id,
+            attendance_date__range=[start_date, end_date]
+        )
+        total_present = records.filter(status__in=['present', 'late_login', 'early_logout', 'half_day']).count()
+        total_late = records.filter(status='late_login').count()
+        
+        # Leave Data
+        leaves = LeaveRequest.objects.filter(
+            user__organization_id=organization_id,
+            _status='approved',
+            from_date__lte=end_date,
+            to_date__gte=start_date
+        )
+        total_leaves = leaves.count()
+        top_leave_type = leaves.values('leave_type__name').annotate(count=Count('id')).order_by('-count').first()
+        
+        # Department Activity
+        depts = Department.objects.filter(organization_id=organization_id)
+        dept_data = []
+        for d in depts:
+            emp_count = User.objects.filter(department=d, is_active=True).count()
+            dept_leaves = leaves.filter(user__department=d).count()
+            dept_data.append(f"{d.name}: {emp_count} employees, {dept_leaves} leaves approved")
+
+        # 2. Synthesize with LLM
+        summary_model = ChatOpenAI(model="gpt-4o", temperature=0.7, openai_api_key=settings.OPENAI_API_KEY)
+        
+        data_payload = (
+            f"Month: {calendar.month_name[month]} {year}\n"
+            f"Total Attendance Logs: {records.count()}\n"
+            f"Total Present: {total_present}\n"
+            f"Total Late Logins: {total_late}\n"
+            f"Total Approved Leaves: {total_leaves}\n"
+            f"Most Frequent Leave Type: {top_leave_type['leave_type__name'] if top_leave_type else 'N/A'}\n"
+            f"Departmental Context: {', '.join(dept_data)}\n"
+        )
+        
+        system_msg = "You are a senior HR Analyst. Compose a professional, concise executive summary (1 paragraph) based on the provided monthly data. Focus on trends, productivity, and any potential burnout signals (high leave usage). Do not use bullet points."
+        human_msg = f"Data for the report:\n{data_payload}"
+        
+        response = summary_model.invoke([
+            SystemMessage(content=system_msg),
+            HumanMessage(content=human_msg)
+        ])
+        
+        return {
+            "month": calendar.month_name[month],
+            "year": year,
+            "summary": response.content,
+            "raw_stats": {
+                "attendance_rate": f"{(total_present/records.count()*100):.1f}%" if records.count() > 0 else "0%",
+                "late_percentage": f"{(total_late/total_present*100):.1f}%" if total_present > 0 else "0%",
+                "leave_count": total_leaves
+            }
+        }
+
+    except Exception as e:
+        return f"Error generating monthly summary: {str(e)}"
 

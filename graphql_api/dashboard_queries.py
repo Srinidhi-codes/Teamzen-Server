@@ -111,10 +111,21 @@ class DashboardQuery:
         if not user.is_authenticated or user.role not in ['admin', 'hr', 'manager']:
             raise Exception("Unauthorized")
 
+        # 0. Define scope filters based on role to prevent hierarchy leakage
+        # HR/Admin see everything in organization, Managers only see their department
+        base_user_filter = Q(organization=user.organization)
+        leave_filter = Q(user__organization=user.organization)
+        correction_filter = Q(attendance_record__user__organization=user.organization)
+        
+        if user.role == 'manager' and user.department:
+            base_user_filter &= Q(department=user.department)
+            leave_filter &= Q(user__department=user.department)
+            correction_filter &= Q(attendance_record__user__department=user.department)
+
         # 1. Basic Stats
-        total_employees = CustomUser.objects.filter(organization=user.organization).count()
-        active_employees = CustomUser.objects.filter(organization=user.organization, is_active=True).count()
-        pending_leaves = LeaveRequest.objects.filter(user__organization=user.organization, _status='pending').count()
+        total_employees = CustomUser.objects.filter(base_user_filter).count()
+        active_employees = CustomUser.objects.filter(base_user_filter, is_active=True).count()
+        pending_leaves = LeaveRequest.objects.filter(leave_filter, _status='pending').count()
         
         today = date.today()
         # Ensure we use timezone aware datetimes for comparisons
@@ -125,7 +136,11 @@ class DashboardQuery:
             attendance_date=today, 
             status__in=attendance_statuses,
             user__organization=user.organization
-        ).count()
+        )
+        if user.role == 'manager' and user.department:
+            present_today = present_today.filter(user__department=user.department)
+        
+        present_today = present_today.count()
         
         attendance_rate = (present_today / active_employees * 100) if active_employees > 0 else 0
 
@@ -140,7 +155,7 @@ class DashboardQuery:
             # Move to next month's start for simpler logic or just use end of month
             
             count = CustomUser.objects.filter(
-                organization=user.organization,
+                base_user_filter,
                 created_at__lte=pivot_dt + timedelta(days=30) # Roughly end of that month
             ).count()
             growth.append(MonthlyStat(month=month_name, value=count))
@@ -150,7 +165,7 @@ class DashboardQuery:
         colors = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4"]
         departments = Department.objects.filter(organization=user.organization)
         for i, dept in enumerate(departments):
-            count = CustomUser.objects.filter(department=dept, organization=user.organization).count()
+            count = CustomUser.objects.filter(base_user_filter, department=dept).count()
             if count > 0: # Only show departments with employees
                 dept_dist.append(DepartmentStat(
                     name=dept.name, 
@@ -164,7 +179,7 @@ class DashboardQuery:
             target_date = today - timedelta(days=i*30)
             month_name = target_date.strftime("%b")
             month_qs = LeaveRequest.objects.filter(
-                user__organization=user.organization,
+                leave_filter,
                 from_date__month=target_date.month,
                 from_date__year=target_date.year
             )
@@ -178,17 +193,17 @@ class DashboardQuery:
         # 5. Recent Activities
         activities = []
         # Join New Users
-        recent_users = CustomUser.objects.filter(organization=user.organization).order_by('-created_at')[:5]
+        recent_users = CustomUser.objects.filter(base_user_filter).order_by('-created_at')[:5]
         for u in recent_users:
             activities.append(ActivityStat(
                 id=strawberry.ID(f"user-{u.id}"),
                 user=f"{u.first_name} {u.last_name}",
-                action="joined the organization",
+                action="joined the team",
                 time=u.created_at.isoformat()
             ))
 
         # Combine recent leaves
-        recent_leaves = LeaveRequest.objects.filter(user__organization=user.organization).order_by('-created_at')[:5]
+        recent_leaves = LeaveRequest.objects.filter(leave_filter).order_by('-created_at')[:5]
         for l in recent_leaves:
             activities.append(ActivityStat(
                 id=strawberry.ID(f"leave-{l.id}"),
@@ -199,7 +214,7 @@ class DashboardQuery:
 
         # Recent Attendance Corrections
         recent_corrections = AttendanceCorrection.objects.filter(
-            attendance_record__user__organization=user.organization
+            correction_filter
         ).order_by('-created_at')[:5]
         for c in recent_corrections:
             formatted_date = c.attendance_record.attendance_date.strftime("%b %d, %Y")
@@ -215,7 +230,7 @@ class DashboardQuery:
         today = date.today()
         
         # We look for events in the next 30 days
-        all_users = CustomUser.objects.filter(organization=user.organization, is_active=True)
+        all_users = CustomUser.objects.filter(base_user_filter, is_active=True)
         for u in all_users:
             if u.date_of_birth:
                 # Calculate next birthday
@@ -292,13 +307,21 @@ class DashboardQuery:
                     time=timezone.now().isoformat()
                 ))
 
-        # 8. Upcoming Leaves (Approved and Pending)
+        # 8. Upcoming Leaves (Prioritize Approved over Pending)
+        from django.db.models import Case, When, Value, IntegerField
+        
         upcoming_leaves = []
         leaves_qs = LeaveRequest.objects.filter(
-            user__organization=user.organization,
+            leave_filter,
             _status__in=['approved', 'pending'],
             to_date__gte=today
-        ).select_related('user', 'leave_type').order_by('from_date')[:5]
+        ).annotate(
+            status_priority=Case(
+                When(_status='approved', then=Value(1)),
+                When(_status='pending', then=Value(2)),
+                output_field=IntegerField(),
+            )
+        ).select_related('user', 'leave_type').order_by('status_priority', 'from_date')[:5]
         
         for l in leaves_qs:
             upcoming_leaves.append(UpcomingLeave(
@@ -421,7 +444,7 @@ class DashboardQuery:
                 name=b.leave_type.name,
                 leave_type=b.leave_type.name,
                 balance=float(b.get_available_balance()),
-                total=float(b.total_entitled)
+                total=float(b.total_entitled + b.carried_forward)
             ))
         
         # 3. Pending Requests

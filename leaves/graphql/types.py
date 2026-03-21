@@ -50,6 +50,11 @@ class LeaveBalanceType:
     def available_balance(self) -> float:
         return float(self.get_available_balance())
 
+    @strawberry.field
+    def total_allocation(self) -> float:
+        # total allocation = entitled + carry forward + accrued
+        return float(self.total_entitled + self.carried_forward)
+
 @strawberry.django.type(LeaveRequest)
 class LeaveRequestType:
     id: strawberry.ID
