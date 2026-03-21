@@ -144,6 +144,9 @@ class PolicyQAView(APIView):
             
             If the answer is not in the context, say "I don't have enough information in the provided policies to answer that."
             Do not hallucinate or use outside knowledge.
+
+            FORMATTING: If you find an answer, wrap the most important part of the policy in:
+            [INSIGHT_CARD] title: {Policy Name} | message: {The core policy details} | type: info | topic: Policy [/INSIGHT_CARD]
             """
             
             prompt = ChatPromptTemplate.from_template(template)
@@ -214,53 +217,90 @@ class SmartAssistantChatView(APIView):
         try:
             from .graph import app
             from langchain_core.messages import HumanMessage, AIMessage
-            
+            from django.http import StreamingHttpResponse
+            from django.utils import timezone
+            import json
+            import asyncio
+            import threading
+            import queue
+
             # 1. Initialize Redis History
-            history = self.get_history(request.user.id)
+            history_manager = self.get_history(request.user.id)
+            existing_messages = history_manager.messages
             
-            # 2. Get existing messages
-            existing_messages = history.messages
-            
-            # 3. Add current query
+            # 2. Add current query
             all_messages = list(existing_messages) + [HumanMessage(content=query)]
             
-            # 4. Initialize State for LangGraph
+            # 3. Initialize State
             initial_state = {
                 "messages": all_messages,
                 "user_id": request.user.id,
                 "organization_id": request.user.organization.id if request.user.organization else 0,
-                "latitude": request.data.get('latitude'),
-                "longitude": request.data.get('longitude'),
+                "latitude": request.data.get('latitude', 0),
+                "longitude": request.data.get('longitude', 0),
             }
-            
-            # 5. Run the Graph
-            final_state = app.invoke(initial_state)
-            
-            # 6. Extract final response and SAVE to history
-            final_ai_message = final_state["messages"][-1]
-            
-            from django.utils import timezone
-            now_iso = timezone.now().isoformat()
-            
-            # Save to history with timestamps in additional_kwargs
-            history.add_message(HumanMessage(content=query, additional_kwargs={"timestamp": now_iso}))
-            history.add_message(AIMessage(content=final_ai_message.content, additional_kwargs={"timestamp": now_iso}))
-            
-            # 7. Format history for frontend
-            formatted_history = []
-            for msg in history.messages:
-                role = "user" if msg.type == "human" else "assistant"
-                timestamp = msg.additional_kwargs.get('timestamp')
-                formatted_history.append({
-                    "role": role, 
-                    "content": msg.content,
-                    "timestamp": timestamp
-                })
 
-            return Response({
-                'answer': final_ai_message.content,
-                'history': formatted_history
-            })
+            q = queue.Queue()
+
+            def run_async_stream():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                async def collect_stream():
+                    content_accumulated = ""
+                    try:
+                        async for event in app.astream_events(initial_state, version="v2"):
+                            kind = event.get("event")
+                            if kind == "on_chat_model_stream":
+                                content = event["data"]["chunk"].content
+                                if content:
+                                    content_accumulated += content
+                                    q.put({'token': content})
+                        
+                        # Save to history
+                        now_iso = timezone.now().isoformat()
+                        history_manager.add_message(HumanMessage(content=query, additional_kwargs={"timestamp": now_iso}))
+                        history_manager.add_message(AIMessage(content=content_accumulated, additional_kwargs={"timestamp": now_iso}))
+                        
+                        # Send final history
+                        final_history_messages = history_manager.messages
+                        formatted_history = []
+                        for msg in final_history_messages:
+                            role = "user" if msg.type == "human" else "assistant"
+                            timestamp = msg.additional_kwargs.get('timestamp')
+                            formatted_history.append({
+                                "role": role, 
+                                "content": msg.content,
+                                "timestamp": timestamp
+                            })
+                        q.put({'history': formatted_history})
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        q.put({'error': str(e)})
+                    finally:
+                        q.put(None) # Sentinel
+
+                loop.run_until_complete(collect_stream())
+                loop.close()
+
+            def stream_generator():
+                # Start the async thread
+                thread = threading.Thread(target=run_async_stream)
+                thread.start()
+
+                while True:
+                    item = q.get()
+                    if item is None:
+                        break
+                    if 'error' in item:
+                        yield f"data: {json.dumps(item)}\n\n"
+                        break
+                    yield f"data: {json.dumps(item)}\n\n"
+                
+                yield "data: [DONE]\n\n"
+
+            return StreamingHttpResponse(stream_generator(), content_type='text/event-stream')
 
         except Exception as e:
             import traceback
@@ -272,3 +312,5 @@ class SmartAssistantChatView(APIView):
         history = self.get_history(request.user.id)
         history.clear()
         return Response({"detail": "History cleared successfully"})
+
+

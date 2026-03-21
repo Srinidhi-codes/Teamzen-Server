@@ -326,6 +326,10 @@ CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL'))
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL'))
 CELERY_CACHE_BACKEND = 'django-cache'
 
+# Eager mode for local development to avoid needing a separate celery worker process
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', str(DEBUG)) == 'True'
+CELERY_TASK_EAGER_PROPAGATES = True
+
 # Aggressive TCP keepalives to prevent Cloud Redis Labs from silently dropping idle connections
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,

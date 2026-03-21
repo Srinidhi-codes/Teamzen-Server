@@ -8,6 +8,14 @@ from leaves.models import LeaveRequest, LeaveBalance, CompanyHoliday
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from organizations.models import Department
 from notifications.models import Notification
+from graphql_api.ai_insights import generate_admin_insights, generate_user_insights
+
+@strawberry.type
+class AIInsight:
+    title: str
+    message: str
+    type: str  # 'info', 'warning', 'stats', 'anomaly'
+    query: str  # Pre-filled query for "Ask AI"
 
 @strawberry.type
 class MonthlyStat:
@@ -66,6 +74,7 @@ class AdminDashboardStats:
     recent_activities: List[ActivityStat]
     upcoming_events: List[UpcomingEvent]
     upcoming_leaves: List[UpcomingLeave]
+    ai_insights: List[AIInsight]
     wish_message: Optional[str]
 
 @strawberry.type
@@ -91,6 +100,7 @@ class UserDashboardStats:
     last_7_days: List[DayStatus]
     attendance_trend: List[MonthlyStat]
     upcoming_events: List[UpcomingEvent]
+    ai_insights: List[AIInsight]
     wish_message: Optional[str]
 
 @strawberry.type
@@ -313,6 +323,7 @@ class DashboardQuery:
             recent_activities=sorted(activities, key=lambda x: x.time, reverse=True)[:5],
             upcoming_events=sorted(upcoming_events, key=lambda x: x.days_until),
             upcoming_leaves=upcoming_leaves,
+            ai_insights=[AIInsight(**i) for i in generate_admin_insights(user)],
             wish_message=None # Admins get a generic dashboard, or we could add a greeting here too
         )
 
@@ -572,6 +583,7 @@ class DashboardQuery:
             last_7_days=last_7_days,
             attendance_trend=trend,
             upcoming_events=sorted(upcoming_events, key=lambda x: x.days_until),
+            ai_insights=[AIInsight(**i) for i in generate_user_insights(user)],
             wish_message=wish_message
         )
 

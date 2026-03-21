@@ -1,6 +1,6 @@
 from typing import Annotated, Sequence, TypedDict, Union, List, Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -27,7 +27,8 @@ tool_node = ToolNode(tools)
 model = ChatOpenAI(
     model="gpt-4o",
     temperature=0,
-    openai_api_key=settings.OPENAI_API_KEY
+    openai_api_key=settings.OPENAI_API_KEY,
+    streaming=True
 ).bind_tools(tools)
 
 # Define the agent node
@@ -49,7 +50,8 @@ def call_model(state: AgentState):
         
         "Capabilities & Instructions:\n"
         "1. Policy Search: If the user asks about rules or handbook information, use 'search_policies'. "
-        "IMPORTANT: Only answer based on the retrieved document content.\n"
+        "IMPORTANT: Only answer based on the retrieved document content. "
+        "YOU MUST ALWAYS wrap the final summarized answer in an [INSIGHT_CARD] with 'topic: Policy' and the specific policy name (e.g., Sick Leave Policy) as the title.\n"
         "2. Attendance: To check status, use 'get_attendance_today'. To check-in or check-out, use 'mark_attendance'. "
         "If 'get_attendance_today' returns an anomaly (like missing yesterday logout), PROACTIVELY inform the user and suggest they correct it.\n"
         "3. Leaves: To check balances, use 'get_leave_balances'. To list available leave types, use 'get_leave_types'. "
@@ -72,13 +74,14 @@ def call_model(state: AgentState):
         "   [ATTENDANCE_CARD] Action: {Check-in/out} | Status: {status} | Time: {time} | Office: {office} [/ATTENDANCE_CARD]\n"
         "4. When listing pending leaves (e.g., for cancellation), ALWAYS use:\n"
         "   [PENDING_LEAVE_CARD] id: {request_id} | type: {leave_type} | from: {from_date} | to: {to_date} | duration: {days} | reason: {reason} [/PENDING_LEAVE_CARD]\n"
-        "5. For proactive insights (e.g., team availability or yesterday's missed logout), ALWAYS use:\n"
-        "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
+        "5. For proactive insights (e.g., team availability or yesterday's missed logout), or when providing COMPANY POLICY details, ALWAYS use:\n"
+        "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | topic: {Topic} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
+        "   NOTE: For policies, use 'topic: Policy' and the policy name as the title.\n"
         "6. For errors, use:\n"
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
     )
     
-    response = model.invoke([AIMessage(content=system_prompt)] + list(messages))
+    response = model.invoke([SystemMessage(content=system_prompt)] + list(messages))
     return {"messages": [response]}
 
 # Define the router logic

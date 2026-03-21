@@ -247,28 +247,6 @@ class LeaveMutation:
             )
             duration = req.duration_days # get calculated duration
 
-            # --- NOTIFY ADMINS / MANAGERS ---
-            from notifications.utils import notify_management
-            message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days)."
-            notify_management(
-                user=user,
-                verb="requested",
-                message=message,
-                target_type="Leave Request",
-                target_id=str(req.id)
-            )
-
-            # --- INVOKE REAL-TIME REFRESH FOR ACTOR (Multi-tab sync) ---
-            from notifications.utils import notify_self
-            notify_self(
-                user=user,
-                verb="requested_self",
-                message="Your leave request has been submitted.",
-                target_type="Leave Request",
-                target_id=str(req.id)
-            )
-
-
             return req
 
     @strawberry.mutation
@@ -289,37 +267,13 @@ class LeaveMutation:
             admin_user = info.context.request.user
 
             if input.status == LeaveStatus.APPROVED:
-                consume_balance(balance, req.duration_days)
-                req.approve(approved_by=admin_user, comments=input.comments)
-                # Send Notification
-                from notifications.utils import notify_user
-                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')} has been APPROVED."
-                notify_user(
-                    recipient_id=req.user.id,
-                    verb="approved",
-                    message=message,
-                    actor_id=admin_user.id,
-                    target_type="Leave Request",
-                    target_id=str(req.id),
-                    level='personal'
-                )
+                from leaves.services import approve_leave_request
+                approve_leave_request(req, admin_user, comments=input.comments)
             elif input.status == LeaveStatus.REJECTED:
-                release_balance(balance, req.duration_days)
-                req.reject(rejected_by=admin_user, comments=input.comments)
-                # Send Notification
-                from notifications.utils import notify_user
-                message = f"Your leave request for {req.leave_type.name} from {req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')} has been REJECTED."
-                if input.comments:
-                    message += f" Reason: {input.comments}"
-                notify_user(
-                    recipient_id=req.user.id,
-                    verb="rejected",
-                    message=message,
-                    actor_id=admin_user.id,
-                    target_type="Leave Request",
-                    target_id=str(req.id),
-                    level='personal'
-                )
+                from leaves.services import reject_leave_request
+                reject_leave_request(req, admin_user, comments=input.comments)
+            
+            req.save()
             
             req.save()
 
@@ -335,28 +289,6 @@ class LeaveMutation:
             req = LeaveRequest.objects.select_for_update().get(id=requestId)
             cancel_service(req)
             
-            # --- NOTIFY ADMINS / MANAGERS ---
-            from notifications.utils import notify_management
-            user = req.user
-            message = f"{user.first_name} {user.last_name} has cancelled their leave request for {req.leave_type.name} ({req.from_date.strftime('%b %d, %Y')} to {req.to_date.strftime('%b %d, %Y')})."
-            notify_management(
-                user=user,
-                verb="cancelled",
-                message=message,
-                target_type="Leave Request",
-                target_id=str(req.id)
-            )
-
-            # --- INVOKE REAL-TIME REFRESH FOR ACTOR (Multi-tab sync) ---
-            from notifications.utils import notify_self
-            notify_self(
-                user=user,
-                verb="cancelled_self",
-                message="Your leave request has been cancelled.",
-                target_type="Leave Request",
-                target_id=str(req.id)
-            )
-
             return req
 
     # ----------------------------
