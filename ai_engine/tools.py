@@ -76,17 +76,6 @@ def apply_for_leave(user_id: int, leave_type_id: int, from_date_str: str, to_dat
                 _status="pending",
             )
 
-            # --- NOTIFY ADMINS / MANAGERS ---
-            from notifications.utils import notify_management
-            message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days) via AI Assistant."
-            notify_management(
-                user=user,
-                verb="requested",
-                message=message,
-                target_type="Leave Request",
-                target_id=str(request.id)
-            )
-
             return {
                 "status": "success",
                 "message": f"Successfully submitted pending {leave_type.name} request for {duration} days.",
@@ -134,17 +123,6 @@ def cancel_leave(user_id: int, request_id: int):
         with transaction.atomic():
             cancel_leave_request(request)
             
-            # --- NOTIFY ADMINS / MANAGERS ---
-            from notifications.utils import notify_management
-            message = f"Leave request for {request.leave_type.name} on {request.from_date} has been CANCELLED by {request.user.first_name} {request.user.last_name} via AI Assistant."
-            notify_management(
-                user=request.user,
-                verb="cancelled",
-                message=message,
-                target_type="Leave Request",
-                target_id=str(request.id)
-            )
-
             return {
                 "status": "success",
                 "message": f"Successfully cancelled your {request.leave_type.name} request for {request.from_date}."

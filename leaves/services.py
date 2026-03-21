@@ -138,7 +138,7 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
     validate_balance(balance, duration)
     reserve_balance(balance, duration)
 
-    return LeaveRequest.objects.create(
+    request = LeaveRequest.objects.create(
         user=user,
         leave_type=leave_type,
         from_date=from_date,
@@ -149,6 +149,32 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
         _status="pending",
     )
 
+    # --- NOTIFY ADMINS / MANAGERS ---
+    try:
+        from notifications.utils import notify_management, notify_self
+        message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days)."
+        notify_management(
+            user=user,
+            verb="requested",
+            message=message,
+            target_type="Leave Request",
+            target_id=str(request.id)
+        )
+        # Notify self for multi-tab sync
+        notify_self(
+            user=user,
+            verb="requested_self",
+            message="Your leave request has been submitted.",
+            target_type="Leave Request",
+            target_id=str(request.id)
+        )
+    except Exception as e:
+        import traceback
+        print(f"FAILED TO SEND NOTIFICATION: {e}")
+        traceback.print_exc()
+
+    return request
+
 def approve_leave_request(request, approver, comments=None):
     balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
         
@@ -156,6 +182,22 @@ def approve_leave_request(request, approver, comments=None):
 
     request.approve(approved_by=approver, comments=comments)
     request.save()
+
+    # --- NOTIFY USER ---
+    try:
+        from notifications.utils import notify_user
+        message = f"Your leave request for {request.leave_type.name} from {request.from_date.strftime('%b %d, %Y')} to {request.to_date.strftime('%b %d, %Y')} has been APPROVED by {approver.first_name}."
+        notify_user(
+            recipient_id=request.user.id,
+            verb="approved",
+            message=message,
+            actor_id=approver.id,
+            target_type="Leave Request",
+            target_id=str(request.id),
+            level='personal'
+        )
+    except Exception as e:
+        print(f"FAILED TO SEND APPROVAL NOTIFICATION: {e}")
 
 def carry_forward(balance):
     lt = balance.leave_type
@@ -181,6 +223,57 @@ def cancel_leave_request(request):
         
     request.cancel()
     request.save()
+
+    # --- NOTIFY ADMINS / MANAGERS ---
+    try:
+        from notifications.utils import notify_management, notify_self
+        user = request.user
+        message = f"{user.first_name} {user.last_name} has cancelled their leave request for {request.leave_type.name} ({request.from_date.strftime('%b %d, %Y')} to {request.to_date.strftime('%b %d, %Y')})."
+        notify_management(
+            user=user,
+            verb="cancelled",
+            message=message,
+            target_type="Leave Request",
+            target_id=str(request.id)
+        )
+        # Notify self
+        notify_self(
+            user=user,
+            verb="cancelled_self",
+            message="Your leave request has been cancelled.",
+            target_type="Leave Request",
+            target_id=str(request.id)
+        )
+    except Exception as e:
+        print(f"FAILED TO SEND CANCELLATION NOTIFICATION: {e}")
+
+def reject_leave_request(request, actor, comments=None):
+    """
+    Reject a pending leave request.
+    """
+    balance = get_or_create_balance(request.user, request.leave_type, request.from_date.year)
+    release_balance(balance, request.duration_days)
+    
+    request.reject(rejected_by=actor, comments=comments)
+    request.save()
+
+    # --- NOTIFY USER ---
+    try:
+        from notifications.utils import notify_user
+        message = f"Your leave request for {request.leave_type.name} from {request.from_date.strftime('%b %d, %Y')} to {request.to_date.strftime('%b %d, %Y')} has been REJECTED by {actor.first_name}."
+        if comments:
+            message += f" Reason: {comments}"
+        notify_user(
+            recipient_id=request.user.id,
+            verb="rejected",
+            message=message,
+            actor_id=actor.id,
+            target_type="Leave Request",
+            target_id=str(request.id),
+            level='personal'
+        )
+    except Exception as e:
+        print(f"FAILED TO SEND REJECTION NOTIFICATION: {e}")
 
 def audit_request(request, action, actor, comment=None):
     LeaveAuditLog.objects.create(

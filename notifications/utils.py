@@ -5,18 +5,19 @@ from notifications.tasks import send_notification
 def get_management_ids(user):
     """
     Returns a list of unique recipient IDs who should be notified 
-    about a user's action (Manager + Admin/HR/Super Admin).
+    about a user's action (Manager + Admin/HR/Superadmin).
     """
     recipients = []
     
-    # 1. Add Manager if exists
+    # 1. Add direct Manager if exists
     if user.manager:
         recipients.append(user.manager.id)
         
-    # 2. Add Admins, HR, and Super Admins of the same organization
+    # 2. Add Admins, HR, and Superadmins of the same organization
+    # Roles in model are 'superadmin', 'admin', 'hr', 'manager'
     admins = CustomUser.objects.filter(
         Q(organization=user.organization) | Q(organization__isnull=True),
-        role__in=['super_admin', 'admin', 'hr', 'manager']
+        role__in=['superadmin', 'admin', 'hr', 'manager']
     ).exclude(id=user.id).values_list('id', flat=True)
     
     recipients.extend(list(admins))
