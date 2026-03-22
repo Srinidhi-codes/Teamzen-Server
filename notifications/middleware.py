@@ -51,6 +51,7 @@ class JWTAuthMiddleware:
         if token:
             scope['user'] = await get_user_from_token(token)
         else:
-            scope['user'] = await get_anonymous_user()
+            from django.contrib.auth.models import AnonymousUser
+            scope['user'] = AnonymousUser()
 
         return await self.inner(scope, receive, send)
