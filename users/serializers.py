@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'phone_number',
             'employee_id', 'role', 'department', 'designation', 'office_location',
             'date_of_joining', 'employment_type', 'is_active',
-            'organization', 'organization_name'
+            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding'
         ]
         read_only_fields = ['id']
 
@@ -35,7 +35,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'date_of_joining', 'date_of_exit', 'bank_account_number',
             'bank_ifsc_code', 'aadhar_number', 'pan_number', 'uan_number',
             'profile_picture', 'is_verified', 'is_active', 'created_at',
-            'organization', 'organization_name'
+            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding'
         ]
         read_only_fields = [
             'id', 'created_at', 'role', 'is_verified', 'is_active', 

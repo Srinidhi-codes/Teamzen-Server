@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PolicyFile
+from .models import PolicyFile, AIConfiguration
 
 class PolicyFileSerializer(serializers.ModelSerializer):
     uploaded_by = serializers.StringRelatedField(read_only=True)
@@ -60,3 +60,15 @@ class PolicyFileSerializer(serializers.ModelSerializer):
             validated_data['file_size'] = file_obj.size
             
         return super().create(validated_data)
+
+class AIConfigurationSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    
+    class Meta:
+        model = AIConfiguration
+        fields = [
+            'id', 'organization', 'organization_name', 
+            'model_name', 'temperature', 'max_tokens', 
+            'system_prompt_override', 'is_active', 'updated_at'
+        ]
+        read_only_fields = ['organization', 'updated_at']

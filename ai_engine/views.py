@@ -10,8 +10,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from .models import PolicyFile, PolicyDocument
-from .serializers import PolicyFileSerializer
+from .models import PolicyFile, PolicyDocument, AIConfiguration
+from .serializers import PolicyFileSerializer, AIConfigurationSerializer
 
 class PolicyFileListCreateView(generics.ListCreateAPIView):
     """
@@ -186,34 +186,53 @@ class SmartAssistantChatView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_history(self, user_id):
+    def get_history(self, user_id, context='user'):
         from langchain_community.chat_message_histories import RedisChatMessageHistory
+        
+        # Isolate chat based on context (admin panel vs user portal)
+        session_id = f"chat_{user_id}_{context}"
+        
         return RedisChatMessageHistory(
-            session_id=f"chat_{user_id}",
+            session_id=session_id,
             url=settings.REDIS_URL,
             ttl=86400  # 24 hours
         )
 
     def get(self, request):
-        """Retrieve chat history for the current user"""
-        history = self.get_history(request.user.id)
+        """Retrieve chat history for the current user and context"""
+        context = request.query_params.get('context', 'user')
+        history = self.get_history(request.user.id, context=context)
         messages = []
         for msg in history.messages:
             role = "user" if msg.type == "human" else "assistant"
-            # Get timestamp from additional_kwargs if it exists
             timestamp = msg.additional_kwargs.get('timestamp')
             messages.append({
                 "role": role, 
                 "content": msg.content,
                 "timestamp": timestamp
             })
-        return Response({"history": messages})
+
+        from .models import AIConfiguration
+        config_obj = AIConfiguration.objects.filter(
+            organization_id=request.user.organization.id if request.user.organization else 0,
+            is_active=True
+        ).first()
+        
+        config_data = {
+            "model_name": config_obj.model_name if config_obj else "gpt-4o-mini",
+            "temperature": config_obj.temperature if config_obj else 0.7,
+        }
+        
+        return Response({
+            "history": messages,
+            "config": config_data
+        })
 
     def post(self, request):
         query = request.data.get('query')
+        context = request.data.get('context', 'user') # 'admin' or 'user'
         if not query:
             return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
             from .graph import app
             from langchain_core.messages import HumanMessage, AIMessage
@@ -223,22 +242,32 @@ class SmartAssistantChatView(APIView):
             import asyncio
             import threading
             import queue
+            import traceback
 
             # 1. Initialize Redis History
-            history_manager = self.get_history(request.user.id)
-            existing_messages = history_manager.messages
+            try:
+                history_manager = self.get_history(request.user.id, context=context)
+                existing_messages = history_manager.messages
+            except Exception as e:
+                print(f"❌ Redis History Error: {str(e)}")
+                return Response({'error': f'Redis History Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # 2. Add current query
             all_messages = list(existing_messages) + [HumanMessage(content=query)]
             
             # 3. Initialize State
-            initial_state = {
-                "messages": all_messages,
-                "user_id": request.user.id,
-                "organization_id": request.user.organization.id if request.user.organization else 0,
-                "latitude": request.data.get('latitude', 0),
-                "longitude": request.data.get('longitude', 0),
-            }
+            try:
+                org_id = request.user.organization.id if request.user.organization else 0
+                initial_state = {
+                    "messages": all_messages,
+                    "user_id": request.user.id,
+                    "organization_id": org_id,
+                    "latitude": request.data.get('latitude', 0),
+                    "longitude": request.data.get('longitude', 0),
+                }
+            except Exception as e:
+                print(f"❌ State Initialization Error: {str(e)}")
+                return Response({'error': f'State Initialization Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             q = queue.Queue()
 
@@ -309,8 +338,42 @@ class SmartAssistantChatView(APIView):
 
     def delete(self, request):
         """Clear chat history"""
-        history = self.get_history(request.user.id)
+        context = request.query_params.get('context', 'user')
+        history = self.get_history(request.user.id, context=context)
         history.clear()
         return Response({"detail": "History cleared successfully"})
+        
+class AIConfigurationView(generics.RetrieveUpdateAPIView):
+    """
+    API endpoint to manage AI Model settings for the organization.
+    """
+    serializer_class = AIConfigurationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        user = self.request.user
+        if not user.organization:
+            return None
+        
+        # Get or create default config for this organization
+        config, created = AIConfiguration.objects.get_or_create(
+            organization=user.organization,
+            defaults={
+                'model_name': 'gpt-4o-mini',
+                'temperature': 0.7,
+                'max_tokens': 1024
+            }
+        )
+        return config
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not instance:
+            return Response({'error': 'User has no associated organization'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
 
 
