@@ -160,3 +160,18 @@ class CompanyHoliday(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.holiday_date})"
+
+
+class LeaveAuditLog(models.Model):
+    """Immutable history of leave-related actions"""
+    leave_request = models.ForeignKey(LeaveRequest, on_delete=models.CASCADE, related_name='audit_logs')
+    action = models.CharField(max_length=50) # requested, approved, rejected, cancelled
+    actor = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.leave_request.user.email} - {self.action} at {self.created_at}"

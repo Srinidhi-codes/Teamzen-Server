@@ -1,7 +1,7 @@
 import decimal
 from datetime import date, timedelta
 from django.db.models import F
-from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday
+from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday, LeaveAuditLog
 
 def get_working_days(start_date, end_date, organization):
     """
@@ -149,6 +149,9 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
         _status="pending",
     )
 
+    # Log the activity
+    audit_request(request, "requested", user, reason)
+
     # --- NOTIFY ADMINS / MANAGERS ---
     try:
         from notifications.utils import notify_management, notify_self
@@ -223,6 +226,9 @@ def cancel_leave_request(request):
         
     request.cancel()
     request.save()
+
+    # Log the activity
+    audit_request(request, "cancelled", request.user)
 
     # --- NOTIFY ADMINS / MANAGERS ---
     try:

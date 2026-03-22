@@ -13,16 +13,13 @@ def get_management_ids(user):
     if user.manager:
         recipients.append(user.manager.id)
         
-    # 2. Add Admins, HR, and Superadmins of the same organization
-    # COMMENTED OUT: We only want to notify the direct manager now.
-    """
+    # 2. Add Admins, HR, and Superadmins of the same organization as a fallback
     admins = CustomUser.objects.filter(
         Q(organization=user.organization) | Q(organization__isnull=True),
         role__in=['superadmin', 'admin', 'hr']
     ).exclude(id=user.id).values_list('id', flat=True)
     
     recipients.extend(list(admins))
-    """
     
     # Return unique IDs only
     return list(set(recipients))
