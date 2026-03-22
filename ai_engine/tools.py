@@ -55,30 +55,24 @@ def apply_for_leave(user_id: int, leave_type_id: int, from_date_str: str, to_dat
         leave_type = LeaveType.objects.get(id=leave_type_id)
         
         with transaction.atomic():
-            # Import services dynamically to avoid circular imports if any
-            from leaves.services import get_or_create_balance, validate_balance, reserve_balance
+            from leaves.services import create_leave_request
             from django.contrib.auth import get_user_model
             
             User = get_user_model()
             user = User.objects.get(id=user_id)
             
-            balance = get_or_create_balance(user, leave_type)
-            validate_balance(balance, duration)
-            reserve_balance(balance, duration)
-
-            request = LeaveRequest.objects.create(
+            # Use the official service to ensure notifications and activity logs are triggered
+            request = create_leave_request(
                 user=user,
                 leave_type=leave_type,
                 from_date=from_date,
                 to_date=to_date,
-                duration_days=duration,
-                reason=reason,
-                _status="pending",
+                reason=reason
             )
 
             return {
                 "status": "success",
-                "message": f"Successfully submitted pending {leave_type.name} request for {duration} days.",
+                "message": f"Successfully submitted pending {leave_type.name} request for {request.duration_days} days.",
                 "request_id": request.id
             }
     except Exception as e:
