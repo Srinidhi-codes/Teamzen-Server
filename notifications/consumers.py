@@ -5,6 +5,9 @@ class NotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope["user"]
         
+        # Accept the connection first to finalize the handshake and prevent timeouts
+        await self.accept()
+        
         if self.user.is_authenticated:
             self.group_name = f"user_{self.user.id}"
             
@@ -13,8 +16,8 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                 self.group_name,
                 self.channel_name
             )
-            await self.accept()
         else:
+            # If not authenticated, close AFTER accepting (standard practice to avoid hanging handshakes)
             await self.close()
 
     async def disconnect(self, close_code):
