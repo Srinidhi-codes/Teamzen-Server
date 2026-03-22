@@ -132,25 +132,6 @@ def cancel_leave(user_id: int, request_id: int):
     except Exception as e:
         return f"Error cancelling leave: {str(e)}"
 
-@tool
-def get_attendance_today(user_id: int):
-    """
-    Checks the user's attendance record for today.
-    Returns check-in/out times and current status.
-    """
-    today = date.today()
-    record = AttendanceRecord.objects.filter(user_id=user_id, attendance_date=today).first()
-    
-    if not record:
-        return "You have not checked in yet today."
-    
-    return {
-        "date": str(record.attendance_date),
-        "login_time": str(record.login_time) if record.login_time else "Not checked in",
-        "logout_time": str(record.logout_time) if record.logout_time else "Not checked out",
-        "status": record.status,
-        "worked_hours": float(record.worked_hours) if record.worked_hours else 0
-    }
 
 @tool
 def mark_attendance(user_id: int, action: str, latitude: float = None, longitude: float = None):

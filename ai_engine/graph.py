@@ -8,9 +8,10 @@ from langgraph.graph.message import add_messages
 from django.conf import settings
 from datetime import date
 from .tools import get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary
-from .models import PolicyDocument
+from .models import PolicyDocument, AIConfiguration
 from pgvector.django import L2Distance
 import json
+import os
 
 # Define the state
 class AgentState(TypedDict):
@@ -24,19 +25,52 @@ class AgentState(TypedDict):
 tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary]
 tool_node = ToolNode(tools)
 
-# Define the model
-model = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0,
-    openai_api_key=settings.OPENAI_API_KEY,
-    streaming=True
-).bind_tools(tools)
+def get_llm(organization_id: int):
+    """
+    Load the appropriate LLM based on organization settings.
+    """
+    config = AIConfiguration.objects.filter(organization_id=organization_id, is_active=True).first()
+    
+    # Default fallback
+    model_name = config.model_name if config else "gpt-4o-mini"
+    temp = config.temperature if config else 0
+    
+    if "gemini" in model_name:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        api_key = os.getenv('GOOGLE_API_KEY')
+        return ChatGoogleGenerativeAI(
+            model=model_name,
+            temperature=temp,
+            google_api_key=api_key,
+            streaming=True
+        ).bind_tools(tools)
+    
+    elif "llama" in model_name or "mixtral" in model_name:
+        from langchain_groq import ChatGroq
+        api_key = os.getenv('GROQ_API_KEY')
+        return ChatGroq(
+            model=model_name,
+            temperature=temp,
+            groq_api_key=api_key,
+            streaming=True
+        ).bind_tools(tools)
+    
+    else: # Default OpenAI
+        return ChatOpenAI(
+            model=model_name,
+            temperature=temp,
+            openai_api_key=settings.OPENAI_API_KEY,
+            streaming=True
+        ).bind_tools(tools)
 
 # Define the agent node
 def call_model(state: AgentState):
     messages = state["messages"]
     user_id = state.get('user_id')
     org_id = state.get('organization_id')
+    
+    # Dynamically load the model based on org config
+    llm = get_llm(org_id)
     
     # System prompt to give context and instructions
     lat = state.get('latitude')
@@ -84,7 +118,7 @@ def call_model(state: AgentState):
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
     )
     
-    response = model.invoke([SystemMessage(content=system_prompt)] + list(messages))
+    response = llm.invoke([SystemMessage(content=system_prompt)] + list(messages))
     return {"messages": [response]}
 
 # Define the router logic

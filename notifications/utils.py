@@ -47,6 +47,7 @@ def notify_management(user, verb, message, target_type=None, target_id=None):
     """
     recipient_ids = get_management_ids(user)
     for recipient_id in recipient_ids:
+        # These are administrative actions, should show up in Admin Panel
         notify_user(
             recipient_id=recipient_id,
             verb=verb,
@@ -54,6 +55,7 @@ def notify_management(user, verb, message, target_type=None, target_id=None):
             actor_id=user.id,
             target_type=target_type,
             target_id=target_id,
+            level='admin'
         )
 
 def notify_self(user, verb, message, target_type=None, target_id=None):
