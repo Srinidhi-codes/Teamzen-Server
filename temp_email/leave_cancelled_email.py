@@ -26,7 +26,7 @@ def get_leave_cancelled_email_html(
                         <div style="margin-bottom: 12px;">
                             {status_badge_html("CANCELLED", "#9A3412", "#FFEDD5")}
                         </div>
-                        <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #000000; letter-spacing: -0.02em;">Leave Request Cancelled</h1>
+                        <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">Leave Request Cancelled</h1>
                     </td>
                 </tr>
 

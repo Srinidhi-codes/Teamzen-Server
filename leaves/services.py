@@ -133,6 +133,22 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
 
     year = from_date.year
 
+    # --- VALIDATE OVERLAPS ---
+    # Check if user already has an approved or pending leave during this period
+    overlapping_leaves = LeaveRequest.objects.filter(
+        user=user,
+        _status__in=['pending', 'approved'],
+        from_date__lte=to_date,
+        to_date__gte=from_date
+    )
+    if overlapping_leaves.exists():
+        overlap = overlapping_leaves.first()
+        raise Exception(
+            f"You already have a {overlap._status} {overlap.leave_type.name} request "
+            f"from {overlap.from_date} to {overlap.to_date}. "
+            "Overlapping leave requests are not allowed."
+        )
+
     balance = get_or_create_balance(user, leave_type, year)
 
     validate_balance(balance, duration)

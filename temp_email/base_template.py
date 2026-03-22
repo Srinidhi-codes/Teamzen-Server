@@ -19,6 +19,7 @@ def get_base_template(
             .content {{ padding: 0; }}
             .footer {{ padding: 24px 40px; background: #F8FAFC; text-align: center; border-top: 1px solid #E2E8F0; }}
             p {{ font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 16px 0; }}
+            h1 {{ color: #0F172A !important; }}
             .btn {{ display: inline-block; padding: 12px 24px; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; text-align: center; }}
         </style>
     </head>
