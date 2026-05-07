@@ -56,9 +56,9 @@ class PolicyFileListCreateView(generics.ListCreateAPIView):
                 # Use instance to update its status
                 instance = serializer.instance
                 service.process_file_content(instance, content, instance.file.public_id)
-                print(f"✅ Proactively processed file: {instance.title}")
+                print(f"[OK] Proactively processed file: {instance.title}")
         except Exception as e:
-            print(f"⚠️ Proactive processing failed: {str(e)}")
+            print(f"[WARN] Proactive processing failed: {str(e)}")
             # Fallback to background processing (signals already handle this)
             pass
 
@@ -249,7 +249,7 @@ class SmartAssistantChatView(APIView):
                 history_manager = self.get_history(request.user.id, context=context)
                 existing_messages = history_manager.messages
             except Exception as e:
-                print(f"❌ Redis History Error: {str(e)}")
+                print(f"[ERR] Redis History Error: {str(e)}")
                 return Response({'error': f'Redis History Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # 2. Add current query
@@ -258,15 +258,37 @@ class SmartAssistantChatView(APIView):
             # 3. Initialize State
             try:
                 org_id = request.user.organization.id if request.user.organization else 0
+                payslip_id = request.data.get('payslip_id') or request.data.get('payload', {}).get('payslip_id')
+                payslip_context = None
+                
+                if payslip_id:
+                    from payroll.models import Payslip
+                    try:
+                        payslip = Payslip.objects.get(id=payslip_id, user=request.user)
+                        components_str = "\n".join([f"- {c.component_name} ({c.component_type}): Rs {c.amount}" for c in payslip.components.all()])
+                        payslip_context = (
+                            f"Payslip for {payslip.payroll_run.month}/{payslip.payroll_run.year}\n"
+                            f"Gross Earnings: Rs {payslip.gross_earnings}\n"
+                            f"Total Deductions: Rs {payslip.total_deductions}\n"
+                            f"Net Pay: Rs {payslip.net_pay}\n"
+                            f"Worked Days: {payslip.worked_days}\n"
+                            f"LOP Days: {payslip.lop_days}\n"
+                            f"Components:\n{components_str}\n"
+                            f"HINT: When asked to explain this payslip, use the [PAYROLL_CARD] format specified in your instructions."
+                        )
+                    except Payslip.DoesNotExist:
+                        pass
+                
                 initial_state = {
                     "messages": all_messages,
                     "user_id": request.user.id,
                     "organization_id": org_id,
                     "latitude": request.data.get('latitude', 0),
                     "longitude": request.data.get('longitude', 0),
+                    "payslip_context": payslip_context,
                 }
             except Exception as e:
-                print(f"❌ State Initialization Error: {str(e)}")
+                print(f"[ERR] State Initialization Error: {str(e)}")
                 return Response({'error': f'State Initialization Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             q = queue.Queue()

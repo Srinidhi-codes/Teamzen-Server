@@ -5,10 +5,10 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from users.models import CustomUser
+from django.conf import settings
+from users.models import CustomUser, UserLoginHistory
 from rest_framework_simplejwt.views import TokenRefreshView
 from users.serializers import UserSerializer, UserDetailSerializer, RegisterSerializer, LoginSerializer
-from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -25,6 +25,30 @@ def get_cookie_settings(httponly=True):
         'samesite': 'None' if not settings.DEBUG else 'Lax',
         'path': '/',
     }
+
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+def get_location_from_ip(ip):
+    import requests
+    try:
+        # Internal / Private IP ranges
+        if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
+            return "Local Network"
+        response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('error'):
+                return "Unknown"
+            return f"{data.get('city', 'Unknown')}, {data.get('country_name', 'Unknown')}"
+    except Exception:
+        pass
+    return "Unknown"
 
 class UserViewSet(viewsets.ModelViewSet):
     """User management viewset"""
@@ -151,7 +175,21 @@ class LoginView(generics.GenericAPIView):
             **get_cookie_settings(httponly=False)
         )
 
+        # Log Login History
+        try:
+            ip = get_client_ip(request)
+            UserLoginHistory.objects.create(
+                user=user,
+                ip_address=ip,
+                location=get_location_from_ip(ip),
+                user_agent=request.META.get('HTTP_USER_AGENT'),
+                status='success'
+            )
+        except Exception as e:
+            print(f"Error logging login history: {e}")
+
         return response
+
 
 
 class CookieTokenRefreshView(TokenRefreshView):

@@ -14,6 +14,9 @@ from users.views import LoginView, CookieTokenRefreshView, RegisterView
 
 from django.views.decorators.csrf import csrf_exempt
 
+from django.conf import settings
+from django.conf.urls.static import static
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("graphql/", csrf_exempt(CustomGraphQLView.as_view(schema=schema))),
@@ -25,4 +28,8 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     path("api/ai/", include("ai_engine.urls")),
     path("api/", include("organizations.urls")),
+    path("api/", include("payroll.urls")),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

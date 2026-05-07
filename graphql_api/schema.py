@@ -1,4 +1,7 @@
 import strawberry
+from typing import List
+from strawberry.types import Info
+from users.graphql.types import UserLoginHistoryType
 
 from users.graphql.queries import UserQuery
 from attendance.graphql.queries import AttendanceQuery
@@ -11,20 +14,26 @@ from organizations.graphql.mutations import OrganizationMutation
 from notifications.graphql.queries import NotificationQuery
 from notifications.graphql.mutations import NotificationMutation
 from graphql_api.dashboard_queries import DashboardQuery
+from payroll.graphql.queries import PayrollQuery
+from payroll.graphql.mutations import PayrollMutation
 
 @strawberry.type
-class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery):
+class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery, PayrollQuery):
     """
     Root Query:
     - me
     - myAttendance
     - attendanceByUser
     """
-    pass
+    @strawberry.field(name="globalLoginHistory")
+    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> List[UserLoginHistoryType]:
+        from users.graphql.queries import UserQuery
+        return UserQuery().global_login_history(info, page, page_size)
+
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation):
+class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation):
     """
     Root Mutation:
     - login (REST preferred)
@@ -39,3 +48,4 @@ schema = strawberry.Schema(
     query=Query,
     mutation=Mutation
 )
+ 
