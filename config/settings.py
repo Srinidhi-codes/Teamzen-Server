@@ -254,6 +254,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = []
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 # Legacy settings for compatibility
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
@@ -314,11 +317,14 @@ SESSION_COOKIE_SECURE = not DEBUG  # True in production
 CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
-# Cloudinary Configuration
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
     'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+    'STATIC_TAG': 'static',
+    'MEDIA_TAG': 'media',
+    'RESOURCE_TYPE': 'auto',
+    'PRESERVE_EXTENSIONS': True,
 }
 # Celery Configuration
 # Use Redis as the primary message broker on DB 0 explicitly
@@ -388,7 +394,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Email Configuration
-EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
+# EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 BREVO_API_KEY = os.getenv('BREVO_API_KEY')
 # SMTP is no longer used, but kept for fallback or legacy logic
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
@@ -399,3 +406,4 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+ 

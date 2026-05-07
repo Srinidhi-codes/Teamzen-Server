@@ -3,8 +3,8 @@ from typing import Optional, List
 from strawberry.types import Info
 from django.db.models import Q
 
-from users.models import CustomUser
-from users.graphql.types import UserType
+from users.models import CustomUser, UserLoginHistory
+from users.graphql.types import UserType, UserLoginHistoryType
 
 
 # =====================================================
@@ -197,3 +197,15 @@ class UserQuery:
             subordinates=subordinates,
             peers=peers
         )
+
+    @strawberry.field(name="globalLoginHistory")
+    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> List[UserLoginHistoryType]:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Unauthorized")
+        
+        qs = UserLoginHistory.objects.select_related('user').filter(user__organization=user.organization)
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        return list(qs[start:end])

@@ -80,6 +80,7 @@ class LeaveQuery:
     def getLeaveRequests(
         self,
         info,
+        approvals_only: Optional[bool] = False
     ) -> List[LeaveRequestType]:
         user = info.context.request.user
         if user.role == 'superadmin':
@@ -88,15 +89,21 @@ class LeaveQuery:
         if not user.is_authenticated or not user.organization_id:
             return LeaveRequest.objects.none()
 
-        if user.role in ['admin', 'hr']:
-            return LeaveRequest.objects.filter(user__organization_id=user.organization_id)
-        elif user.role == 'manager':
-            return LeaveRequest.objects.filter(
-                Q(user=user) | Q(user__manager=user),
-                user__organization_id=user.organization_id
-            )
-        else:
-            return LeaveRequest.objects.filter(user=user)
+        if approvals_only:
+            if user.role in ['admin', 'hr']:
+                # Admins/HR see everything to approve/review
+                return LeaveRequest.objects.filter(user__organization_id=user.organization_id)
+            elif user.role == 'manager':
+                # Managers see their direct reports
+                return LeaveRequest.objects.filter(
+                    user__manager=user,
+                    user__organization_id=user.organization_id
+                )
+            else:
+                return LeaveRequest.objects.none()
+        
+        # Default: only return current user's leaves
+        return LeaveRequest.objects.filter(user=user)
 
     @strawberry.field
     def team_leaves(

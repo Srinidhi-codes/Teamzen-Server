@@ -2,9 +2,33 @@ from typing import Optional, List
 import strawberry
 from strawberry import auto
 import strawberry.django
-from users.models import CustomUser
+from strawberry.types import Info
+from users.models import CustomUser, UserLoginHistory
 from organizations.models import Department, Designation, OfficeLocation
 from organizations.graphql.types import OfficeLocationType, OrganizationType, DepartmentType, DesignationType
+
+@strawberry.type
+class SalaryStructureSummaryType:
+    id: strawberry.ID
+    name: str
+
+@strawberry.type
+class SalarySummaryType:
+    id: strawberry.ID
+    annual_ctc: float
+    effective_from: str
+    is_active: bool
+    salary_structure: SalaryStructureSummaryType
+
+@strawberry.django.type(UserLoginHistory)
+class UserLoginHistoryType:
+    id: auto
+    login_time: auto = strawberry.field(name="loginTime")
+    ip_address: auto = strawberry.field(name="ipAddress")
+    user_agent: auto = strawberry.field(name="userAgent")
+    location: auto = strawberry.field(name="location")
+    status: auto = strawberry.field(name="status")
+    user: 'UserType' = strawberry.field(name="user")
 
 @strawberry.django.type(CustomUser)
 class UserType:
@@ -39,12 +63,37 @@ class UserType:
     pan_number: auto
     aadhar_number: auto
     uan_number: auto
+    
+    @strawberry.field
+    def salary_details(self) -> Optional[SalarySummaryType]:
+        struct = self.salary_structures.filter(is_active=True).first()
+        if not struct:
+            return None
+        return SalarySummaryType(
+            id=str(struct.id),
+            annual_ctc=float(struct.annual_ctc),
+            effective_from=str(struct.effective_from),
+            is_active=struct.is_active,
+            salary_structure=SalaryStructureSummaryType(
+                id=str(struct.salary_structure.id),
+                name=struct.salary_structure.name
+            )
+        )
 
     has_seen_onboarding: auto
     has_seen_ai_onboarding: auto
 
     created_at: auto
     updated_at: auto
+
+    @strawberry.field(name="loginHistory")
+    def login_history(self, info: Info, limit: int = 10) -> List[UserLoginHistoryType]:
+        user = info.context.request.user
+        # Admins can see history for any user, others can only see their own
+        if user.role not in ['admin', 'superadmin', 'hr'] and str(self.id) != str(user.id):
+            return []
+        
+        return self.login_history.all()[:limit]
 
     @strawberry.field
     def attendance_rate(self) -> float:

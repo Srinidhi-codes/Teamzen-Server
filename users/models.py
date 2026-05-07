@@ -57,6 +57,10 @@ class CustomUser(AbstractUser):
     pan_number = models.CharField(max_length=20, null=True, blank=True)
     uan_number = models.CharField(max_length=100, null=True, blank=True)
     
+    # Razorpay Integration
+    razorpay_contact_id = models.CharField(max_length=100, null=True, blank=True)
+    razorpay_fund_account_id = models.CharField(max_length=100, null=True, blank=True)
+    
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
@@ -82,6 +86,22 @@ class CustomUser(AbstractUser):
 
     def has_role(self, role_name):
         return self.role == role_name
+
+class UserLoginHistory(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='login_history')
+    login_time = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    location = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(max_length=20, default='success') # success, failed
+
+    class Meta:
+        ordering = ['-login_time']
+        verbose_name_plural = "User Login Histories"
+
+    def __str__(self):
+        return f"{self.user.email} logged in at {self.login_time}"
+
     
 
 

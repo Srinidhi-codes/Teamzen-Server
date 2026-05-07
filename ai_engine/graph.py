@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     organization_id: int
     latitude: Optional[float]
     longitude: Optional[float]
+    payslip_context: Optional[str]
 
 # Define the tools
 tools = [get_leave_balances, apply_for_leave, get_attendance_today, search_policies, get_leave_types, mark_attendance, check_team_availability, get_team_stats, list_pending_leaves, cancel_leave, suggest_leave_window, get_attendance_trends, generate_monthly_summary]
@@ -101,20 +102,22 @@ def call_model(state: AgentState):
         "6. Attendance Trends & Anomalies: Use 'get_attendance_trends' to detect patterns in user attendance (laters, missing checkouts, or drop in rate).\n"
         
         "Formatting Instructions:\n"
-        "1. Be professional, concise, and helpful. Use MARKDOWN for headers and lists.\n"
-        "2. When presenting leave balances, use:\n"
+        "1. CRITICAL: When explaining or summarizing a payslip, you MUST produce a [PAYROLL_CARD] as your FIRST action. DO NOT use plain text for the breakdown.\n"
+        "   Example: [PAYROLL_CARD] month: May | year: 2026 | gross: 35000 | net: 34800 | deductions: 200 | worked_days: 31 | lop: 0 | earnings_breakdown: {Basic Pay:25000, HRA:10000} | deductions_breakdown: {Professional Tax:200} [/PAYROLL_CARD]\n"
+        "2. Be professional, concise, and helpful. Use MARKDOWN for headers and lists outside of cards.\n"
+        "3. When presenting leave balances, use:\n"
         "   [BALANCE_CARD] Name: {leave_name} | Total: {total} | Used: {used} | Available: {available} [/BALANCE_CARD]\n"
-        "   When SUGGESTING or LISTING available leave types, use:\n"
-        "   [LEAVE_TYPE_CARD] name: {leave_name} | description: {short_desc} | availability: {Recommended/Busy/Fair} | id: {leave_type_id} [/LEAVE_TYPE_CARD]\n"
-        "3. When marking attendance or reporting attendance success/error, use:\n"
+        "4. When marking attendance or reporting attendance success/error, use:\n"
         "   [ATTENDANCE_CARD] Action: {Check-in/out} | Status: {status} | Time: {time} | Office: {office} [/ATTENDANCE_CARD]\n"
-        "4. When listing pending leaves (e.g., for cancellation), ALWAYS use:\n"
-        "   [PENDING_LEAVE_CARD] id: {request_id} | type: {leave_type} | from: {from_date} | to: {to_date} | duration: {days} | reason: {reason} [/PENDING_LEAVE_CARD]\n"
         "5. For proactive insights (availability, anomalies, trends, or policy details), ALWAYS use:\n"
         "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | topic: {Topic} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
-        "6. For errors, use:\n"
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
     )
+    
+    payslip_ctx = state.get('payslip_context')
+    if payslip_ctx:
+        system_prompt += f"\n\n--- PAYSLIP CONTEXT ---\nThe user is currently viewing the following payslip. Answer any questions about their salary, deductions, or LOP based ONLY on this data:\n{payslip_ctx}"
+
     
     response = llm.invoke([SystemMessage(content=system_prompt)] + list(messages))
     return {"messages": [response]}
