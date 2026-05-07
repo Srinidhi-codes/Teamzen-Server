@@ -37,15 +37,44 @@ def get_client_ip(request):
 def get_location_from_ip(ip):
     import requests
     try:
+        # Normalize IPv6-mapped IPv4 addresses
+        if ip and ip.startswith('::ffff:'):
+            ip = ip.replace('::ffff:', '')
+
         # Internal / Private IP ranges
-        if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
+        if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.') or ip == '::1':
             return "Local Network"
-        response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('error'):
-                return "Unknown"
-            return f"{data.get('city', 'Unknown')}, {data.get('country_name', 'Unknown')}"
+        
+        # Try Provider 1: ipapi.co
+        try:
+            response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if not data.get('error'):
+                    city = data.get('city', 'Unknown')
+                    region = data.get('region', '')
+                    country = data.get('country_name', 'Unknown')
+                    if region:
+                        return f"{city}, {region}, {country}"
+                    return f"{city}, {country}"
+        except Exception:
+            pass
+
+        # Try Provider 2: ip-api.com (Fallback)
+        try:
+            response = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 'success':
+                    city = data.get('city', 'Unknown')
+                    region = data.get('regionName', '')
+                    country = data.get('country', 'Unknown')
+                    if region:
+                        return f"{city}, {region}, {country}"
+                    return f"{city}, {country}"
+        except Exception:
+            pass
+            
     except Exception:
         pass
     return "Unknown"
