@@ -101,7 +101,7 @@ class OrganizationMutation:
         input: CreateOrganizationInput,
     ) -> OrganizationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role != 'admin':
+        if user.is_anonymous or user.role not in ['admin', 'superadmin']:
             raise GraphQLError("Not authorized")
 
         org = Organization.objects.create(**vars(input))
@@ -114,7 +114,7 @@ class OrganizationMutation:
         input: OrganizationInput
     ) -> OrganizationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role != 'admin':
+        if user.is_anonymous or user.role not in ['admin', 'superadmin']:
             raise Exception("Not authorized")
 
         org = Organization.objects.get(id=input.id)
@@ -133,7 +133,7 @@ class OrganizationMutation:
         self,info,organization_id: strawberry.ID
     ) -> OrganizationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role != 'admin':
+        if user.is_anonymous or user.role not in ['admin', 'superadmin']:
             raise Exception("Not authorized")
 
         org = Organization.objects.get(id=organization_id)
@@ -146,7 +146,7 @@ class OrganizationMutation:
         self,info,organization_id: strawberry.ID
     ) -> OrganizationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role != 'admin':
+        if user.is_anonymous or user.role not in ['admin', 'superadmin']:
             raise Exception("Not authorized")
 
         org = Organization.objects.get(id=organization_id)
@@ -163,7 +163,7 @@ class OrganizationMutation:
         input: CreateOfficeLocationInput,
     ) -> OfficeLocationType:
         user = info.context.request.user
-        if  user.role not in ["admin","hr", "manager"]:
+        if user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         off_loc = OfficeLocation.objects.create(**vars(input))

@@ -1,5 +1,6 @@
 import strawberry
 from strawberry.types import Info
+from strawberry.file_uploads import Upload
 from django.contrib.auth import get_user_model
 from .types import UserType
 
@@ -52,6 +53,7 @@ class CreateUserInput:
     is_staff: bool = False
     is_verified: bool = False
     is_active: bool = True
+    profile_picture: Upload | None = None
 
 @strawberry.input
 class UpdateUserInput:
@@ -78,6 +80,7 @@ class UpdateUserInput:
     is_staff: bool = False
     is_verified: bool = False
     is_active: bool = True
+    profile_picture: Upload | None = None
 
 @strawberry.type
 class UserPayload:
@@ -131,9 +134,9 @@ class UserMutation:
     @strawberry.mutation
     def create_user(self, info: Info, input: CreateUserInput) -> UserPayload:
         user = info.context.request.user
-        # Only admin or HR/Manager can create users - simplistic check
-        if not user.role in ["admin", "hr", "manager"]:
-             return UserPayload(error="Not authenticated")
+        # Only superadmin, admin, HR, or Manager can create users
+        if not user.role in ["superadmin", "admin", "hr", "manager"]:
+             return UserPayload(error="Not authorized")
         
         try:
             new_user = User.objects.create_user(
@@ -168,8 +171,8 @@ class UserMutation:
     @strawberry.mutation
     def update_user(self, info: Info, user_id: str, input: UpdateUserInput) -> UserPayload:
         request_user = info.context.request.user
-        if not request_user.is_authenticated:
-            return UserPayload(error="Not authenticated")
+        if not request_user.is_authenticated or request_user.role not in ["superadmin", "admin", "hr", "manager"]:
+            return UserPayload(error="Not authorized")
         
         try:
             # Fix: User is defined as get_user_model() at module level
@@ -198,10 +201,29 @@ class UserMutation:
     @strawberry.mutation
     def user_status(self, info: Info, input: UserStatusInput) -> UserType:
         request_user = info.context.request.user
-        if not request_user.is_authenticated or request_user.role not in ["admin", "hr", "manager"]:
+        if not request_user.is_authenticated or request_user.role not in ["superadmin", "admin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         user_to_update = User.objects.get(id=input.user_id)
         user_to_update.is_active = input.is_active
         user_to_update.save(update_fields=['is_active'])
         return user_to_update
+    @strawberry.mutation
+    def update_login_location(self, info: Info, latitude: float, longitude: float) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return False
+        
+        from users.models import UserLoginHistory
+        from users.views import get_location_from_ip
+        
+        # Get the most recent login record for this user that lacks location
+        latest_log = UserLoginHistory.objects.filter(user=user).order_by('-login_time').first()
+        
+        if latest_log:
+            latest_log.latitude = latitude
+            latest_log.longitude = longitude
+            latest_log.location = get_location_from_ip(None, lat=latitude, lon=longitude)
+            latest_log.save()
+            return True
+        return False

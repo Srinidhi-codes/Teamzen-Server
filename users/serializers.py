@@ -82,6 +82,8 @@ class LoginSerializer(serializers.Serializer):
     """Login serializer"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    latitude = serializers.DecimalField(max_digits=25, decimal_places=10, required=False)
+    longitude = serializers.DecimalField(max_digits=25, decimal_places=10, required=False)
 
     def validate(self, data):
         user = authenticate(username=data['email'], password=data['password'])

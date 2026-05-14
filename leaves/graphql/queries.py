@@ -15,95 +15,139 @@ class LeaveQuery:
     def leave_types(
         self,
         info,
+        search: Optional[str] = None,
     ) -> List[LeaveTypeType]:
         user = info.context.request.user
+        queryset = LeaveType.objects.all()
 
-        if user.role == 'superadmin':
-            return LeaveType.objects.all()
-        if user.is_authenticated and user.organization_id:
-            return LeaveType.objects.filter(organization_id=user.organization_id)
-        return LeaveType.objects.none()
+        if user.role != 'superadmin':
+            if user.is_authenticated and user.organization_id:
+                queryset = queryset.filter(organization_id=user.organization_id)
+            else:
+                return LeaveType.objects.none()
+
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | 
+                Q(code__icontains=search)
+            )
+
+        return queryset
 
     @strawberry.field
     def leave_balance(
         self,
         info,
         all_org: Optional[bool] = False,
+        search: Optional[str] = None,
     ) -> List[LeaveBalanceType]:
 
         user = info.context.request.user
-        if user.role == 'superadmin':
-            return LeaveBalance.objects.all()
-        
-        if not user.is_authenticated or not user.organization_id:
-            return LeaveBalance.objects.none()
+        queryset = LeaveBalance.objects.all()
 
-        # If all_org is True and user has permission, show all in organization
-        if all_org:
-            if user.role in ['admin', 'hr']:
-                return LeaveBalance.objects.filter(user__organization_id=user.organization_id)
-            elif user.role == 'manager':
-                return LeaveBalance.objects.filter(
-                    Q(user=user) | Q(user__manager=user),
-                    user__organization_id=user.organization_id
-                )
+        if user.role != 'superadmin':
+            if not user.is_authenticated or not user.organization_id:
+                return LeaveBalance.objects.none()
+
+            # If all_org is True and user has permission, show all in organization
+            if all_org:
+                if user.role in ['admin', 'hr']:
+                    queryset = queryset.filter(user__organization_id=user.organization_id)
+                elif user.role == 'manager':
+                    queryset = queryset.filter(
+                        Q(user=user) | Q(user__manager=user),
+                        user__organization_id=user.organization_id
+                    )
+            else:
+                # Default to only returning the current user's balance
+                queryset = queryset.filter(user=user)
+
+        if search:
+            queryset = queryset.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(user__department__name__icontains=search) |
+                Q(user__organization__name__icontains=search)
+            )
         
-        # Default to only returning the current user's balance
-        return LeaveBalance.objects.filter(user=user)
+        return queryset
 
     @strawberry.field
     def leave_requests(
         self,
         info,
         organization_id: Optional[LeaveInput] = None,
+        search: Optional[str] = None,
     ) -> List[LeaveRequestType]:
         user = info.context.request.user
+        queryset = LeaveRequest.objects.all()
+
         if user.role == 'superadmin':
             if organization_id:
-                return LeaveRequest.objects.filter(user__organization_id=organization_id.organization_id)
-            return LeaveRequest.objects.all()
-        
-        if not user.is_authenticated or not user.organization_id:
-            return LeaveRequest.objects.none()
-
-        if user.role in ['admin', 'hr']:
-            return LeaveRequest.objects.filter(user__organization_id=user.organization_id)
-        elif user.role == 'manager':
-            return LeaveRequest.objects.filter(
-                Q(user=user) | Q(user__manager=user),
-                user__organization_id=user.organization_id
-            )
+                queryset = queryset.filter(user__organization_id=organization_id.organization_id)
         else:
-            return LeaveRequest.objects.filter(user=user)
+            if not user.is_authenticated or not user.organization_id:
+                return LeaveRequest.objects.none()
+
+            if user.role in ['admin', 'hr']:
+                queryset = queryset.filter(user__organization_id=user.organization_id)
+            elif user.role == 'manager':
+                queryset = queryset.filter(
+                    Q(user=user) | Q(user__manager=user),
+                    user__organization_id=user.organization_id
+                )
+            else:
+                queryset = queryset.filter(user=user)
+
+        if search:
+            queryset = queryset.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(leave_type__name__icontains=search) |
+                Q(_status__icontains=search)
+            )
+
+        return queryset
 
     @strawberry.field
     def getLeaveRequests(
         self,
         info,
-        approvals_only: Optional[bool] = False
+        approvals_only: Optional[bool] = False,
+        search: Optional[str] = None,
     ) -> List[LeaveRequestType]:
         user = info.context.request.user
-        if user.role == 'superadmin':
-            return LeaveRequest.objects.all()
-        
-        if not user.is_authenticated or not user.organization_id:
-            return LeaveRequest.objects.none()
+        queryset = LeaveRequest.objects.all()
 
-        if approvals_only:
-            if user.role in ['admin', 'hr']:
-                # Admins/HR see everything to approve/review
-                return LeaveRequest.objects.filter(user__organization_id=user.organization_id)
-            elif user.role == 'manager':
-                # Managers see their direct reports
-                return LeaveRequest.objects.filter(
-                    user__manager=user,
-                    user__organization_id=user.organization_id
-                )
-            else:
+        if user.role != 'superadmin':
+            if not user.is_authenticated or not user.organization_id:
                 return LeaveRequest.objects.none()
+
+            if approvals_only:
+                if user.role in ['admin', 'hr']:
+                    # Admins/HR see everything to approve/review
+                    queryset = queryset.filter(user__organization_id=user.organization_id)
+                elif user.role == 'manager':
+                    # Managers see their direct reports
+                    queryset = queryset.filter(
+                        user__manager=user,
+                        user__organization_id=user.organization_id
+                    )
+                else:
+                    return LeaveRequest.objects.none()
+            else:
+                # Default: only return current user's leaves
+                queryset = queryset.filter(user=user)
+
+        if search:
+            queryset = queryset.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(leave_type__name__icontains=search) |
+                Q(_status__icontains=search)
+            )
         
-        # Default: only return current user's leaves
-        return LeaveRequest.objects.filter(user=user)
+        return queryset
 
     @strawberry.field
     def team_leaves(
@@ -123,8 +167,22 @@ class LeaveQuery:
         ).exclude(user=user).order_by('from_date')
 
     @strawberry.field
-    def company_holidays(self, info) -> List[CompanyHolidayType]:
+    def company_holidays(self, info, search: Optional[str] = None) -> List[CompanyHolidayType]:
         user = info.context.request.user
-        if not user.is_authenticated or not user.organization_id:
+        queryset = CompanyHoliday.objects.all()
+
+        if not user.is_authenticated:
             return []
-        return CompanyHoliday.objects.filter(organization_id=user.organization_id)
+        
+        if user.role != 'superadmin':
+            if not user.organization_id:
+                return []
+            queryset = queryset.filter(organization_id=user.organization_id)
+            
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | 
+                Q(description__icontains=search)
+            )
+
+        return queryset

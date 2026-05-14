@@ -42,8 +42,9 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = ['*']
 
 # Proxy settings for Docker/Nginx
-USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
 CLIENT_URL = os.getenv('CLIENT_URL', 'http://localhost:3000')
 

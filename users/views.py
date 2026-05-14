@@ -34,47 +34,46 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
-def get_location_from_ip(ip):
+def get_location_from_ip(ip, lat=None, lon=None):
     import requests
     try:
-        # Normalize IPv6-mapped IPv4 addresses
-        if ip and ip.startswith('::ffff:'):
-            ip = ip.replace('::ffff:', '')
+        # If we have precise coordinates, use them for reverse geocoding (Nominatim / OSM)
+        if lat and lon:
+            try:
+                headers = {'User-Agent': 'Teamzen/1.0'}
+                response = requests.get(
+                    f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10", 
+                    headers=headers,
+                    timeout=3
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    address = data.get('address', {})
+                    city = (
+                        address.get('city') or 
+                        address.get('town') or 
+                        address.get('village') or 
+                        address.get('suburb') or 
+                        address.get('state_district') or 
+                        address.get('neighbourhood') or 
+                        address.get('county') or 
+                        'Unknown'
+                    )
+                    country = address.get('country', 'Unknown')
+                    return f"{city}, {country}"
+            except Exception:
+                pass
 
-        # Internal / Private IP ranges
-        if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.') or ip == '::1':
+        # Fallback to IP-based location
+        if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
             return "Local Network"
-        
-        # Try Provider 1: ipapi.co
-        try:
-            response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
-            if response.status_code == 200:
-                data = response.json()
-                if not data.get('error'):
-                    city = data.get('city', 'Unknown')
-                    region = data.get('region', '')
-                    country = data.get('country_name', 'Unknown')
-                    if region:
-                        return f"{city}, {region}, {country}"
-                    return f"{city}, {country}"
-        except Exception:
-            pass
-
-        # Try Provider 2: ip-api.com (Fallback)
-        try:
-            response = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('status') == 'success':
-                    city = data.get('city', 'Unknown')
-                    region = data.get('regionName', '')
-                    country = data.get('country', 'Unknown')
-                    if region:
-                        return f"{city}, {region}, {country}"
-                    return f"{city}, {country}"
-        except Exception:
-            pass
             
+        response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('error'):
+                return "Unknown"
+            return f"{data.get('city', 'Unknown')}, {data.get('country_name', 'Unknown')}"
     except Exception:
         pass
     return "Unknown"
@@ -107,6 +106,27 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         print(f"Update profile errors: {serializer.errors}") # Debugging
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], parser_classes=[parsers.MultiPartParser, parsers.FormParser])
+    def upload_photo(self, request, pk=None):
+        """Upload a photo for a specific user"""
+        user_to_update = self.get_object()
+        
+        # Authorization: only admin, superadmin or the user themselves
+        if request.user.role not in ['admin', 'superadmin', 'hr'] and str(request.user.id) != str(user_to_update.id):
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+            
+        photo = request.FILES.get('profile_picture')
+        if not photo:
+            return Response({'error': 'No photo provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user_to_update.profile_picture = photo
+        user_to_update.save()
+        
+        return Response({
+            'success': True, 
+            'profile_picture_url': user_to_update.profile_picture.url
+        })
 
     @action(detail=False, methods=['post'])
     def change_password(self, request):
@@ -204,13 +224,19 @@ class LoginView(generics.GenericAPIView):
             **get_cookie_settings(httponly=False)
         )
 
+        # Coordinates (optional - we'll sync later if missing)
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+
         # Log Login History
         try:
             ip = get_client_ip(request)
             UserLoginHistory.objects.create(
                 user=user,
                 ip_address=ip,
-                location=get_location_from_ip(ip),
+                location=get_location_from_ip(ip, lat=latitude, lon=longitude),
+                latitude=latitude,
+                longitude=longitude,
                 user_agent=request.META.get('HTTP_USER_AGENT'),
                 status='success'
             )
