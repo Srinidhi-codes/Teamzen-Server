@@ -37,6 +37,14 @@ class PaginatedUserResponse:
 
 
 @strawberry.type
+class PaginatedLoginHistoryResponse:
+    results: List[UserLoginHistoryType]
+    total: int
+    page: int
+    page_size: int
+
+
+@strawberry.type
 class TeamHierarchyResponse:
     manager: Optional[UserType]
     user: UserType
@@ -199,13 +207,41 @@ class UserQuery:
         )
 
     @strawberry.field(name="globalLoginHistory")
-    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> List[UserLoginHistoryType]:
+    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> PaginatedLoginHistoryResponse:
         user = info.context.request.user
         if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
             raise Exception("Unauthorized")
         
-        qs = UserLoginHistory.objects.select_related('user').filter(user__organization=user.organization)
+        qs = UserLoginHistory.objects.select_related('user').filter(user__organization=user.organization).order_by('-login_time')
+        total = qs.count()
         
         start = (page - 1) * page_size
         end = start + page_size
-        return list(qs[start:end])
+        results = list(qs[start:end])
+        
+        return PaginatedLoginHistoryResponse(
+            results=results,
+            total=total,
+            page=page,
+            page_size=page_size
+        )
+
+    @strawberry.field(name="mySecurityLogs")
+    def my_security_logs(self, info: Info, page: int = 1, page_size: int = 10) -> PaginatedLoginHistoryResponse:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Unauthorized")
+        
+        qs = UserLoginHistory.objects.filter(user=user).order_by('-login_time')
+        total = qs.count()
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        results = list(qs[start:end])
+        
+        return PaginatedLoginHistoryResponse(
+            results=results,
+            total=total,
+            page=page,
+            page_size=page_size
+        )

@@ -108,7 +108,7 @@ class DashboardQuery:
     @strawberry.field
     def admin_dashboard_stats(self, info) -> AdminDashboardStats:
         user = info.context.request.user
-        if not user.is_authenticated or user.role not in ['admin', 'hr', 'manager']:
+        if not user.is_authenticated or user.role not in ['superadmin', 'admin', 'hr', 'manager']:
             raise Exception("Unauthorized")
 
         # 0. Define scope filters based on role to prevent hierarchy leakage

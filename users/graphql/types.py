@@ -27,6 +27,8 @@ class UserLoginHistoryType:
     ip_address: auto = strawberry.field(name="ipAddress")
     user_agent: auto = strawberry.field(name="userAgent")
     location: auto = strawberry.field(name="location")
+    latitude: auto = strawberry.field(name="latitude")
+    longitude: auto = strawberry.field(name="longitude")
     status: auto = strawberry.field(name="status")
     user: 'UserType' = strawberry.field(name="user")
 

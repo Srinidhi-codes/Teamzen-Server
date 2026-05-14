@@ -131,7 +131,7 @@ class AttendanceMutation:
             raise GraphQLError("Authentication required")
 
         # # 🔐 Role check
-        if approver.role not in ["admin", "hr", "manager"]:
+        if approver.role not in ["admin", "superadmin", "hr", "manager"]:
             raise GraphQLError("Not authorized")
 
         # 🔎 Fetch correction

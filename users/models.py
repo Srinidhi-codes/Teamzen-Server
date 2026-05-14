@@ -93,6 +93,8 @@ class UserLoginHistory(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
     location = models.CharField(max_length=255, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=25, decimal_places=10, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=25, decimal_places=10, null=True, blank=True)
     status = models.CharField(max_length=20, default='success') # success, failed
 
     class Meta:

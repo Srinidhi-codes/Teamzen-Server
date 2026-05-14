@@ -170,6 +170,9 @@ class LeaveMutation:
     def create_leave_type(
         self, info, input: LeaveTypeInput
     ) -> LeaveTypeType:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         leave_type = LeaveType.objects.create(**input.__dict__)
 
         # Initialize balances for all users
@@ -181,6 +184,9 @@ class LeaveMutation:
     def update_leave_type(
         self, info, input: UpdateLeaveTypeInput
     ) -> LeaveTypeType:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         leave_type = LeaveType.objects.get(organization_id=input.organization_id, id=input.id)
 
         update_data = {
@@ -192,6 +198,9 @@ class LeaveMutation:
 
     @strawberry.mutation
     def delete_leave_type(self, info, id: strawberry.ID) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         LeaveType.objects.filter(id=id).delete()
         return True
 
@@ -265,6 +274,8 @@ class LeaveMutation:
             )
             balance = get_or_create_balance(req.user, req.leave_type, req.from_date.year)
             admin_user = info.context.request.user
+            if not admin_user.is_authenticated or admin_user.role not in ['admin', 'superadmin', 'hr', 'manager']:
+                raise Exception("Not authorized")
 
             if input.status == LeaveStatus.APPROVED:
                 from leaves.services import approve_leave_request
@@ -299,12 +310,18 @@ class LeaveMutation:
     def create_company_holiday(
         self, info, input: CompanyHolidayInput
     ) -> CompanyHolidayType:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         return CompanyHoliday.objects.create(**input.__dict__)
 
     @strawberry.mutation
     def update_company_holiday(
         self, info, input: UpdateCompanyHolidayInput
     ) -> CompanyHolidayType:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         holiday = CompanyHoliday.objects.get(
             organization_id=input.organization_id, id=input.id
         )
@@ -318,6 +335,9 @@ class LeaveMutation:
 
     @strawberry.mutation
     def delete_company_holiday(self, info, id: strawberry.ID) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            raise Exception("Not authorized")
         CompanyHoliday.objects.filter(id=id).delete()
         return True
 
