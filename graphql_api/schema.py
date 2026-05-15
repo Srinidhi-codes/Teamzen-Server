@@ -1,8 +1,4 @@
 import strawberry
-from typing import List
-from strawberry.types import Info
-from users.graphql.types import UserLoginHistoryType
-
 from users.graphql.queries import UserQuery
 from attendance.graphql.queries import AttendanceQuery
 from attendance.graphql.mutations import AttendanceMutation
@@ -25,10 +21,7 @@ class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, Notificat
     - myAttendance
     - attendanceByUser
     """
-    @strawberry.field(name="globalLoginHistory")
-    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> List[UserLoginHistoryType]:
-        from users.graphql.queries import UserQuery
-        return UserQuery().global_login_history(info, page, page_size)
+
 
 
 

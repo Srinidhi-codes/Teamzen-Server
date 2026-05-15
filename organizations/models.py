@@ -16,6 +16,7 @@ class Organization(models.Model):
         ('elite', 'Elite'),
     ]
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    llm_api_key = models.CharField(max_length=255, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

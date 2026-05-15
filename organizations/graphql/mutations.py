@@ -13,6 +13,7 @@ class OrganizationInput:
     pan_number: Optional[str]
     registration_number: Optional[str]
     headquarters_address: Optional[str]
+    llm_api_key: Optional[str] = None
     is_active: bool
     id: strawberry.ID
     
@@ -24,6 +25,7 @@ class CreateOrganizationInput:
     pan_number: Optional[str]
     registration_number: Optional[str]
     headquarters_address: Optional[str]
+    llm_api_key: Optional[str] = None
     is_active: bool
     
 @strawberry.input
@@ -124,6 +126,7 @@ class OrganizationMutation:
         org.pan_number = input.pan_number
         org.registration_number = input.registration_number
         org.headquarters_address = input.headquarters_address
+        org.llm_api_key = input.llm_api_key
         org.is_active = input.is_active
         org.save()
         return org
