@@ -20,8 +20,11 @@ class LeaveQuery:
         user = info.context.request.user
         queryset = LeaveType.objects.all()
 
+        if not user.is_authenticated:
+            return LeaveType.objects.none()
+
         if user.role != 'superadmin':
-            if user.is_authenticated and user.organization_id:
+            if user.organization_id:
                 queryset = queryset.filter(organization_id=user.organization_id)
             else:
                 return LeaveType.objects.none()
@@ -45,8 +48,11 @@ class LeaveQuery:
         user = info.context.request.user
         queryset = LeaveBalance.objects.all()
 
+        if not user.is_authenticated:
+            return LeaveBalance.objects.none()
+
         if user.role != 'superadmin':
-            if not user.is_authenticated or not user.organization_id:
+            if not user.organization_id:
                 return LeaveBalance.objects.none()
 
             # If all_org is True and user has permission, show all in organization
@@ -82,11 +88,14 @@ class LeaveQuery:
         user = info.context.request.user
         queryset = LeaveRequest.objects.all()
 
+        if not user.is_authenticated:
+            return LeaveRequest.objects.none()
+
         if user.role == 'superadmin':
             if organization_id:
                 queryset = queryset.filter(user__organization_id=organization_id.organization_id)
         else:
-            if not user.is_authenticated or not user.organization_id:
+            if not user.organization_id:
                 return LeaveRequest.objects.none()
 
             if user.role in ['admin', 'hr']:
@@ -119,8 +128,11 @@ class LeaveQuery:
         user = info.context.request.user
         queryset = LeaveRequest.objects.all()
 
+        if not user.is_authenticated:
+            return LeaveRequest.objects.none()
+
         if user.role != 'superadmin':
-            if not user.is_authenticated or not user.organization_id:
+            if not user.organization_id:
                 return LeaveRequest.objects.none()
 
             if approvals_only:

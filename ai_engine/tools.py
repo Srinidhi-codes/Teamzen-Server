@@ -441,7 +441,7 @@ def suggest_leave_window(user_id: int, month: int = None):
                 holiday_context = f" since it's close to the '{nearby_holiday_name}' holiday"
 
         message = (
-            f"I recommend taking a leave on **{best_window.strftime('%A, %b %d')}**{holiday_context}. "
+            f"I recommend taking a leave on {best_window.strftime('%A, %b %d')}{holiday_context}. "
             f"Team absence in your department is low on this day ({daily_absence.get(best_window, 0)} people out), "
             f"and you still have {available_days} days of leave remaining for the year."
         )

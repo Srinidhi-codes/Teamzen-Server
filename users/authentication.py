@@ -12,4 +12,23 @@ class CookieJWTAuthentication(JWTAuthentication):
             return None
 
         validated_token = self.get_validated_token(raw_token)
-        return self.get_user(validated_token), validated_token
+        user = self.get_user(validated_token)
+        
+        # Check if the device session has been revoked
+        refresh_jti = validated_token.get("refresh_jti")
+        if refresh_jti:
+            from users.models import UserDeviceSession
+            from rest_framework.exceptions import AuthenticationFailed
+            from django.utils import timezone
+            
+            session = UserDeviceSession.objects.filter(jti=refresh_jti).first()
+            if session:
+                if not session.is_active:
+                    raise AuthenticationFailed("Session has been revoked.")
+                
+                # Throttle last_active updates to once every 60 seconds to optimize DB writes
+                now = timezone.now()
+                if not session.last_active or (now - session.last_active).total_seconds() > 60:
+                    UserDeviceSession.objects.filter(id=session.id).update(last_active=now)
+        
+        return user, validated_token

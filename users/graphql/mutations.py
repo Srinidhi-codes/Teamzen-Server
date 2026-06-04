@@ -135,7 +135,7 @@ class UserMutation:
     def create_user(self, info: Info, input: CreateUserInput) -> UserPayload:
         user = info.context.request.user
         # Only superadmin, admin, HR, or Manager can create users
-        if not user.role in ["superadmin", "admin", "hr", "manager"]:
+        if not user.is_authenticated or user.role not in ["superadmin", "admin", "hr", "manager"]:
              return UserPayload(error="Not authorized")
         
         try:

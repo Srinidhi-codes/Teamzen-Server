@@ -18,6 +18,9 @@ class OrganizationQuery:
         if search:
             queryset = queryset.filter(name__icontains=search)
 
+        if not user.is_authenticated:
+            raise Exception("You do not have permission to view organizations")
+
         if user.role == "superadmin":
             return queryset
         elif user.role in ["admin", "hr", "manager"]:
@@ -36,6 +39,9 @@ class OrganizationQuery:
                 Q(city__icontains=search)
             )
 
+        if not user.is_authenticated:
+            raise Exception("You do not have permission to view office locations")
+
         if user.role == "superadmin":
             return queryset
         elif user.role in ["admin", "hr", "manager"]:
@@ -51,6 +57,9 @@ class OrganizationQuery:
         if search:
             queryset = queryset.filter(name__icontains=search)
 
+        if not user.is_authenticated:
+            raise Exception("You do not have permission to view departments")
+
         if user.role == "superadmin":
             return queryset
         elif user.role in ["admin", "hr", "manager"]:         
@@ -65,6 +74,9 @@ class OrganizationQuery:
 
         if search:
             queryset = queryset.filter(name__icontains=search)
+
+        if not user.is_authenticated:
+            raise Exception("You do not have permission to view designations")
 
         if user.role == "superadmin":
             return queryset

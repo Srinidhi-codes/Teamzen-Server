@@ -152,37 +152,9 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        refresh = RefreshToken.for_user(user)
-        
-        response = Response({
-            'user': UserSerializer(user).data,
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        }, status=status.HTTP_201_CREATED)
-
-        cookie_settings = get_cookie_settings()
-        
-        response.set_cookie(
-            key="access_token",
-            value=str(refresh.access_token),
-            max_age=30 * 60,  # 30 minutes
-            **cookie_settings
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            max_age=7 * 24 * 60 * 60,  # 7 days
-            **cookie_settings
-        )
-
-        # Set a non-httponly cookie so JS can check if it should attempt a refresh
-        response.set_cookie(
-            key="session_can_refresh",
-            value="true",
-            max_age=7 * 24 * 60 * 60,
-            **get_cookie_settings(httponly=False)
-        )
-
+        from users.auth_views import login_user_and_set_cookies
+        response = login_user_and_set_cookies(user, request)
+        response.status_code = status.HTTP_201_CREATED
         return response
 
 
@@ -195,55 +167,20 @@ class LoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-        refresh = RefreshToken.for_user(user)
         
-        response = Response({
-            'user': UserSerializer(user).data,
-        }, status=status.HTTP_200_OK)
-    
-        cookie_settings = get_cookie_settings()
-
-        response.set_cookie(
-            key="access_token",
-            value=str(refresh.access_token),
-            max_age=30 * 60,
-            **cookie_settings
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            max_age=7 * 24 * 60 * 60,
-            **cookie_settings
-        )
-
-        # Set a non-httponly cookie so JS can check if it should attempt a refresh
-        response.set_cookie(
-            key="session_can_refresh",
-            value="true",
-            max_age=7 * 24 * 60 * 60,
-            **get_cookie_settings(httponly=False)
-        )
-
-        # Coordinates (optional - we'll sync later if missing)
-        latitude = request.data.get('latitude')
-        longitude = request.data.get('longitude')
-
-        # Log Login History
-        try:
-            ip = get_client_ip(request)
-            UserLoginHistory.objects.create(
-                user=user,
-                ip_address=ip,
-                location=get_location_from_ip(ip, lat=latitude, lon=longitude),
-                latitude=latitude,
-                longitude=longitude,
-                user_agent=request.META.get('HTTP_USER_AGENT'),
-                status='success'
-            )
-        except Exception as e:
-            print(f"Error logging login history: {e}")
-
-        return response
+        # Check if 2FA (TOTP) is enabled
+        if user.is_totp_enabled:
+            import uuid
+            from django.core.cache import cache
+            temp_token = str(uuid.uuid4())
+            cache.set(f"temp_totp_session_{temp_token}", user.id, timeout=300)
+            return Response({
+                "totp_required": True,
+                "temp_token": temp_token
+            }, status=status.HTTP_200_OK)
+            
+        from users.auth_views import login_user_and_set_cookies
+        return login_user_and_set_cookies(user, request)
 
 
 
@@ -386,7 +323,88 @@ class PasswordResetConfirmView(APIView):
                 user.set_password(new_password)
                 user.save()
                 return Response({"success": "Password has been reset successfully."}, status=status.HTTP_200_OK)
-            else:
-                return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             return Response({"error": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserDeviceSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from users.models import UserDeviceSession
+        from users.serializers import UserDeviceSessionSerializer
+        
+        current_jti = request.auth.get('refresh_jti') if request.auth else None
+        
+        # Get active sessions for the user
+        sessions = UserDeviceSession.objects.filter(user=request.user, is_active=True)
+        
+        serializer = UserDeviceSessionSerializer(
+            sessions, 
+            many=True, 
+            context={'current_jti': current_jti}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class LogoutDeviceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from users.models import UserDeviceSession
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        
+        jti = request.data.get('jti')
+        if not jti:
+            return Response({"error": "jti is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Revoke the UserDeviceSession
+            session = UserDeviceSession.objects.filter(user=request.user, jti=jti, is_active=True).first()
+            if session:
+                session.is_active = False
+                session.save()
+                
+            # Blacklist corresponding SimpleJWT token
+            outstanding = OutstandingToken.objects.get(jti=jti, user=request.user)
+            BlacklistedToken.objects.get_or_create(token=outstanding)
+        except OutstandingToken.DoesNotExist:
+            # If the token is not in OutstandingToken but session existed, we still mark session inactive
+            pass
+        except Exception as e:
+            return Response({"error": f"Failed to revoke session: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({"success": "Device logged out successfully"}, status=status.HTTP_200_OK)
+
+
+class LogoutAllOtherDevicesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from users.models import UserDeviceSession
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        
+        current_jti = request.auth.get('refresh_jti') if request.auth else None
+        if not current_jti:
+            return Response({"error": "Current session not identified"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Get all other active sessions for this user
+        other_sessions = UserDeviceSession.objects.filter(user=request.user, is_active=True).exclude(jti=current_jti)
+        
+        revoked_count = 0
+        for session in other_sessions:
+            session.is_active = False
+            session.save()
+            
+            # Blacklist in SimpleJWT
+            try:
+                outstanding = OutstandingToken.objects.get(jti=session.jti, user=request.user)
+                BlacklistedToken.objects.get_or_create(token=outstanding)
+                revoked_count += 1
+            except OutstandingToken.DoesNotExist:
+                pass
+                
+        return Response({
+            "success": "All other devices logged out successfully",
+            "revoked_count": revoked_count
+        }, status=status.HTTP_200_OK)

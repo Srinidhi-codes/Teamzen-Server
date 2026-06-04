@@ -398,6 +398,14 @@ CELERY_BEAT_SCHEDULE = {
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
+# Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+    }
+}
+
 # Email Configuration
 # EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

@@ -12,6 +12,7 @@ from notifications.graphql.mutations import NotificationMutation
 from graphql_api.dashboard_queries import DashboardQuery
 from payroll.graphql.queries import PayrollQuery
 from payroll.graphql.mutations import PayrollMutation
+from graphql_api.auth import Mutation as AuthMutation
 
 @strawberry.type
 class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery, PayrollQuery):
@@ -26,7 +27,7 @@ class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, Notificat
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation):
+class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation, AuthMutation):
     """
     Root Mutation:
     - login (REST preferred)

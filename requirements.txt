@@ -106,3 +106,4 @@ langchain-groq
 langchain-google-genai
 fpdf2
 razorpay
+pyotp==2.9.0
