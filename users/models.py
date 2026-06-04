@@ -64,6 +64,10 @@ class CustomUser(AbstractUser):
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
+    # 2FA Fields
+    totp_secret = models.CharField(max_length=32, blank=True, null=True)
+    is_totp_enabled = models.BooleanField(default=False)
+    
     # Onboarding Flags
     has_seen_onboarding = models.BooleanField(default=False)
     has_seen_ai_onboarding = models.BooleanField(default=False)
@@ -103,7 +107,22 @@ class UserLoginHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.email} logged in at {self.login_time}"
+class UserDeviceSession(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='device_sessions')
+    jti = models.CharField(max_length=255, unique=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    location = models.CharField(max_length=255, null=True, blank=True)
+    browser = models.CharField(max_length=100, null=True, blank=True)
+    os = models.CharField(max_length=100, null=True, blank=True)
+    device_type = models.CharField(max_length=50, null=True, blank=True)  # e.g. Mobile, Tablet, Desktop
+    device_name = models.CharField(max_length=100, null=True, blank=True) # e.g. Windows PC, iPhone
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_active = models.DateTimeField(auto_now=True)
 
-    
+    class Meta:
+        ordering = ['-last_active']
 
-
+    def __str__(self):
+        return f"{self.user.email} - {self.device_name or 'Unknown'} ({self.os or 'Unknown'})"

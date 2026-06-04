@@ -1,6 +1,6 @@
 import strawberry
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from notifications.models import Notification
 from users.graphql.types import UserType
 
@@ -18,3 +18,11 @@ class NotificationType:
     is_read: bool
     created_at: datetime
     updated_at: datetime
+
+@strawberry.type
+class PaginatedNotificationResponse:
+    results: List[NotificationType]
+    total: int
+    page: int
+    page_size: int
+

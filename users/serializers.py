@@ -13,7 +13,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'phone_number',
             'employee_id', 'role', 'department', 'designation', 'office_location',
             'date_of_joining', 'employment_type', 'is_active',
-            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding'
+            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding',
+            'is_totp_enabled'
         ]
         read_only_fields = ['id']
 
@@ -35,7 +36,8 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'date_of_joining', 'date_of_exit', 'bank_account_number',
             'bank_ifsc_code', 'aadhar_number', 'pan_number', 'uan_number',
             'profile_picture', 'is_verified', 'is_active', 'created_at',
-            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding'
+            'organization', 'organization_name', 'has_seen_onboarding', 'has_seen_ai_onboarding',
+            'is_totp_enabled'
         ]
         read_only_fields = [
             'id', 'created_at', 'role', 'is_verified', 'is_active', 
@@ -91,3 +93,21 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid credentials")
         data['user'] = user
         return data
+
+
+from users.models import UserDeviceSession
+
+class UserDeviceSessionSerializer(serializers.ModelSerializer):
+    is_current = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserDeviceSession
+        fields = [
+            'id', 'jti', 'ip_address', 'location', 'browser', 'os',
+            'device_type', 'device_name', 'is_active', 'created_at',
+            'last_active', 'is_current'
+        ]
+
+    def get_is_current(self, obj):
+        current_jti = self.context.get('current_jti')
+        return obj.jti == current_jti
