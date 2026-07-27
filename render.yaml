@@ -10,4 +10,8 @@ services:
         value: 8000
       - key: DEBUG
         value: "False"
+      - key: MCP_ENABLED
+        value: "true"
+      - key: MCP_SERVER_URL
+        value: "http://localhost:8001/mcp"
       # Add remaining env vars via the Render dashboard (secrets)

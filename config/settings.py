@@ -161,15 +161,28 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [os.getenv('REDIS_URL')],
-            "prefix": "teamzen_ws:",
+# Prefer Redis when available; in local DEBUG fall back to in-memory so a
+# unreachable Redis Cloud host does not break websockets / chat / cache.
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+FORCE_REDIS = os.getenv('FORCE_REDIS', 'False') == 'True'
+USE_INMEMORY_CHANNELS = (DEBUG and not FORCE_REDIS) or os.getenv('USE_INMEMORY_CHANNELS', 'False') == 'True'
+
+if USE_INMEMORY_CHANNELS:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
         },
-    },
-}
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                "hosts": [REDIS_URL],
+                "prefix": "teamzen_ws:",
+            },
+        },
+    }
 
 
 # Database
@@ -396,15 +409,22 @@ CELERY_BEAT_SCHEDULE = {
 
 # AI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Cache Configuration
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': REDIS_URL,
+if USE_INMEMORY_CHANNELS:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'teamzen-local',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
 
 # Email Configuration
 # EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'

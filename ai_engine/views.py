@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,6 +14,8 @@ from langchain_core.runnables import RunnablePassthrough
 
 from .models import PolicyFile, PolicyDocument, AIConfiguration
 from .serializers import PolicyFileSerializer, AIConfigurationSerializer
+
+logger = logging.getLogger(__name__)
 
 class PolicyFileListCreateView(generics.ListCreateAPIView):
     """
@@ -178,6 +182,10 @@ class PolicyQAView(APIView):
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# Process-local fallback when Redis is unreachable (local DEBUG / outages).
+_MEMORY_CHAT_HISTORIES = {}
+
+
 class SmartAssistantChatView(APIView):
     """
     Agentic chat endpoint for the workplace assistant.
@@ -187,46 +195,74 @@ class SmartAssistantChatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_history(self, user_id, context='user'):
-        from langchain_community.chat_message_histories import RedisChatMessageHistory
-        
+        from langchain_community.chat_message_histories import (
+            ChatMessageHistory,
+            RedisChatMessageHistory,
+        )
+
         # Isolate chat based on context (admin panel vs user portal)
         session_id = f"chat_{user_id}_{context}"
-        
-        return RedisChatMessageHistory(
-            session_id=session_id,
-            url=settings.REDIS_URL,
-            ttl=86400  # 24 hours
-        )
+
+        # Prefer in-memory when Django is configured that way (local DEBUG).
+        if getattr(settings, "USE_INMEMORY_CHANNELS", False):
+            if session_id not in _MEMORY_CHAT_HISTORIES:
+                _MEMORY_CHAT_HISTORIES[session_id] = ChatMessageHistory()
+            return _MEMORY_CHAT_HISTORIES[session_id]
+
+        try:
+            history = RedisChatMessageHistory(
+                session_id=session_id,
+                url=settings.REDIS_URL,
+                ttl=86400,  # 24 hours
+            )
+            # Probe connectivity — constructor does not always fail eagerly.
+            _ = history.messages
+            return history
+        except Exception as e:
+            logger.warning("Redis chat history unavailable (%s); using memory fallback", e)
+            if session_id not in _MEMORY_CHAT_HISTORIES:
+                _MEMORY_CHAT_HISTORIES[session_id] = ChatMessageHistory()
+            return _MEMORY_CHAT_HISTORIES[session_id]
 
     def get(self, request):
         """Retrieve chat history for the current user and context"""
-        context = request.query_params.get('context', 'user')
-        history = self.get_history(request.user.id, context=context)
-        messages = []
-        for msg in history.messages:
-            role = "user" if msg.type == "human" else "assistant"
-            timestamp = msg.additional_kwargs.get('timestamp')
-            messages.append({
-                "role": role, 
-                "content": msg.content,
-                "timestamp": timestamp
-            })
+        try:
+            context = request.query_params.get('context', 'user')
+            history = self.get_history(request.user.id, context=context)
+            messages = []
+            for msg in history.messages:
+                role = "user" if msg.type == "human" else "assistant"
+                timestamp = msg.additional_kwargs.get('timestamp')
+                messages.append({
+                    "role": role,
+                    "content": msg.content,
+                    "timestamp": timestamp
+                })
 
-        from .models import AIConfiguration
-        config_obj = AIConfiguration.objects.filter(
-            organization_id=request.user.organization.id if request.user.organization else 0,
-            is_active=True
-        ).first()
-        
-        config_data = {
-            "model_name": config_obj.model_name if config_obj else "gpt-4o-mini",
-            "temperature": config_obj.temperature if config_obj else 0.7,
-        }
-        
-        return Response({
-            "history": messages,
-            "config": config_data
-        })
+            org = getattr(request.user, "organization", None)
+            config_obj = None
+            if org:
+                config_obj = AIConfiguration.objects.filter(
+                    organization_id=org.id,
+                    is_active=True
+                ).first()
+
+            config_data = {
+                "model_name": config_obj.model_name if config_obj else "gpt-4o-mini",
+                "temperature": config_obj.temperature if config_obj else 0.7,
+            }
+
+            return Response({
+                "history": messages,
+                "config": config_data
+            })
+        except Exception as e:
+            logger.exception("Failed to load assistant history")
+            return Response({
+                "history": [],
+                "config": {"model_name": "gpt-4o-mini", "temperature": 0.7},
+                "warning": str(e),
+            })
 
     def post(self, request):
         query = request.data.get('query')
@@ -244,13 +280,13 @@ class SmartAssistantChatView(APIView):
             import queue
             import traceback
 
-            # 1. Initialize Redis History
+            # 1. Initialize chat history (Redis with in-memory fallback)
             try:
                 history_manager = self.get_history(request.user.id, context=context)
                 existing_messages = history_manager.messages
             except Exception as e:
-                print(f"[ERR] Redis History Error: {str(e)}")
-                return Response({'error': f'Redis History Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                logger.exception("Chat history init failed")
+                return Response({'error': f'History Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # 2. Add current query
             all_messages = list(existing_messages) + [HumanMessage(content=query)]
@@ -296,23 +332,54 @@ class SmartAssistantChatView(APIView):
             def run_async_stream():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
+
                 async def collect_stream():
                     content_accumulated = ""
+                    mcp_client = None
                     try:
-                        async for event in app.astream_events(initial_state, version="v2"):
-                            kind = event.get("event")
+                        from .graph import build_graph
+                        # Build graph with MCP tools (or legacy fallback)
+                        compiled_app, mcp_client = await build_graph(
+                            organization_id=initial_state["organization_id"]
+                        )
+
+                        async for event in compiled_app.astream_events(initial_state, version="v2"):
+                            kind = event.get("event", "")
+                            name = event.get("name", "")
+                            run_name = event.get("run_name", "")
+
+                            # Log ALL events for debugging (will remove once confirmed working)
+                            if kind not in ("on_chat_model_stream", "on_chat_model_start"):
+                                logger.info(f"[StreamEvent] kind={kind} name={name!r} run_name={run_name!r}")
+
                             if kind == "on_chat_model_stream":
                                 content = event["data"]["chunk"].content
                                 if content:
                                     content_accumulated += content
                                     q.put({'token': content})
-                        
+
+                            elif kind in ("on_tool_start", "on_tool_end"):
+                                # Get the best available tool name from event fields
+                                # LangGraph v2: individual @tool functions use name=actual_tool_name
+                                # ToolNode chain uses name="tools"
+                                candidate = name or run_name or ""
+                                # Strip teamzen__ prefix from MCP tools
+                                candidate = candidate.replace("teamzen__", "")
+                                # Skip node-level names, only emit actual tool names
+                                skip = {"tools", "agent", ""}
+                                if candidate not in skip:
+                                    if kind == "on_tool_start":
+                                        logger.info(f"[Tool→START] {candidate}")
+                                        q.put({'tool_start': candidate})
+                                    else:
+                                        logger.info(f"[Tool→END] {candidate}")
+                                        q.put({'tool_end': candidate})
+
                         # Save to history
                         now_iso = timezone.now().isoformat()
                         history_manager.add_message(HumanMessage(content=query, additional_kwargs={"timestamp": now_iso}))
                         history_manager.add_message(AIMessage(content=content_accumulated, additional_kwargs={"timestamp": now_iso}))
-                        
+
                         # Send final history
                         final_history_messages = history_manager.messages
                         formatted_history = []
@@ -320,7 +387,7 @@ class SmartAssistantChatView(APIView):
                             role = "user" if msg.type == "human" else "assistant"
                             timestamp = msg.additional_kwargs.get('timestamp')
                             formatted_history.append({
-                                "role": role, 
+                                "role": role,
                                 "content": msg.content,
                                 "timestamp": timestamp
                             })
@@ -330,7 +397,7 @@ class SmartAssistantChatView(APIView):
                         traceback.print_exc()
                         q.put({'error': str(e)})
                     finally:
-                        q.put(None) # Sentinel
+                        q.put(None)  # Sentinel — mcp_client v0.2+ has no connection to close
 
                 loop.run_until_complete(collect_stream())
                 loop.close()
@@ -348,7 +415,7 @@ class SmartAssistantChatView(APIView):
                         yield f"data: {json.dumps(item)}\n\n"
                         break
                     yield f"data: {json.dumps(item)}\n\n"
-                
+
                 yield "data: [DONE]\n\n"
 
             return StreamingHttpResponse(stream_generator(), content_type='text/event-stream')
@@ -376,9 +443,9 @@ class AIConfigurationView(generics.RetrieveUpdateAPIView):
         user = self.request.user
         if not user.organization:
             return None
-        
+
         # Get or create default config for this organization
-        config, created = AIConfiguration.objects.get_or_create(
+        config, _created = AIConfiguration.objects.get_or_create(
             organization=user.organization,
             defaults={
                 'model_name': 'gpt-4o-mini',
@@ -391,7 +458,14 @@ class AIConfigurationView(generics.RetrieveUpdateAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         if not instance:
-            return Response({'error': 'User has no associated organization'}, status=status.HTTP_400_BAD_REQUEST)
+            # Superadmins / users without an org still get usable defaults
+            return Response({
+                'model_name': 'gpt-4o-mini',
+                'temperature': 0.7,
+                'max_tokens': 1024,
+                'system_prompt_override': '',
+                'is_active': True,
+            })
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
