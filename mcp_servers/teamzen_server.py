@@ -225,6 +225,16 @@ def generate_monthly_summary(organization_id: int, month: int, year: int) -> dic
     })
 
 
+@mcp.tool()
+def get_latest_payslip(user_id: int) -> str:
+    """
+    Returns the user's most recent payslip (gross, net, deductions, components).
+    Use for salary / payslip / net pay questions. Do not invent numbers.
+    """
+    from ai_engine.tools import get_latest_payslip as _tool
+    return _tool.invoke({"user_id": user_id})
+
+
 # ===========================================================================
 # POLICY TOOLS
 # ===========================================================================
