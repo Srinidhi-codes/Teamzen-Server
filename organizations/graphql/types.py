@@ -13,11 +13,17 @@ class OrganizationType:
     headquarters_address: auto
     llm_api_key: auto
     plan: auto
+    payroll_cycle_day: auto
+    payroll_auto_enabled: auto
     accent: auto
     employee_count: int
     is_active: auto
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def can_enable_payroll_auto(self) -> bool:
+        return self.plan in ("pro", "elite")
 
 @strawberry.django.type(OfficeLocation)
 class OfficeLocationType:

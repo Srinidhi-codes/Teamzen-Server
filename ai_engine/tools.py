@@ -199,29 +199,248 @@ def get_latest_payslip(user_id: int):
     """
     Returns the user's most recent published/paid payslip with gross, net, deductions,
     worked days, LOP, and component breakdown. Use this whenever the user asks about
-    their salary, payslip, net pay, or last month's payroll.
+    their salary, payslip, net pay, or last month's payroll without naming a month.
+    """
+    payslip = _fetch_payslip(user_id)
+    if not payslip:
+        return "No payslip found for this employee yet."
+    return _format_payslip_card(payslip)
+
+
+@tool
+def get_payslip(user_id: int, month: int, year: int):
+    """
+    Fetch the user's payslip for a specific month and year.
+    month: 1–12 (e.g. 1 = January). year: e.g. 2026.
+    Use when the user names a month: "Show me my January 2026 salary slip".
+    """
+    if month < 1 or month > 12:
+        return "[ERROR_CARD] title: Invalid Month | message: Month must be between 1 and 12. [/ERROR_CARD]"
+    payslip = _fetch_payslip(user_id, month=month, year=year)
+    if not payslip:
+        return (
+            f"No payslip found for {month}/{year}. "
+            "It may not be published yet — try get_payroll_history or get_latest_payslip."
+        )
+    return _format_payslip_card(payslip)
+
+
+@tool
+def explain_deduction(user_id: int, month: int = None, year: int = None, component_name: str = None):
+    """
+    Explain deduction lines on a payslip (PF, PT, LOP, TDS, etc.).
+    If month/year omitted, uses the latest payslip.
+    Optional component_name filters to one deduction (e.g. 'PF', 'LOP', 'Professional Tax').
+    Use for: "Why was my PF higher this month?" or "Explain my deductions".
+    """
+    payslip = _fetch_payslip(user_id, month=month, year=year)
+    if not payslip:
+        return "No payslip found to explain deductions."
+
+    run = payslip.payroll_run
+    deductions = [
+        c for c in payslip.components.all()
+        if not str(c.component_type).lower().startswith("earn")
+    ]
+    if component_name:
+        needle = component_name.strip().lower()
+        deductions = [
+            c for c in deductions
+            if needle in c.component_name.lower() or needle in (c.component_code or "").lower()
+        ]
+        if not deductions:
+            return (
+                f"No deduction matching '{component_name}' on payslip {run.month}/{run.year}. "
+                "Try without a component name to see all deductions."
+            )
+
+    if not deductions:
+        return f"No deductions on payslip {run.month}/{run.year}."
+
+    stats_parts = []
+    detail_notes = []
+    for c in deductions:
+        stats_parts.append(f"{c.component_name}:{c.amount}")
+        code = (c.component_code or "").upper()
+        name_l = c.component_name.lower()
+        if code == "LOP" or "loss of pay" in name_l or name_l == "lop":
+            detail_notes.append(
+                f"{c.component_name} (Rs {c.amount}): Loss of Pay for {payslip.lop_days} day(s) — "
+                "salary reduced for unpaid absence / unpaid leave."
+            )
+        elif "pf" in name_l or code in ("PF", "EPF"):
+            detail_notes.append(
+                f"{c.component_name} (Rs {c.amount}): Provident Fund statutory contribution "
+                "(typically a % of basic / PF wages)."
+            )
+        elif "pt" in name_l or "professional tax" in name_l or code == "PT":
+            detail_notes.append(
+                f"{c.component_name} (Rs {c.amount}): Professional Tax — state statutory deduction."
+            )
+        elif "tds" in name_l or "tax" in name_l:
+            detail_notes.append(
+                f"{c.component_name} (Rs {c.amount}): Tax withholding based on taxable earnings."
+            )
+        else:
+            detail_notes.append(
+                f"{c.component_name} (Rs {c.amount}): Recorded as a {c.component_type} on this payslip."
+            )
+
+    stats = ", ".join(stats_parts)
+    message_extra = " ".join(detail_notes)
+    return (
+        f"[INSIGHT_CARD] title: Deduction Breakdown ({run.month}/{run.year}) | "
+        f"message: {message_extra} | type: info | topic: Payroll | "
+        f"stats: Gross:{payslip.gross_earnings}, Net:{payslip.net_pay}, "
+        f"Total Deductions:{payslip.total_deductions}, LOP Days:{payslip.lop_days}, {stats} "
+        f"[/INSIGHT_CARD]"
+    )
+
+
+@tool
+def salary_forecast(user_id: int, unpaid_days: float, month: int = None, year: int = None):
+    """
+    Estimate how much net/CTC the employee would lose if they take unpaid_days of LOP.
+    Use for: "If I take 3 unpaid days, how much do I lose?"
+    Optional month/year sets the calendar-days basis (defaults to current month).
+    Does NOT modify payroll — read-only estimate from active CTC.
+    """
+    from django.contrib.auth import get_user_model
+    from payroll.services import PayrollService
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return "[ERROR_CARD] title: User Not Found | message: Invalid user id. [/ERROR_CARD]"
+
+    result = PayrollService.estimate_lop_cost(user, unpaid_days, year=year, month=month)
+    if result.get("error"):
+        return f"[ERROR_CARD] title: Salary Forecast | message: {result['error']} [/ERROR_CARD]"
+
+    return (
+        f"[INSIGHT_CARD] title: Salary Forecast | "
+        f"message: Taking {result['unpaid_days']} unpaid day(s) in {result['month']}/{result['year']} "
+        f"is estimated to reduce pay by Rs {result['estimated_loss']} "
+        f"(Rs {result['per_day_rate']} per day × {result['unpaid_days']} days). "
+        f"Reference monthly CTC Rs {result['monthly_ctc']} → approx Rs {result['estimated_monthly_after_lop']} "
+        f"before other statutory deductions. {result['note']} | "
+        f"type: warning | topic: Payroll | "
+        f"stats: Unpaid Days:{result['unpaid_days']}, Per Day:₹{result['per_day_rate']}, "
+        f"Estimated Loss:₹{result['estimated_loss']}, Monthly CTC:₹{result['monthly_ctc']}, "
+        f"After LOP (CTC basis):₹{result['estimated_monthly_after_lop']} "
+        f"[/INSIGHT_CARD]"
+    )
+
+
+@tool
+def compare_payslips(
+    user_id: int,
+    month1: int,
+    year1: int,
+    month2: int,
+    year2: int,
+):
+    """
+    Compare two payslips for the same employee across months.
+    Use for: "Compare my last 2 salary slips" (resolve months first via get_payroll_history)
+    or explicit "Compare March 2026 vs April 2026".
+    """
+    a = _fetch_payslip(user_id, month=month1, year=year1)
+    b = _fetch_payslip(user_id, month=month2, year=year2)
+    if not a and not b:
+        return f"No payslips found for {month1}/{year1} or {month2}/{year2}."
+    if not a:
+        return f"No payslip for {month1}/{year1}. Found the other month only."
+    if not b:
+        return f"No payslip for {month2}/{year2}. Found the other month only."
+
+    def _ded_map(p):
+        return {
+            c.component_name: float(c.amount)
+            for c in p.components.all()
+            if not str(c.component_type).lower().startswith("earn")
+        }
+
+    da, db = _ded_map(a), _ded_map(b)
+    all_names = sorted(set(da) | set(db))
+    changes = []
+    for name in all_names:
+        va, vb = da.get(name, 0.0), db.get(name, 0.0)
+        if abs(va - vb) > 0.009:
+            changes.append(f"{name}: {va} → {vb} (Δ {round(vb - va, 2)})")
+
+    net_delta = float(b.net_pay) - float(a.net_pay)
+    gross_delta = float(b.gross_earnings) - float(a.gross_earnings)
+    change_text = "; ".join(changes) if changes else "No material deduction line changes."
+
+    return (
+        f"[INSIGHT_CARD] title: Payslip Comparison | "
+        f"message: {month1}/{year1} vs {month2}/{year2}. "
+        f"Net {a.net_pay} → {b.net_pay} (Δ {round(net_delta, 2)}). "
+        f"Gross {a.gross_earnings} → {b.gross_earnings} (Δ {round(gross_delta, 2)}). "
+        f"LOP {a.lop_days} → {b.lop_days}. Changes: {change_text} | "
+        f"type: stats | topic: Payroll | "
+        f"stats: Net Δ:{round(net_delta, 2)}, Gross Δ:{round(gross_delta, 2)}, "
+        f"LOP {month1}/{year1}:{a.lop_days}, LOP {month2}/{year2}:{b.lop_days} "
+        f"[/INSIGHT_CARD]\n"
+        f"{_format_payslip_card(a)}\n{_format_payslip_card(b)}"
+    )
+
+
+@tool
+def get_payroll_history(user_id: int, limit: int = 6):
+    """
+    List recent payslips for the employee (month, year, net, status).
+    Use to discover which months exist before get_payslip or compare_payslips.
     """
     from payroll.models import Payslip
 
-    payslip = (
-        Payslip.objects.filter(user_id=user_id, status__in=["published", "paid"])
+    limit = max(1, min(int(limit or 6), 24))
+    slips = (
+        Payslip.objects.filter(user_id=user_id)
         .select_related("payroll_run")
-        .prefetch_related("components")
+        .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")[:limit]
+    )
+    if not slips:
+        return "No payroll history found for this employee."
+
+    rows = []
+    for p in slips:
+        r = p.payroll_run
+        rows.append(
+            f"{r.month}/{r.year}: net Rs {p.net_pay}, gross Rs {p.gross_earnings}, "
+            f"LOP {p.lop_days}, status {p.status}"
+        )
+    return (
+        f"[INSIGHT_CARD] title: Payroll History | "
+        f"message: Last {len(rows)} payslip(s): " + " | ".join(rows) + " | "
+        f"type: info | topic: Payroll | stats: Count:{len(rows)} [/INSIGHT_CARD]"
+    )
+
+
+def _fetch_payslip(user_id: int, month: int = None, year: int = None):
+    from payroll.models import Payslip
+
+    qs = Payslip.objects.filter(user_id=user_id).select_related("payroll_run").prefetch_related(
+        "components"
+    )
+    if month is not None and year is not None:
+        qs = qs.filter(payroll_run__month=month, payroll_run__year=year)
+        published = qs.filter(status__in=["published", "paid"]).first()
+        return published or qs.first()
+
+    published = (
+        qs.filter(status__in=["published", "paid"])
         .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")
         .first()
     )
-    if not payslip:
-        # Fall back to any latest slip (including draft) so the bot can still answer
-        payslip = (
-            Payslip.objects.filter(user_id=user_id)
-            .select_related("payroll_run")
-            .prefetch_related("components")
-            .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")
-            .first()
-        )
-    if not payslip:
-        return "No payslip found for this employee yet."
+    if published:
+        return published
+    return qs.order_by("-payroll_run__year", "-payroll_run__month", "-created_at").first()
 
+
+def _format_payslip_card(payslip) -> str:
     run = payslip.payroll_run
     earnings = []
     deductions = []

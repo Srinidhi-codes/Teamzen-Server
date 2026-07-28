@@ -51,14 +51,16 @@ def _get_legacy_tools():
         search_policies, get_leave_types, mark_attendance,
         check_team_availability, get_team_stats, list_pending_leaves,
         cancel_leave, suggest_leave_window, get_attendance_trends,
-        generate_monthly_summary, get_latest_payslip,
+        generate_monthly_summary, get_latest_payslip, get_payslip,
+        explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
         search_policies, get_leave_types, mark_attendance,
         check_team_availability, get_team_stats, list_pending_leaves,
         cancel_leave, suggest_leave_window, get_attendance_trends,
-        generate_monthly_summary, get_latest_payslip,
+        generate_monthly_summary, get_latest_payslip, get_payslip,
+        explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
     ]
 
 
@@ -164,7 +166,11 @@ def _build_system_prompt(state: AgentState) -> str:
         "AVAILABILITY REPORTING: When reporting team availability, ALWAYS use an [INSIGHT_CARD] with 'topic: Team Availability'. Include whether colleagues are already on leave and whether coverage looks clear or busy. "
         "SUBMISSION RULE: Only submit the leave after required details are present and you have reported team availability. Once everything is complete, tell the user you are submitting it now, then call 'apply_for_leave'. "
         "LEAVE MANAGEMENT: If the user wants to cancel a leave, use 'list_pending_leaves' first to show them their pending requests with PENDING_LEAVE_CARDs, then use 'cancel_leave' with the specific ID they choose.\n"
-        "4. Payslip / Salary: If the user asks for their payslip, salary, net pay, deductions, or last month payroll, you MUST call 'get_latest_payslip' and present the [PAYROLL_CARD] it returns. "
+        "4. Payslip / Salary: For the latest slip use 'get_latest_payslip'. For a named month use 'get_payslip' with month (1-12) and year. "
+        "To list available months use 'get_payroll_history'. To explain PF/PT/LOP/TDS use 'explain_deduction'. "
+        "For 'if I take N unpaid days how much do I lose?' use 'salary_forecast'. "
+        "To compare two months use 'compare_payslips' (use get_payroll_history first if months are unclear). "
+        "ALWAYS present payslip data via the [PAYROLL_CARD] returned by the tool. "
         "Do NOT invent payslip numbers. Do NOT substitute attendance trends, monthly team summaries, or leave balances for a payslip request.\n"
         "5. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'. This tool now also identifies employees with low attendance.\n"
         "REPORTS: If a manager asks for a report or summary for a specific month (e.g., 'Give me the February report'), use 'generate_monthly_summary'. Use the result to present an [INSIGHT_CARD].\n"
@@ -260,7 +266,8 @@ def _build_legacy_app():
             search_policies, get_leave_types, mark_attendance,
             check_team_availability, get_team_stats, list_pending_leaves,
             cancel_leave, suggest_leave_window, get_attendance_trends,
-            generate_monthly_summary, get_latest_payslip,
+            generate_monthly_summary, get_latest_payslip, get_payslip,
+            explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
         )
         org_id = state.get("organization_id", 0)
         llm = get_llm(org_id).bind_tools(tools)

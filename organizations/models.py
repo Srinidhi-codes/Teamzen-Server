@@ -27,6 +27,15 @@ class Organization(models.Model):
         ('elite', 'Elite'),
     ]
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    # Payroll automation (effective only for pro/elite — enforced in service/GraphQL)
+    payroll_cycle_day = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Day of month (1–28) to auto-create previous month payroll",
+    )
+    payroll_auto_enabled = models.BooleanField(
+        default=False,
+        help_text="When True and plan is pro/elite, Celery auto-runs payroll on cycle day",
+    )
     accent = models.CharField(
         max_length=20,
         choices=ACCENT_CHOICES,
