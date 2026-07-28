@@ -107,7 +107,6 @@ class RequestOTPView(APIView):
                 employee_name=employee_name,
                 otp_code=otp,
                 expiry_minutes=5,
-                logo_url=""
             )
             
             # Send via custom Brevo HTTP backend to bypass outbound port restrictions

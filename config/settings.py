@@ -363,6 +363,18 @@ CLOUDINARY_STORAGE = {
     'RESOURCE_TYPE': 'auto',
     'PRESERVE_EXTENSIONS': True,
 }
+
+# Hosted Teamzen mark for transactional emails (override with EMAIL_LOGO_URL if needed)
+_CLOUDINARY_CLOUD_NAME = CLOUDINARY_STORAGE.get('CLOUD_NAME') or ''
+EMAIL_LOGO_URL = os.getenv(
+    'EMAIL_LOGO_URL',
+    (
+        f"https://res.cloudinary.com/{_CLOUDINARY_CLOUD_NAME}/image/upload/"
+        "c_fit,w_240,h_120,b_white,f_png,q_auto/branding/teamzen_email_logo.png"
+        if _CLOUDINARY_CLOUD_NAME
+        else ""
+    ),
+)
 # Celery Configuration
 # Use Redis as the primary message broker on DB 0 explicitly
 CELERY_BROKER_URL = normalize_redis_url(

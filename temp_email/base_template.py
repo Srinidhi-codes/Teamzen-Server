@@ -1,3 +1,27 @@
+def logo_badge_html(accent_color: str) -> str:
+    """Email-safe fallback mark when no hosted logo URL is available."""
+    return f"""
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block;">
+        <tr>
+            <td align="center" valign="middle" style="width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, {accent_color}, #0EA5E9); color: #FFFFFF; font-size: 28px; font-weight: 800; line-height: 56px; text-align: center; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);">
+                T
+            </td>
+        </tr>
+    </table>
+    """
+
+
+def resolve_email_logo_url(logo_url: str = "") -> str:
+    """Prefer an explicit logo URL, then the Cloudinary-hosted Teamzen mark."""
+    if logo_url:
+        return logo_url
+    try:
+        from django.conf import settings
+        return getattr(settings, "EMAIL_LOGO_URL", "") or ""
+    except Exception:
+        return ""
+
+
 def get_base_template(
     title: str,
     body_content: str,
@@ -8,6 +32,15 @@ def get_base_template(
     company_url: str = "#",
 ) -> str:
     """Generate the base responsive HTML email template."""
+    resolved_logo = resolve_email_logo_url(logo_url)
+    logo_html = (
+        f'<img src="{resolved_logo}" alt="{footer_text}" width="120" height="56" '
+        f'style="display: block; width: 120px; height: 56px; object-fit: contain; '
+        f'background: #FFFFFF; border-radius: 12px;" />'
+        if resolved_logo
+        else logo_badge_html(accent_color)
+    )
+
     return f"""<!DOCTYPE html>
 <html>
     <head>
@@ -51,8 +84,8 @@ def get_base_template(
                                 <p class="eyebrow">Teamzen HRMS</p>
                                 <h1 class="title">{title}</h1>
                             </td>
-                            <td style="width: 88px; text-align: right; vertical-align: middle;">
-                                {f'<img src="{logo_url}" alt="{footer_text}" style="width: 56px; height: 56px; border-radius: 16px; object-fit: cover; border: 1px solid #E2E8F0; background: #FFFFFF;" />' if logo_url else f'<div style="display: inline-flex; flex-direction: column; width: 72px; height: 56px; border-radius: 16px; align-items: center; justify-content: center; background: linear-gradient(135deg, {accent_color}, #0EA5E9); color: #FFFFFF; font-weight: 800; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);"><span style="font-size: 20px; line-height: 1;">T</span><span style="font-size: 9px; line-height: 1; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9;">Teamzen</span></div>'}
+                            <td style="width: 132px; text-align: right; vertical-align: middle;">
+                                {logo_html}
                             </td>
                         </tr>
                     </table>
