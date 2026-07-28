@@ -14,6 +14,7 @@ class OrganizationInput:
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
+    accent: Optional[str] = "teal"
     is_active: bool
     id: strawberry.ID
     
@@ -26,6 +27,7 @@ class CreateOrganizationInput:
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
+    accent: Optional[str] = "teal"
     is_active: bool
     
 @strawberry.input
@@ -106,7 +108,14 @@ class OrganizationMutation:
         if user.is_anonymous or user.role not in ['admin', 'superadmin']:
             raise GraphQLError("Not authorized")
 
-        org = Organization.objects.create(**vars(input))
+        payload = vars(input)
+        accent = payload.get("accent") or "teal"
+        valid = {c[0] for c in Organization.ACCENT_CHOICES}
+        if accent not in valid:
+            raise GraphQLError("Invalid accent color")
+        payload["accent"] = accent
+
+        org = Organization.objects.create(**payload)
         return org
 
     @strawberry.mutation
@@ -127,6 +136,11 @@ class OrganizationMutation:
         org.registration_number = input.registration_number
         org.headquarters_address = input.headquarters_address
         org.llm_api_key = input.llm_api_key
+        if input.accent:
+            valid = {c[0] for c in Organization.ACCENT_CHOICES}
+            if input.accent not in valid:
+                raise GraphQLError("Invalid accent color")
+            org.accent = input.accent
         org.is_active = input.is_active
         org.save()
         return org

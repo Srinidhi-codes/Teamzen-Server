@@ -244,7 +244,7 @@ def cancel_leave_request(request):
     request.save()
 
     # Log the activity
-    audit_request(request, "cancelled", request.user)
+    audit_request(request, "cancelled", request.user, comment="Cancelled by employee")
 
     # --- NOTIFY ADMINS / MANAGERS ---
     try:
@@ -302,7 +302,7 @@ def audit_request(request, action, actor, comment=None):
         leave_request=request,
         action=action,
         actor=actor,
-        comment=comment
+        comment=comment or "",
     )
 
 def get_balance(user, leave_type: LeaveType, year=None):

@@ -4,6 +4,17 @@ from django.core.validators import RegexValidator
 
 class Organization(models.Model):
     """Enterprise organization model"""
+    ACCENT_CHOICES = [
+        ('teal', 'Teal'),
+        ('slate', 'Slate'),
+        ('blue', 'Blue'),
+        ('green', 'Green'),
+        ('indigo', 'Indigo'),
+        ('orange', 'Orange'),
+        ('red', 'Red'),
+        ('purple', 'Purple'),
+    ]
+
     name = models.CharField(max_length=255, unique=True)
     logo = models.ImageField(upload_to='teamzen/organization/', null=True, blank=True)
     gst_number = models.CharField(max_length=50, null=True, blank=True)
@@ -16,6 +27,12 @@ class Organization(models.Model):
         ('elite', 'Elite'),
     ]
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    accent = models.CharField(
+        max_length=20,
+        choices=ACCENT_CHOICES,
+        default='teal',
+        help_text='Company color theme applied to the employee portal',
+    )
     llm_api_key = models.CharField(max_length=255, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
