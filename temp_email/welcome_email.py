@@ -53,6 +53,28 @@ def get_welcome_email_html(
                     </td>
                 </tr>
 
+                <!-- Product Highlights -->
+                <tr>
+                    <td style="padding: 0 40px 24px 40px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                            <tr>
+                                <td style="padding-right: 8px; vertical-align: top;">
+                                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px;">
+                                        <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 800; color: #4F46E5; text-transform: uppercase; letter-spacing: 0.08em;">Profile</p>
+                                        <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.6;">Complete your profile, personal details, and work setup in one place.</p>
+                                    </div>
+                                </td>
+                                <td style="padding-left: 8px; vertical-align: top;">
+                                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px;">
+                                        <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 800; color: #4F46E5; text-transform: uppercase; letter-spacing: 0.08em;">Workday</p>
+                                        <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.6;">Track attendance, request leave, and stay aligned with your team.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
                 <!-- Account Details Card -->
                 <tr>
                     <td style="padding: 0 40px 24px 40px;">

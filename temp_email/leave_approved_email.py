@@ -61,6 +61,18 @@ def get_leave_approved_email_html(
                     </td>
                 </tr>
 
+                <!-- Plan Ahead -->
+                <tr>
+                    <td style="padding: 0 40px 24px 40px;">
+                        <div style="background: #FFFFFF; border: 1px solid #BBF7D0; border-radius: 14px; padding: 16px 18px;">
+                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 0.08em;">Next steps</p>
+                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
+                                Your schedule has been updated. Use Teamzen to review your leave timeline, balances, and any related attendance updates.
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+
                 <!-- Remarks -->
                 {f'''
                 <tr>
@@ -77,6 +89,9 @@ def get_leave_approved_email_html(
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
                         {button_html("🏠 View My Leaves", dashboard_url, "#4F46E5")}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            You can revisit the approval details and leave balance anytime from your employee dashboard.
+                        </p>
                     </td>
                 </tr>
     """

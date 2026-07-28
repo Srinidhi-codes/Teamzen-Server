@@ -61,6 +61,18 @@ def get_leave_request_email_html(
                     </td>
                 </tr>
 
+                <!-- Review Prompt -->
+                <tr>
+                    <td style="padding: 0 40px 24px 40px;">
+                        <div style="background: #FFFFFF; border: 1px solid #FDE68A; border-radius: 14px; padding: 16px 18px;">
+                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: #B45309; text-transform: uppercase; letter-spacing: 0.08em;">Manager review</p>
+                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
+                                Review team coverage, confirm the dates, and approve or reject the request from the admin workspace.
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+
                 <!-- Reason Section -->
                 {f'''
                 <tr>
@@ -77,6 +89,9 @@ def get_leave_request_email_html(
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
                         {button_html("✅ Review & Take Action", approval_url, accent)}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            Open Teamzen Admin to manage the request and keep the employee updated in real time.
+                        </p>
                     </td>
                 </tr>
     """

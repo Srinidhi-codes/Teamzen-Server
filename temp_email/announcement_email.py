@@ -51,6 +51,22 @@ def get_announcement_email_html(
                     </td>
                 </tr>
 
+                <!-- Announcement Focus -->
+                <tr>
+                    <td style="padding: 0 40px 24px 40px;">
+                        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 18px 20px;">
+                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: {accent}; text-transform: uppercase; letter-spacing: 0.08em;">
+                                Action summary
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
+                                Category: <strong style="color: #0F172A;">{category}</strong>
+                                {f' · Posted by <strong style="color: #0F172A;">{posted_by}</strong>' if posted_by else ""}
+                                {f' · {posted_date}' if posted_date else ""}
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+
                 <!-- Meta Details -->
                 <tr>
                     <td style="padding: 0 40px 32px 40px;">
@@ -77,6 +93,9 @@ def get_announcement_email_html(
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
                         {button_html(action_text, action_url, accent)}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            Open Teamzen to read the full update and respond if action is required.
+                        </p>
                     </td>
                 </tr>
     """

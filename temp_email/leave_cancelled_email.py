@@ -62,10 +62,25 @@ def get_leave_cancelled_email_html(
                     </td>
                 </tr>
 
+                <!-- Impact Note -->
+                <tr>
+                    <td style="padding: 0 40px 24px 40px;">
+                        <div style="background: #FFFFFF; border: 1px solid #FED7AA; border-radius: 14px; padding: 16px 18px;">
+                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: #C2410C; text-transform: uppercase; letter-spacing: 0.08em;">Team update</p>
+                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
+                                This cancellation has been recorded so the team schedule and future leave availability remain accurate.
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+
                 <!-- CTA -->
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
                         {button_html("View Details", dashboard_url, accent)}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            Open Teamzen Admin to confirm the updated leave queue and team calendar.
+                        </p>
                     </td>
                 </tr>
     """

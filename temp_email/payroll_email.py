@@ -97,6 +97,34 @@ def get_payroll_email_html(
                     </td>
                 </tr>
 
+                <!-- Snapshot Grid -->
+                <tr>
+                    <td style="padding: 8px 40px 8px 40px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                            <tr>
+                                <td style="padding-right: 8px; vertical-align: top;">
+                                    <div style="background: #FFFFFF; border: 1px solid #DCFCE7; border-radius: 14px; padding: 14px 16px;">
+                                        <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 800; color: #16A34A; text-transform: uppercase; letter-spacing: 0.08em;">Gross</p>
+                                        <p style="margin: 0; font-size: 18px; font-weight: 800; color: #0F172A;">{gross_salary or "—"}</p>
+                                    </div>
+                                </td>
+                                <td style="padding-left: 8px; padding-right: 8px; vertical-align: top;">
+                                    <div style="background: #FFFFFF; border: 1px solid #FEE2E2; border-radius: 14px; padding: 14px 16px;">
+                                        <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.08em;">Deductions</p>
+                                        <p style="margin: 0; font-size: 18px; font-weight: 800; color: #0F172A;">{total_deductions or "—"}</p>
+                                    </div>
+                                </td>
+                                <td style="padding-left: 8px; vertical-align: top;">
+                                    <div style="background: #FFFFFF; border: 1px solid #BFDBFE; border-radius: 14px; padding: 14px 16px;">
+                                        <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 800; color: #2563EB; text-transform: uppercase; letter-spacing: 0.08em;">Payout</p>
+                                        <p style="margin: 0; font-size: 18px; font-weight: 800; color: #0F172A;">{payment_mode}</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
                 <!-- Message -->
                 <tr>
                     <td class="content-block" style="padding: 24px 40px 16px 40px;">
@@ -173,6 +201,9 @@ def get_payroll_email_html(
                 <tr>
                     <td style="padding: 8px 40px 40px 40px; text-align: center;">
                         {button_html("📄 Download Payslip", payslip_url, accent)}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            Review your detailed earnings, deductions, and payroll history inside Teamzen.
+                        </p>
                     </td>
                 </tr>
     """

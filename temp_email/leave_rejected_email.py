@@ -88,6 +88,9 @@ def get_leave_rejected_email_html(
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
                         {button_html("📝 Submit New Request", dashboard_url, "#4F46E5")}
+                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
+                            Open Teamzen to explore alternate dates, review balances, or submit a revised leave request.
+                        </p>
                     </td>
                 </tr>
     """
