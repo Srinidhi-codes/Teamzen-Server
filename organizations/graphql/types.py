@@ -1,4 +1,5 @@
 import strawberry
+from typing import Optional
 from strawberry import auto
 from organizations.models import OfficeLocation, Organization, Department, Designation
 
@@ -13,6 +14,7 @@ class OrganizationType:
     headquarters_address: auto
     llm_api_key: auto
     plan: auto
+    plan_expires_at: auto
     payroll_cycle_day: auto
     payroll_auto_enabled: auto
     accent: auto
@@ -23,7 +25,18 @@ class OrganizationType:
 
     @strawberry.field
     def can_enable_payroll_auto(self) -> bool:
-        return self.plan in ("pro", "elite")
+        from organizations.plan_entitlements import org_has_feature
+
+        return org_has_feature(self, "payroll_auto_run")
+
+    @strawberry.field
+    def days_until_plan_expiry(self) -> Optional[int]:
+        expires = getattr(self, "plan_expires_at", None)
+        if not expires:
+            return None
+        from datetime import date
+
+        return (expires - date.today()).days
 
 @strawberry.django.type(OfficeLocation)
 class OfficeLocationType:

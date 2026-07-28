@@ -27,6 +27,11 @@ class Organization(models.Model):
         ('elite', 'Elite'),
     ]
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    plan_expires_at = models.DateField(
+        null=True,
+        blank=True,
+        help_text='When the current paid plan ends. Null for free or lifetime.',
+    )
     # Payroll automation (effective only for pro/elite — enforced in service/GraphQL)
     payroll_cycle_day = models.PositiveSmallIntegerField(
         default=1,
