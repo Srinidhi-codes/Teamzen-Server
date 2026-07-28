@@ -13,6 +13,7 @@ class OrganizationType:
     headquarters_address: auto
     llm_api_key: auto
     plan: auto
+    accent: auto
     employee_count: int
     is_active: auto
     created_at: auto
