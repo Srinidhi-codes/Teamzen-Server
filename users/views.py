@@ -12,8 +12,10 @@ from users.serializers import UserSerializer, UserDetailSerializer, RegisterSeri
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.contrib.auth import get_user_model
+from notifications.email_backends import BrevoHTTPBackend
+from temp_email.password_reset_email import get_password_reset_email_html
 
 User = get_user_model()
 
@@ -289,14 +291,23 @@ class PasswordResetRequestView(APIView):
             # For robustness, handle both User and Admin clients or just one central reset page
             reset_url = f"{settings.CLIENT_URL}/reset-password?uid={uid}&token={token}"
             
-            message = f"Click the link below to reset your password:\n{reset_url}"
-            send_mail(
-                "Password Reset - Payroll System",
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
+            plain_text = f"Click the link below to reset your password:\n{reset_url}"
+            html_content = get_password_reset_email_html(
+                employee_name=f"{user.first_name} {user.last_name}".strip() or "there",
+                reset_url=reset_url,
+                logo_url="https://teamzen-admin.vercel.app/logo.png",
+                company_name="Teamzen",
+                company_url=settings.CLIENT_URL,
             )
+            email_msg = EmailMultiAlternatives(
+                subject="Password Reset - Payroll System",
+                body=plain_text,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[email],
+                connection=BrevoHTTPBackend(),
+            )
+            email_msg.attach_alternative(html_content, "text/html")
+            email_msg.send(fail_silently=False)
             return Response({"success": "Password reset link sent to your email."}, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             # Don't reveal if user exists or not for security, but return same success msg
