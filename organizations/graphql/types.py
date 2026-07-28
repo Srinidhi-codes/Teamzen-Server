@@ -1,4 +1,5 @@
 import strawberry
+from typing import Optional
 from strawberry import auto
 from organizations.models import OfficeLocation, Organization, Department, Designation
 
@@ -13,11 +14,21 @@ class OrganizationType:
     headquarters_address: auto
     llm_api_key: auto
     plan: auto
+    plan_expires_at: auto
     accent: auto
     employee_count: int
     is_active: auto
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def days_until_plan_expiry(self) -> Optional[int]:
+        expires = getattr(self, "plan_expires_at", None)
+        if not expires:
+            return None
+        from datetime import date
+
+        return (expires - date.today()).days
 
 @strawberry.django.type(OfficeLocation)
 class OfficeLocationType:

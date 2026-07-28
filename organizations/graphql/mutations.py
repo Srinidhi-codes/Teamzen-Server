@@ -135,6 +135,10 @@ class OrganizationMutation:
         org.pan_number = input.pan_number
         org.registration_number = input.registration_number
         org.headquarters_address = input.headquarters_address
+        if input.llm_api_key is not None and input.llm_api_key != org.llm_api_key:
+            from organizations.plan_entitlements import require_feature
+
+            require_feature(org, "org_llm_key")
         org.llm_api_key = input.llm_api_key
         if input.accent:
             valid = {c[0] for c in Organization.ACCENT_CHOICES}
@@ -143,6 +147,55 @@ class OrganizationMutation:
             org.accent = input.accent
         org.is_active = input.is_active
         org.save()
+        return org
+
+    @strawberry.mutation
+    def update_organization_plan(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        plan: str,
+        duration_days: Optional[int] = 365,
+    ) -> OrganizationType:
+        """Upgrade or change org plan. Sets expiry for paid plans; clears it for free."""
+        from datetime import date, timedelta
+
+        user = info.context.request.user
+        if user.is_anonymous or user.role not in ["admin", "superadmin"]:
+            raise GraphQLError("Not authorized")
+
+        plan = (plan or "free").lower().strip()
+        valid_plans = {c[0] for c in Organization.PLAN_CHOICES}
+        if plan not in valid_plans:
+            raise GraphQLError("Invalid plan. Choose free, pro, or elite.")
+
+        org = Organization.objects.get(id=organization_id)
+
+        # Org admins can only manage their own org; superadmin can manage any
+        if user.role == "admin" and str(user.organization_id) != str(organization_id):
+            raise GraphQLError("Not authorized for this organization")
+
+        today = date.today()
+        current = (org.plan or "free").lower()
+        same_paid_renewal = plan == current and plan != "free"
+
+        if same_paid_renewal:
+            # Renew only on expiry day or after — not while the plan is still active
+            if org.plan_expires_at and org.plan_expires_at > today:
+                raise GraphQLError(
+                    "Your plan is still active. You can renew on the expiry date "
+                    f"({org.plan_expires_at.strftime('%d %b %Y')})."
+                )
+
+        org.plan = plan
+        if plan == "free":
+            org.plan_expires_at = None
+        else:
+            days = duration_days if duration_days and duration_days > 0 else 365
+            # Always start the new period from today (renew/upgrade), not stacked mid-cycle
+            org.plan_expires_at = today + timedelta(days=days)
+
+        org.save(update_fields=["plan", "plan_expires_at", "updated_at"])
         return org
 
     @strawberry.mutation

@@ -27,6 +27,11 @@ class Organization(models.Model):
         ('elite', 'Elite'),
     ]
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free')
+    plan_expires_at = models.DateField(
+        null=True,
+        blank=True,
+        help_text='When the current paid plan ends. Null for free or lifetime.',
+    )
     accent = models.CharField(
         max_length=20,
         choices=ACCENT_CHOICES,
