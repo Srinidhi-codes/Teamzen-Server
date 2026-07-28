@@ -120,10 +120,12 @@ def apply_for_leave(
     from_date_str: str,
     to_date_str: str,
     reason: str,
+    half_day_period: str = "full_day",
 ) -> dict:
     """
     Submits a new leave request for the user.
     from_date_str and to_date_str must be in 'YYYY-MM-DD' format.
+    half_day_period must be full_day, first_half, or second_half.
     Returns a success dict with request_id or an ERROR_CARD string on failure.
     """
     from ai_engine.tools import apply_for_leave as _tool
@@ -133,6 +135,7 @@ def apply_for_leave(
         "from_date_str": from_date_str,
         "to_date_str": to_date_str,
         "reason": reason,
+        "half_day_period": half_day_period,
     })
 
 

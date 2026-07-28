@@ -80,8 +80,26 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                 
         # 3. Send Email if requested
         if notification_type in ['EMAIL', 'BOTH']:
-            # Dispatch to a separate background worker to prevent slow SMTP connections from blocking this thread
-            send_email_notification.delay(recipient_id, "Notification: " + verb, message, target_type, target_id, actor_id=actor_id)
+            # Prefer a separate background task, but if the broker is currently unavailable
+            # fall back to inline delivery so manager emails are not silently dropped.
+            try:
+                send_email_notification.delay(
+                    recipient_id,
+                    "Notification: " + verb,
+                    message,
+                    target_type,
+                    target_id,
+                    actor_id=actor_id,
+                )
+            except Exception:
+                send_email_notification(
+                    recipient_id,
+                    "Notification: " + verb,
+                    message,
+                    target_type,
+                    target_id,
+                    actor_id=actor_id,
+                )
             
         return f"Notification {notification.id} processed for {recipient.email}"
     except Exception as e:

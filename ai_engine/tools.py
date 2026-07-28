@@ -39,17 +39,39 @@ def get_leave_types(organization_id: int):
     return [{"id": t.id, "name": t.name, "description": t.description} for t in types]
 
 @tool
-def apply_for_leave(user_id: int, leave_type_id: int, from_date_str: str, to_date_str: str, reason: str):
+def apply_for_leave(
+    user_id: int,
+    leave_type_id: int,
+    from_date_str: str,
+    to_date_str: str,
+    reason: str,
+    half_day_period: str = "full_day",
+):
     """
     Submits a new leave request for the user.
     from_date_str and to_date_str should be in 'YYYY-MM-DD' format.
+    half_day_period must be one of: full_day, first_half, second_half.
     """
+    if not reason or len(reason.strip()) < 5:
+        return "[ERROR_CARD] title: Leave reason required | message: Please provide a clear reason for the leave request before I submit it. [/ERROR_CARD]"
+
+    valid_half_day_periods = {"full_day", "first_half", "second_half"}
+    if half_day_period not in valid_half_day_periods:
+        return "[ERROR_CARD] title: Invalid leave duration | message: half_day_period must be full_day, first_half, or second_half. [/ERROR_CARD]"
+
     from_date = date.fromisoformat(from_date_str)
     to_date = date.fromisoformat(to_date_str)
     duration = (to_date - from_date).days + 1
     
     if duration <= 0:
         return "Error: End date must be after or equal to start date."
+
+    if from_date == to_date and half_day_period == "full_day":
+        inferred_duration = "1 full day"
+    elif from_date == to_date:
+        inferred_duration = "0.5 day"
+    else:
+        inferred_duration = f"{duration} days"
 
     try:
         leave_type = LeaveType.objects.get(id=leave_type_id)
@@ -67,12 +89,13 @@ def apply_for_leave(user_id: int, leave_type_id: int, from_date_str: str, to_dat
                 leave_type=leave_type,
                 from_date=from_date,
                 to_date=to_date,
-                reason=reason
+                reason=reason,
+                half_day_period=half_day_period,
             )
 
             return {
                 "status": "success",
-                "message": f"Successfully submitted pending {leave_type.name} request for {request.duration_days} days.",
+                "message": f"Successfully submitted pending {leave_type.name} request for {inferred_duration}.",
                 "request_id": request.id
             }
     except Exception as e:

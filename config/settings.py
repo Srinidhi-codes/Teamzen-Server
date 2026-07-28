@@ -18,7 +18,11 @@ from dotenv import load_dotenv
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 
-def normalize_redis_url(url: str, db_index: int | None = None) -> str:
+def normalize_redis_url(
+    url: str,
+    db_index: int | None = None,
+    ssl_cert_reqs: str | None = None,
+) -> str:
     if not url:
         fallback = f"redis://localhost:6379/{db_index or 0}"
         return fallback
@@ -26,8 +30,8 @@ def normalize_redis_url(url: str, db_index: int | None = None) -> str:
     parsed = urlparse(url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
 
-    if parsed.scheme == "rediss" and "ssl_cert_reqs" not in query:
-        query["ssl_cert_reqs"] = "CERT_REQUIRED"
+    if parsed.scheme == "rediss" and "ssl_cert_reqs" not in query and ssl_cert_reqs:
+        query["ssl_cert_reqs"] = ssl_cert_reqs
 
     path = parsed.path
     if db_index is not None:
@@ -36,7 +40,7 @@ def normalize_redis_url(url: str, db_index: int | None = None) -> str:
     return urlunparse(parsed._replace(path=path, query=urlencode(query)))
 
 def get_redis_url_with_db(url: str, db_index: int) -> str:
-    return normalize_redis_url(url, db_index=db_index)
+    return normalize_redis_url(url, db_index=db_index, ssl_cert_reqs="required")
 
 load_dotenv()
 
@@ -177,7 +181,8 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 # Prefer Redis when available; in local DEBUG fall back to in-memory so a
 # unreachable Redis Cloud host does not break websockets / chat / cache.
-REDIS_URL = normalize_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379/0'))
+RAW_REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+REDIS_URL = normalize_redis_url(RAW_REDIS_URL, ssl_cert_reqs="required")
 FORCE_REDIS = os.getenv('FORCE_REDIS', 'False') == 'True'
 USE_INMEMORY_CHANNELS = (DEBUG and not FORCE_REDIS) or os.getenv('USE_INMEMORY_CHANNELS', 'False') == 'True'
 
@@ -360,8 +365,14 @@ CLOUDINARY_STORAGE = {
 }
 # Celery Configuration
 # Use Redis as the primary message broker on DB 0 explicitly
-CELERY_BROKER_URL = normalize_redis_url(os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL')))
-CELERY_RESULT_BACKEND = normalize_redis_url(os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL')))
+CELERY_BROKER_URL = normalize_redis_url(
+    os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL')),
+    ssl_cert_reqs="CERT_REQUIRED",
+)
+CELERY_RESULT_BACKEND = normalize_redis_url(
+    os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL')),
+    ssl_cert_reqs="CERT_REQUIRED",
+)
 CELERY_CACHE_BACKEND = 'django-cache'
 
 # Eager mode for local development to avoid needing a separate celery worker process
