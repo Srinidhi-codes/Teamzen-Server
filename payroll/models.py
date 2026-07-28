@@ -143,3 +143,36 @@ class PayrollAdjustment(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.adjustment_type}: {self.amount} ({self.month}/{self.year})"
+
+
+class SalaryAdvance(models.Model):
+    """Admin-granted salary advance recovered via installments on subsequent payroll runs."""
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='salary_advances')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='salary_advances',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=255, blank=True)
+    granted_on = models.DateField()
+    installments_total = models.PositiveSmallIntegerField(default=1)
+    installment_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    remaining_balance = models.DecimalField(max_digits=12, decimal_places=2)
+    recovered_so_far = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-granted_on', '-id']
+
+    def __str__(self):
+        return f"Advance {self.user.email} ₹{self.amount} ({self.status})"

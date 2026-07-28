@@ -443,6 +443,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.ai_tasks.notify_manager_team_absence',
         'schedule': crontab(day_of_week='sunday', hour=19, minute=0),
     },
+    'auto-run-payroll-for-due-orgs': {
+        'task': 'payroll.tasks.auto_run_payroll_for_due_orgs',
+        'schedule': crontab(hour=1, minute=0),  # Daily 01:00; respects org payroll_cycle_day
+    },
 }
 
 # AI Configuration

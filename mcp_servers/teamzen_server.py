@@ -235,6 +235,75 @@ def get_latest_payslip(user_id: int) -> str:
     return _tool.invoke({"user_id": user_id})
 
 
+@mcp.tool()
+def get_payslip(user_id: int, month: int, year: int) -> str:
+    """Fetch payslip for a specific month (1-12) and year."""
+    from ai_engine.tools import get_payslip as _tool
+    return _tool.invoke({"user_id": user_id, "month": month, "year": year})
+
+
+@mcp.tool()
+def explain_deduction(
+    user_id: int,
+    month: int = None,
+    year: int = None,
+    component_name: str = None,
+) -> str:
+    """Explain payslip deductions (PF, PT, LOP, etc.). Optional month/year/component filter."""
+    from ai_engine.tools import explain_deduction as _tool
+    payload = {"user_id": user_id}
+    if month is not None:
+        payload["month"] = month
+    if year is not None:
+        payload["year"] = year
+    if component_name:
+        payload["component_name"] = component_name
+    return _tool.invoke(payload)
+
+
+@mcp.tool()
+def salary_forecast(
+    user_id: int,
+    unpaid_days: float,
+    month: int = None,
+    year: int = None,
+) -> str:
+    """Estimate pay loss for unpaid/LOP days from active CTC. Read-only."""
+    from ai_engine.tools import salary_forecast as _tool
+    payload = {"user_id": user_id, "unpaid_days": unpaid_days}
+    if month is not None:
+        payload["month"] = month
+    if year is not None:
+        payload["year"] = year
+    return _tool.invoke(payload)
+
+
+@mcp.tool()
+def compare_payslips(
+    user_id: int,
+    month1: int,
+    year1: int,
+    month2: int,
+    year2: int,
+) -> str:
+    """Compare two payslips across months for net/gross/LOP/deduction deltas."""
+    from ai_engine.tools import compare_payslips as _tool
+    return _tool.invoke({
+        "user_id": user_id,
+        "month1": month1,
+        "year1": year1,
+        "month2": month2,
+        "year2": year2,
+    })
+
+
+@mcp.tool()
+def get_payroll_history(user_id: int, limit: int = 6) -> str:
+    """List recent payslips (month/year/net/status) for an employee."""
+    from ai_engine.tools import get_payroll_history as _tool
+    return _tool.invoke({"user_id": user_id, "limit": limit})
+
+
 # ===========================================================================
 # POLICY TOOLS
 # ===========================================================================

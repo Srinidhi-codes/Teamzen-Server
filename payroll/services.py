@@ -1,17 +1,90 @@
 import calendar
+import os
+import tempfile
+import urllib.request
 from datetime import date
 from decimal import Decimal
-import os
 from fpdf import FPDF
-from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Prefetch
 from .models import (
-    SalaryComponent, SalaryStructure, SalaryStructureComponent, EmployeeSalaryStructure,
-    PayrollRun, Payslip, PayslipComponent, PayrollAdjustment
+    EmployeeSalaryStructure,
+    PayrollRun,
+    Payslip,
+    PayslipComponent,
+    PayrollAdjustment,
+    SalaryAdvance,
+    SalaryStructureComponent,
 )
 from attendance.models import AttendanceRecord
 from leaves.models import LeaveRequest
+
+
+def _fmt_inr(amount) -> str:
+    """Format amount like 14,418 (Indian grouping, no currency symbol)."""
+    try:
+        n = int(Decimal(str(amount)).quantize(Decimal("1")))
+    except Exception:
+        return str(amount)
+    # Indian grouping: last 3 digits, then pairs (e.g. 12,34,567)
+    neg = n < 0
+    s = str(abs(n))
+    if len(s) <= 3:
+        out = s
+    else:
+        last3 = s[-3:]
+        rest = s[:-3]
+        parts = []
+        while rest:
+            parts.append(rest[-2:])
+            rest = rest[:-2]
+        out = ",".join(list(reversed(parts)) + [last3])
+    return f"-{out}" if neg else out
+
+
+def _download_image_to_temp(url: str, suffix: str = ".png") -> str | None:
+    """Download a remote image URL to a temp file; return path or None."""
+    if not url:
+        return None
+    try:
+        if url.startswith("//"):
+            url = "https:" + url
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.close()
+        urllib.request.urlretrieve(url, tmp.name)
+        return tmp.name
+    except Exception:
+        return None
+
+
+def _resolve_logo_path(organization) -> tuple[str | None, bool]:
+    """Return (local path, is_temp) for the org logo."""
+    if not organization or not getattr(organization, "logo", None):
+        return None, False
+    logo = organization.logo
+    try:
+        path = logo.path
+        if path and os.path.isfile(path):
+            return path, False
+    except Exception:
+        pass
+    try:
+        url = logo.url
+        if not url:
+            return None, False
+        if url.startswith("/"):
+            from django.conf import settings
+
+            candidate = os.path.join(settings.MEDIA_ROOT, logo.name)
+            if os.path.isfile(candidate):
+                return candidate, False
+            return None, False
+        suffix = os.path.splitext(logo.name or "logo.png")[1] or ".png"
+        path = _download_image_to_temp(url, suffix=suffix)
+        return path, bool(path)
+    except Exception:
+        return None, False
+
 
 class PayrollService:
     @staticmethod
@@ -21,371 +94,752 @@ class PayrollService:
     @staticmethod
     def calculate_lop_days(user, year, month):
         """
-        Calculate Loss of Pay (LOP) days based on attendance and unpaid leaves.
+        LOP = max(attendance-based LOP, unpaid-leave LOP) to avoid double-counting
+        when unpaid leave days are also marked absent in attendance.
         """
-        # 1. Count 'absent' records in attendance
         absent_days = AttendanceRecord.objects.filter(
             user=user,
             attendance_date__year=year,
             attendance_date__month=month,
-            status='absent'
+            status="absent",
         ).count()
 
-        # 2. Add 'half_day' as 0.5
         half_days = AttendanceRecord.objects.filter(
             user=user,
             attendance_date__year=year,
             attendance_date__month=month,
-            status='half_day'
+            status="half_day",
         ).count()
-        
-        attendance_lop = absent_days + (half_days * 0.5)
 
-        # 3. Count unpaid leaves from leaves app
-        # NOTE: We only count leaves that are NOT marked as 'is_paid_leave'
+        attendance_lop = Decimal(absent_days) + (Decimal(half_days) * Decimal("0.5"))
+
         unpaid_leaves = LeaveRequest.objects.filter(
             user=user,
-            _status='approved',
+            _status="approved",
             leave_type__is_paid_leave=False,
             from_date__year=year,
-            from_date__month=month
+            from_date__month=month,
         )
-        
-        leave_lop = sum(leaf.duration_days for leaf in unpaid_leaves)
+        leave_lop = sum((Decimal(str(leaf.duration_days)) for leaf in unpaid_leaves), Decimal("0"))
 
-        return Decimal(attendance_lop) + Decimal(leave_lop)
+        return max(attendance_lop, leave_lop)
+
+    @staticmethod
+    def estimate_lop_cost(user, unpaid_days, year=None, month=None):
+        today = date.today()
+        year = year or today.year
+        month = month or today.month
+        unpaid = Decimal(str(unpaid_days))
+        if unpaid < 0:
+            return {"error": "unpaid_days must be >= 0"}
+
+        structure = (
+            EmployeeSalaryStructure.objects.filter(user=user, is_active=True)
+            .order_by("-effective_from")
+            .first()
+        )
+        if not structure or not structure.annual_ctc:
+            return {"error": "No active salary structure / CTC found for this employee."}
+
+        days_in_month = PayrollService.get_days_in_month(year, month)
+        monthly_ctc = Decimal(structure.annual_ctc) / Decimal(12)
+        per_day = monthly_ctc / Decimal(days_in_month)
+        estimated_loss = (per_day * unpaid).quantize(Decimal("0.01"))
+        estimated_net_if_full = monthly_ctc.quantize(Decimal("0.01"))
+        estimated_net_after = (monthly_ctc - estimated_loss).quantize(Decimal("0.01"))
+
+        return {
+            "year": year,
+            "month": month,
+            "unpaid_days": float(unpaid),
+            "days_in_month": days_in_month,
+            "annual_ctc": float(structure.annual_ctc),
+            "monthly_ctc": float(monthly_ctc.quantize(Decimal("0.01"))),
+            "per_day_rate": float(per_day.quantize(Decimal("0.01"))),
+            "estimated_loss": float(estimated_loss),
+            "estimated_monthly_gross_reference": float(estimated_net_if_full),
+            "estimated_monthly_after_lop": float(estimated_net_after),
+            "note": (
+                "Estimate uses monthly CTC / calendar days × unpaid days "
+                "(same LOP method as payroll). Actual net may differ after "
+                "statutory deductions and adjustments."
+            ),
+        }
+
+    @staticmethod
+    def run_has_locked_payslips(payroll_run) -> bool:
+        return Payslip.objects.filter(
+            payroll_run=payroll_run, status__in=["published", "paid"]
+        ).exists()
+
+    @staticmethod
+    def create_draft_run(organization, month: int, year: int, processed_by=None) -> PayrollRun:
+        if month < 1 or month > 12:
+            raise ValueError("Month must be between 1 and 12")
+        run, created = PayrollRun.objects.get_or_create(
+            organization=organization,
+            month=month,
+            year=year,
+            defaults={"processed_by": processed_by, "status": "draft"},
+        )
+        if not created and run.status == "failed":
+            run.status = "draft"
+            run.processed_by = processed_by or run.processed_by
+            run.save(update_fields=["status", "processed_by"])
+        elif not created and run.status not in ("draft", "failed"):
+            # Already processed — return existing (caller decides to process again)
+            pass
+        return run
+
+    @staticmethod
+    def preview_advance_recoveries(organization, user_ids=None):
+        """Active advances that would be deducted on the next process."""
+        qs = SalaryAdvance.objects.filter(
+            organization=organization, status="active", remaining_balance__gt=0
+        ).select_related("user")
+        if user_ids is not None:
+            qs = qs.filter(user_id__in=user_ids)
+        rows = []
+        for adv in qs:
+            deduct = min(adv.installment_amount, adv.remaining_balance)
+            rows.append(
+                {
+                    "advance_id": adv.id,
+                    "user_id": adv.user_id,
+                    "user_name": f"{adv.user.first_name} {adv.user.last_name}".strip()
+                    or adv.user.email,
+                    "deduct": deduct,
+                    "remaining_after": adv.remaining_balance - deduct,
+                }
+            )
+        return rows
 
     @transaction.atomic
     def process_payroll(self, payroll_run_id):
         payroll_run = PayrollRun.objects.select_for_update().get(id=payroll_run_id)
-        
-        payroll_run.status = 'processing'
-        payroll_run.save()
+
+        if self.run_has_locked_payslips(payroll_run):
+            raise Exception(
+                "Cannot recalculate: one or more payslips are already published or paid."
+            )
+
+        payroll_run.status = "processing"
+        payroll_run.save(update_fields=["status"])
 
         try:
-            # Clear existing payslips for this run to allow recalculation
             Payslip.objects.filter(payroll_run=payroll_run).delete()
-            
-            # Reset adjustments status for this month so they can be re-applied
+
             PayrollAdjustment.objects.filter(
                 organization=payroll_run.organization,
                 month=payroll_run.month,
-                year=payroll_run.year
+                year=payroll_run.year,
             ).update(is_processed=False)
 
-            # Get all active salary structures for users in this organization
-            employee_structures = EmployeeSalaryStructure.objects.filter(
-                user__organization=payroll_run.organization,
-                is_active=True,
-                effective_from__lte=date(payroll_run.year, payroll_run.month, 1)
-            ).select_related('user', 'salary_structure')
+            # One active structure per user (latest effective_from)
+            all_structs = (
+                EmployeeSalaryStructure.objects.filter(
+                    user__organization=payroll_run.organization,
+                    is_active=True,
+                    effective_from__lte=date(payroll_run.year, payroll_run.month, 1),
+                )
+                .select_related("user", "salary_structure", "user__designation", "user__department")
+                .prefetch_related(
+                    Prefetch(
+                        "salary_structure__components",
+                        queryset=SalaryStructureComponent.objects.select_related(
+                            "component", "base_component"
+                        ),
+                    )
+                )
+                .order_by("user_id", "-effective_from")
+            )
 
-            total_org_gross = Decimal('0.00')
-            total_org_deduction = Decimal('0.00')
-            total_org_net = Decimal('0.00')
+            seen_users = set()
+            employee_structures = []
+            for emp_struct in all_structs:
+                if emp_struct.user_id in seen_users:
+                    continue
+                seen_users.add(emp_struct.user_id)
+                employee_structures.append(emp_struct)
 
+            total_org_gross = Decimal("0.00")
+            total_org_deduction = Decimal("0.00")
+            total_org_net = Decimal("0.00")
             days_in_month = self.get_days_in_month(payroll_run.year, payroll_run.month)
 
             for emp_struct in employee_structures:
                 user = emp_struct.user
-                monthly_ctc = emp_struct.annual_ctc / 12
-                
+                monthly_ctc = (emp_struct.annual_ctc / Decimal(12)).quantize(Decimal("0.01"))
+
                 lop_days = self.calculate_lop_days(user, payroll_run.year, payroll_run.month)
                 worked_days = Decimal(days_in_month) - lop_days
-                
-                # Pro-rata adjustment based on LOP
-                # gross_after_lop = (monthly_ctc / days_in_month) * worked_days
-                lop_deduction_amount = (monthly_ctc / Decimal(days_in_month)) * lop_days
-                
+                lop_deduction_amount = (
+                    (monthly_ctc / Decimal(days_in_month)) * lop_days
+                ).quantize(Decimal("0.01"))
+
                 payslip = Payslip.objects.create(
                     payroll_run=payroll_run,
                     user=user,
-                    designation=getattr(user.designation, 'name', ''),
-                    department=getattr(user.department, 'name', ''),
+                    designation=getattr(user.designation, "name", "") or "",
+                    department=getattr(user.department, "name", "") or "",
                     worked_days=worked_days,
                     lop_days=lop_days,
-                    gross_earnings=0, # Will update
-                    total_deductions=0, # Will update
-                    net_pay=0, # Will update
-                    status='draft'
+                    gross_earnings=0,
+                    total_deductions=0,
+                    net_pay=0,
+                    status="draft",
                 )
 
-                gross_earnings = Decimal('0.00')
-                total_deductions = Decimal('0.00')
-                
-                # Component Map to handle percentages (e.g. PF as % of Basic)
-                # Initialize with 'CTC' to allow structures to be based on total cost
-                calculated_components = {
-                    'CTC': monthly_ctc
-                }
+                gross_earnings = Decimal("0.00")
+                total_deductions = Decimal("0.00")
+                calculated_components = {"CTC": monthly_ctc}
 
-                # 1. Processing Earnings
-                earnings = emp_struct.salary_structure.components.filter(
-                    component__component_type='earning'
-                ).order_by('id')
-                
+                earnings = [
+                    sc
+                    for sc in emp_struct.salary_structure.components.all()
+                    if sc.component.component_type == "earning"
+                ]
                 for sc in earnings:
-                    amount = Decimal('0.00')
-                    if sc.calculation_type == 'flat':
+                    amount = Decimal("0.00")
+                    if sc.calculation_type == "flat":
                         amount = sc.value
-                    elif sc.calculation_type == 'percentage':
-                        # Use specified base component, or default to CTC if none specified
-                        base_code = sc.base_component.code if sc.base_component else 'CTC'
-                        base_val = calculated_components.get(base_code, Decimal('0.00'))
-                        amount = (base_val * sc.value) / 100
-                    
-                    # Method B: Keep full amount, LOP is handled as a separate deduction
-                    # amount = (amount / Decimal(days_in_month)) * worked_days
-                    amount = Decimal(amount).quantize(Decimal('0.01'))
-                    
+                    elif sc.calculation_type == "percentage":
+                        base_code = sc.base_component.code if sc.base_component else "CTC"
+                        base_val = calculated_components.get(base_code, Decimal("0.00"))
+                        amount = (base_val * sc.value) / Decimal(100)
+                    amount = Decimal(amount).quantize(Decimal("0.01"))
                     PayslipComponent.objects.create(
                         payslip=payslip,
                         component_name=sc.component.name,
                         component_code=sc.component.code,
-                        component_type='earning',
-                        amount=amount
+                        component_type="earning",
+                        amount=amount,
                     )
                     gross_earnings += amount
                     calculated_components[sc.component.code] = amount
 
-                # 2. Processing Deductions
-                deductions = emp_struct.salary_structure.components.filter(
-                    component__component_type='deduction'
-                ).order_by('id')
-                
+                deductions = [
+                    sc
+                    for sc in emp_struct.salary_structure.components.all()
+                    if sc.component.component_type == "deduction"
+                ]
                 for sc in deductions:
-                    amount = Decimal('0.00')
-                    if sc.calculation_type == 'flat':
+                    amount = Decimal("0.00")
+                    if sc.calculation_type == "flat":
                         amount = sc.value
-                    elif sc.calculation_type == 'percentage':
-                        # Use specified base component, or default to CTC if none specified
-                        base_code = sc.base_component.code if sc.base_component else 'CTC'
-                        base_val = calculated_components.get(base_code, Decimal('0.00'))
-                        amount = (base_val * sc.value) / 100
-                    
+                    elif sc.calculation_type == "percentage":
+                        base_code = sc.base_component.code if sc.base_component else "CTC"
+                        base_val = calculated_components.get(base_code, Decimal("0.00"))
+                        amount = (base_val * sc.value) / Decimal(100)
+                    amount = Decimal(amount).quantize(Decimal("0.01"))
                     PayslipComponent.objects.create(
                         payslip=payslip,
                         component_name=sc.component.name,
                         component_code=sc.component.code,
-                        component_type='deduction',
-                        amount=amount
+                        component_type="deduction",
+                        amount=amount,
                     )
                     total_deductions += amount
                     calculated_components[sc.component.code] = amount
 
-                # 3. Process LOP Deduction (Method B)
                 if lop_days > 0:
                     PayslipComponent.objects.create(
                         payslip=payslip,
                         component_name=f"LOP Deduction ({lop_days} days)",
                         component_code="LOP",
-                        component_type='deduction',
-                        amount=lop_deduction_amount
+                        component_type="deduction",
+                        amount=lop_deduction_amount,
                     )
                     total_deductions += lop_deduction_amount
 
-                # 3. Process Manual Adjustments
                 adjustments = PayrollAdjustment.objects.filter(
                     user=user,
                     month=payroll_run.month,
                     year=payroll_run.year,
-                    is_processed=False
+                    is_processed=False,
                 )
-                
                 for adj in adjustments:
+                    amt = Decimal(adj.amount).quantize(Decimal("0.01"))
                     PayslipComponent.objects.create(
                         payslip=payslip,
                         component_name=f"Adjustment: {adj.reason}",
                         component_code="ADJ",
                         component_type=adj.adjustment_type,
-                        amount=adj.amount
+                        amount=amt,
                     )
-                    if adj.adjustment_type == 'earning':
-                        gross_earnings += adj.amount
+                    if adj.adjustment_type == "earning":
+                        gross_earnings += amt
                     else:
-                        total_deductions += adj.amount
-                    
-                    # Mark as processed so it's not applied again in another run
+                        total_deductions += amt
                     adj.is_processed = True
-                    adj.save()
+                    adj.save(update_fields=["is_processed"])
 
-                # Add LOP if it's considered a deduction head (optional, here we just reduced earnings)
-                # But typically LOP is a deduction from Gross.
-                # Let's keep it simple for now.
+                # Salary advance recoveries
+                advances = SalaryAdvance.objects.select_for_update().filter(
+                    user=user,
+                    organization=payroll_run.organization,
+                    status="active",
+                    remaining_balance__gt=0,
+                )
+                for adv in advances:
+                    deduct = min(adv.installment_amount, adv.remaining_balance).quantize(
+                        Decimal("0.01")
+                    )
+                    if deduct <= 0:
+                        continue
+                    PayslipComponent.objects.create(
+                        payslip=payslip,
+                        component_name="Salary advance recovery",
+                        component_code="ADV",
+                        component_type="deduction",
+                        amount=deduct,
+                    )
+                    total_deductions += deduct
+                    adv.remaining_balance = (adv.remaining_balance - deduct).quantize(
+                        Decimal("0.01")
+                    )
+                    adv.recovered_so_far = (adv.recovered_so_far + deduct).quantize(
+                        Decimal("0.01")
+                    )
+                    if adv.remaining_balance <= 0:
+                        adv.remaining_balance = Decimal("0.00")
+                        adv.status = "completed"
+                    adv.save(
+                        update_fields=[
+                            "remaining_balance",
+                            "recovered_so_far",
+                            "status",
+                            "updated_at",
+                        ]
+                    )
 
-                payslip.gross_earnings = gross_earnings
-                payslip.total_deductions = total_deductions
-                payslip.net_pay = gross_earnings - total_deductions
+                payslip.gross_earnings = gross_earnings.quantize(Decimal("0.01"))
+                payslip.total_deductions = total_deductions.quantize(Decimal("0.01"))
+                payslip.net_pay = (gross_earnings - total_deductions).quantize(
+                    Decimal("0.01")
+                )
                 payslip.save()
 
-                total_org_gross += gross_earnings
-                total_org_deduction += total_deductions
+                total_org_gross += payslip.gross_earnings
+                total_org_deduction += payslip.total_deductions
                 total_org_net += payslip.net_pay
 
             payroll_run.total_gross = total_org_gross
             payroll_run.total_deduction = total_org_deduction
             payroll_run.total_net_pay = total_org_net
-            payroll_run.status = 'completed'
+            payroll_run.status = "completed"
             payroll_run.save()
             return True
 
         except Exception as e:
             import traceback
-            payroll_run.status = 'failed'
-            payroll_run.save()
+
+            payroll_run.status = "failed"
+            payroll_run.save(update_fields=["status"])
             print("--- PAYROLL ERROR ---")
             traceback.print_exc()
             print(f"Error details: {str(e)}")
             print("----------------------")
+            if "published or paid" in str(e).lower() or "Cannot recalculate" in str(e):
+                raise
             return False
 
     @staticmethod
     def generate_payslip_pdf(payslip):
-        """Generates a PDF for the payslip and saves it to the payslip_pdf field."""
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("helvetica", "B", 16)
-        
-        org_name = payslip.payroll_run.organization.name
+        """
+        Payslip PDF styled like modern Indian payroll slips
+        (org logo + company name header, net-pay hero, detail grid,
+        earnings/deductions tables).
+        """
+        org = payslip.payroll_run.organization
+        org_name = org.name
         month_name = calendar.month_name[payslip.payroll_run.month]
         year = payslip.payroll_run.year
-        
-        # Header
-        pdf.cell(0, 10, f"{org_name} - Payslip", align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("helvetica", "", 12)
-        pdf.cell(0, 10, f"For the month of {month_name} {year}", align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(10)
-        
-        # Employee Details
+        month_short = calendar.month_abbr[payslip.payroll_run.month]
+        period_label = f"{month_short} {year}"
+
+        user = payslip.user
+        name = f"{user.first_name} {user.last_name}".strip() or user.email
+        earnings = list(payslip.components.filter(component_type="earning"))
+        deductions = list(payslip.components.filter(component_type="deduction"))
+
+        emp_code = user.employee_id or str(user.id)
+        pan = user.pan_number or "-"
+        account_no = user.bank_account_number or "-"
+        ifsc = user.bank_ifsc_code or "-"
+        dob = user.date_of_birth
+        doj = user.date_of_joining
+        regime = "-"
+
+        def _fmt_date(d):
+            if not d:
+                return "-"
+            if hasattr(d, "strftime"):
+                return d.strftime("%d/%m/%Y")
+            return str(d)
+
+        logo_path, logo_is_temp = _resolve_logo_path(org)
+        tmp_paths: list[str] = []
+        if logo_is_temp and logo_path:
+            tmp_paths.append(logo_path)
+
+        # Teamzen product mark (right side — matches "Generated by" branding)
+        teamzen_logo = None
+        try:
+            from django.conf import settings
+
+            teamzen_url = getattr(settings, "EMAIL_LOGO_URL", "") or ""
+            teamzen_logo = _download_image_to_temp(teamzen_url, suffix=".png")
+            if teamzen_logo:
+                tmp_paths.append(teamzen_logo)
+        except Exception:
+            teamzen_logo = None
+
+        pdf = FPDF(unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+        pdf.set_margins(14, 14, 14)
+
+        # ── Header: org logo + company name | Payslip period + Teamzen mark ──
+        header_y = 12
+        text_x = 14
+        if logo_path:
+            try:
+                pdf.image(logo_path, x=14, y=header_y, h=14)
+                text_x = 34
+            except Exception:
+                text_x = 14
+
+        pdf.set_xy(text_x, header_y + 1)
+        pdf.set_font("helvetica", "B", 13)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(90, 7, org_name[:40], align="L")
+
+        pdf.set_xy(text_x, header_y + 8)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(90, 5, "Payslip", align="L")
+
+        pdf.set_xy(120, header_y)
         pdf.set_font("helvetica", "B", 12)
-        pdf.cell(50, 10, "Employee Name:", border=0)
-        pdf.set_font("helvetica", "", 12)
-        pdf.cell(0, 10, f"{payslip.user.first_name} {payslip.user.last_name}", border=0, new_x="LMARGIN", new_y="NEXT")
-        
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(76, 6, f"Payslip: {period_label}", align="R")
+
+        if teamzen_logo:
+            try:
+                pdf.set_xy(120, header_y + 8)
+                pdf.set_font("helvetica", "", 7)
+                pdf.set_text_color(108, 117, 125)
+                pdf.cell(50, 5, "Generated by", align="R")
+                pdf.image(teamzen_logo, x=172, y=header_y + 7, h=6)
+            except Exception:
+                pdf.set_xy(120, header_y + 8)
+                pdf.set_font("helvetica", "", 8)
+                pdf.set_text_color(108, 117, 125)
+                pdf.cell(76, 5, "Generated by Teamzen", align="R")
+        else:
+            pdf.set_xy(120, header_y + 8)
+            pdf.set_font("helvetica", "", 8)
+            pdf.set_text_color(108, 117, 125)
+            pdf.cell(76, 5, "Generated by Teamzen", align="R")
+
+        # Divider under header
+        pdf.set_draw_color(222, 226, 230)
+        pdf.set_line_width(0.3)
+        pdf.line(14, 30, 196, 30)
+
+        # ── Net Pay hero ──
+        y = 36
+        pdf.set_fill_color(248, 249, 250)
+        pdf.rect(14, y, 182, 28, "F")
+
+        pdf.set_xy(18, y + 4)
+        pdf.set_font("helvetica", "", 9)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(40, 5, "Net Pay", align="L")
+
+        pdf.set_xy(18, y + 10)
+        pdf.set_font("helvetica", "B", 22)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(50, 12, _fmt_inr(payslip.net_pay), align="L")
+
+        # Equation: Gross − Deductions
+        eq_x = 85
+        pdf.set_xy(eq_x, y + 6)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(35, 4, "Gross Pay (A)", align="C")
+        pdf.set_xy(eq_x + 40, y + 6)
+        pdf.cell(35, 4, "Deductions (B)", align="C")
+
+        pdf.set_xy(eq_x, y + 12)
         pdf.set_font("helvetica", "B", 12)
-        pdf.cell(50, 10, "Designation:", border=0)
-        pdf.set_font("helvetica", "", 12)
-        pdf.cell(0, 10, payslip.designation, border=0, new_x="LMARGIN", new_y="NEXT")
-        
-        pdf.set_font("helvetica", "B", 12)
-        pdf.cell(50, 10, "Worked Days:", border=0)
-        pdf.set_font("helvetica", "", 12)
-        pdf.cell(0, 10, f"{payslip.worked_days} (LOP: {payslip.lop_days})", border=0, new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(10)
-        
-        # Earnings & Deductions
-        pdf.set_font("helvetica", "B", 10)
-        pdf.cell(95, 10, "Earnings", border=1, align="C")
-        pdf.cell(95, 10, "Deductions", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
-        
-        pdf.set_font("helvetica", "", 9) # Smaller font to prevent overlapping
-        earnings = payslip.components.filter(component_type='earning')
-        deductions = payslip.components.filter(component_type='deduction')
-        
-        max_rows = max(len(earnings), len(deductions))
-        
-        for i in range(max_rows):
-            earning = earnings[i] if i < len(earnings) else None
-            deduction = deductions[i] if i < len(deductions) else None
-            
-            e_name = f"{earning.component_name}" if earning else ""
-            e_amt = f"Rs {earning.amount}" if earning else ""
-            
-            d_name = f"{deduction.component_name}" if deduction else ""
-            d_amt = f"Rs {deduction.amount}" if deduction else ""
-            
-            # Print row
-            pdf.cell(65, 10, e_name, border=1)
-            pdf.cell(30, 10, e_amt, border=1, align="R")
-            
-            pdf.cell(65, 10, d_name, border=1)
-            pdf.cell(30, 10, d_amt, border=1, align="R", new_x="LMARGIN", new_y="NEXT")
-            
-        pdf.set_font("helvetica", "B", 9)
-        pdf.cell(65, 10, "Total Earnings", border=1)
-        pdf.cell(30, 10, f"Rs {payslip.gross_earnings}", border=1, align="R")
-        pdf.cell(65, 10, "Total Deductions", border=1)
-        pdf.cell(30, 10, f"Rs {payslip.total_deductions}", border=1, align="R", new_x="LMARGIN", new_y="NEXT")
-        
-        pdf.ln(5)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(35, 8, f"+ {_fmt_inr(payslip.gross_earnings)}", align="C")
+
+        pdf.set_xy(eq_x + 32, y + 12)
         pdf.set_font("helvetica", "B", 14)
-        pdf.cell(95, 10, "Net Pay", border=1)
-        pdf.cell(95, 10, f"Rs {payslip.net_pay}", border=1, align="R", new_x="LMARGIN", new_y="NEXT")
-        
+        pdf.set_text_color(173, 181, 189)
+        pdf.cell(8, 8, "-", align="C")
+
+        pdf.set_xy(eq_x + 40, y + 12)
+        pdf.set_font("helvetica", "B", 12)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(35, 8, f"- {_fmt_inr(payslip.total_deductions)}", align="C")
+
+        pdf.set_xy(eq_x + 72, y + 12)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(173, 181, 189)
+        pdf.cell(8, 8, "=", align="C")
+
+        # ── Employee details grid (2 columns × 5 rows) ──
+        y = 70
+        pdf.set_xy(14, y)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(0, 6, "Employee details", new_x="LMARGIN", new_y="NEXT")
+
+        details = [
+            ("Employee Code", str(emp_code)),
+            ("Name", name),
+            ("Designation", payslip.designation or "-"),
+            ("Department", payslip.department or "-"),
+            ("Date of birth", _fmt_date(dob)),
+            ("PAN", str(pan)),
+            ("Account no.", str(account_no)),
+            ("IFSC code", str(ifsc)),
+            ("Date of joining", _fmt_date(doj)),
+            ("Worked / LOP days", f"{payslip.worked_days} / {payslip.lop_days}"),
+            ("Regime Opted", str(regime)),
+            ("Email", user.email or "-"),
+        ]
+
+        col_w = 91
+        row_h = 11
+        start_y = y + 8
+        for i, (label, value) in enumerate(details):
+            col = i % 2
+            row = i // 2
+            x = 14 + col * col_w
+            cy = start_y + row * row_h
+            pdf.set_xy(x, cy)
+            pdf.set_font("helvetica", "", 7)
+            pdf.set_text_color(108, 117, 125)
+            pdf.cell(col_w - 4, 4, label, align="L")
+            pdf.set_xy(x, cy + 4)
+            pdf.set_font("helvetica", "B", 9)
+            pdf.set_text_color(33, 37, 41)
+            pdf.cell(col_w - 4, 5, str(value)[:40], align="L")
+
+        # ── Summary chips: Gross (A) | Deductions (B) ──
+        y = start_y + ((len(details) + 1) // 2) * row_h + 6
+        pdf.set_fill_color(240, 253, 244)
+        pdf.rect(14, y, 88, 18, "F")
+        pdf.set_xy(18, y + 3)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(22, 163, 74)
+        pdf.cell(80, 4, "Gross Pay (A)", align="L")
+        pdf.set_xy(18, y + 8)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(80, 7, f"+ {_fmt_inr(payslip.gross_earnings)}", align="L")
+
+        pdf.set_fill_color(254, 242, 242)
+        pdf.rect(108, y, 88, 18, "F")
+        pdf.set_xy(112, y + 3)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(220, 38, 38)
+        pdf.cell(80, 4, "Deductions (B)", align="L")
+        pdf.set_xy(112, y + 8)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(80, 7, f"- {_fmt_inr(payslip.total_deductions)}", align="L")
+
+        # ── Earnings table ──
+        y = y + 24
+        pdf.set_xy(14, y)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(0, 6, "Gross Pay (A)", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(0, 5, "The total money you earned before the deductions", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
+        # Table header
+        pdf.set_fill_color(248, 249, 250)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(100, 7, "Earnings", border="B", fill=True)
+        pdf.cell(41, 7, "Monthly", border="B", align="R", fill=True)
+        pdf.cell(41, 7, "Total Amount", border="B", align="R", fill=True, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_text_color(33, 37, 41)
+        pdf.set_font("helvetica", "", 9)
+        for comp in earnings:
+            amt = _fmt_inr(comp.amount)
+            pdf.cell(100, 7, comp.component_name[:48], border="B")
+            pdf.cell(41, 7, amt, border="B", align="R")
+            pdf.cell(41, 7, amt, border="B", align="R", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_fill_color(248, 249, 250)
+        pdf.cell(100, 8, "Gross Pay", border=0, fill=True)
+        pdf.cell(41, 8, "", border=0, fill=True)
+        pdf.cell(
+            41,
+            8,
+            _fmt_inr(payslip.gross_earnings),
+            border=0,
+            align="R",
+            fill=True,
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+
+        # ── Deductions table ──
+        pdf.ln(6)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(33, 37, 41)
+        pdf.cell(0, 6, "Deductions (B)", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(
+            0,
+            5,
+            "The amount deducted for taxes and other benefits",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.ln(1)
+
+        pdf.set_fill_color(248, 249, 250)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(108, 117, 125)
+        pdf.cell(100, 7, "Deductions", border="B", fill=True)
+        pdf.cell(41, 7, "Monthly", border="B", align="R", fill=True)
+        pdf.cell(41, 7, "Total Amount", border="B", align="R", fill=True, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_text_color(33, 37, 41)
+        pdf.set_font("helvetica", "", 9)
+        if deductions:
+            for comp in deductions:
+                amt = _fmt_inr(comp.amount)
+                pdf.cell(100, 7, comp.component_name[:48], border="B")
+                pdf.cell(41, 7, amt, border="B", align="R")
+                pdf.cell(41, 7, amt, border="B", align="R", new_x="LMARGIN", new_y="NEXT")
+        else:
+            pdf.cell(100, 7, "-", border="B")
+            pdf.cell(41, 7, "0", border="B", align="R")
+            pdf.cell(41, 7, "0", border="B", align="R", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_fill_color(248, 249, 250)
+        pdf.cell(100, 8, "Total Deductions", border=0, fill=True)
+        pdf.cell(41, 8, "", border=0, fill=True)
+        pdf.cell(
+            41,
+            8,
+            _fmt_inr(payslip.total_deductions),
+            border=0,
+            align="R",
+            fill=True,
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+
+        # ── Footer ──
+        pdf.set_y(-18)
+        pdf.set_draw_color(222, 226, 230)
+        pdf.line(14, pdf.get_y(), 196, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_font("helvetica", "", 7)
+        pdf.set_text_color(148, 163, 184)
+        pdf.cell(60, 5, "Page 1 of 1", align="L")
+        pdf.cell(
+            122,
+            5,
+            "This is a computer generated payslip and does not require a signature",
+            align="R",
+        )
+
         pdf_bytes = pdf.output(dest="S")
-        # Clean filename for Cloudinary
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
         safe_month = month_name.replace(" ", "_")
         public_id = f"payslip_{payslip.user.id}_{safe_month}_{year}.pdf"
-        
+
         import cloudinary.uploader
-        
+
         upload_result = cloudinary.uploader.upload(
             pdf_bytes,
             public_id=public_id,
             folder="media/payslips",
-            resource_type="raw"
+            resource_type="raw",
         )
-        
-        # Store the public ID in the FileField
-        # Note: RawMediaCloudinaryStorage will prefix this with the folder if not already present
-        payslip.payslip_pdf.name = upload_result['public_id']
-        payslip.save()
+        payslip.payslip_pdf.name = upload_result["public_id"]
+        payslip.save(update_fields=["payslip_pdf"])
 
     @staticmethod
     def process_payouts(payroll_run_id):
         """Processes payouts via Razorpay API."""
-        import razorpay
         import os
         import requests
-        
+
         payroll_run = PayrollRun.objects.get(id=payroll_run_id)
-        if payroll_run.status != 'completed':
+        if payroll_run.status != "completed":
             raise Exception("Payroll must be completed before processing payouts.")
-            
-        payslips = Payslip.objects.filter(payroll_run=payroll_run, status='published')
-        
-        key_id = os.environ.get('RAZORPAY_KEY_ID', 'mock_key')
-        key_id = os.environ.get('RAZORPAY_KEY_ID', 'mock_key')
-        key_secret = os.environ.get('RAZORPAY_KEY_SECRET', 'mock_secret')
-        x_account_number = os.environ.get('RAZORPAY_X_ACCOUNT_NUMBER', '')
-        
-        is_mock = key_id == 'mock_key'
-        
+
+        payslips = Payslip.objects.filter(payroll_run=payroll_run, status="published")
+
+        key_id = os.environ.get("RAZORPAY_KEY_ID", "mock_key")
+        key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "mock_secret")
+        x_account_number = os.environ.get("RAZORPAY_X_ACCOUNT_NUMBER", "")
+
+        is_mock = key_id == "mock_key"
+
         success_count = 0
+        skipped = []
         for payslip in payslips:
             user = payslip.user
             if not user.bank_account_number or not user.bank_ifsc_code:
+                skipped.append(user.email)
                 print(f"Skipping payout for {user.email} - missing bank details")
                 continue
-                
+
             amount_in_paise = int(payslip.net_pay * 100)
-            
+
             if is_mock:
                 print(f"Mocking Razorpay payout of Rs {payslip.net_pay} to {user.bank_account_number}")
-                payslip.status = 'paid'
-                payslip.save()
+                payslip.status = "paid"
+                payslip.save(update_fields=["status"])
                 success_count += 1
             else:
                 try:
-                    # 1. Ensure Contact exists on Razorpay
+                    auth = (key_id, key_secret)
                     if not user.razorpay_contact_id:
                         contact_data = {
                             "name": f"{user.first_name} {user.last_name}",
                             "email": user.email,
                             "contact": user.phone_number or "0000000000",
                             "type": "employee",
-                            "reference_id": str(user.id)
+                            "reference_id": str(user.id),
                         }
-                        # RazorpayX Contact creation usually via direct API as client is mainly for PG
-                        auth = (key_id, key_secret)
-                        res = requests.post("https://api.razorpay.com/v1/contacts", json=contact_data, auth=auth)
+                        res = requests.post(
+                            "https://api.razorpay.com/v1/contacts",
+                            json=contact_data,
+                            auth=auth,
+                        )
                         if res.status_code in [200, 201]:
-                            user.razorpay_contact_id = res.json()['id']
-                            user.save()
+                            user.razorpay_contact_id = res.json()["id"]
+                            user.save(update_fields=["razorpay_contact_id"])
                         else:
                             raise Exception(f"Failed to create Razorpay Contact: {res.text}")
 
-                    # 2. Ensure Fund Account exists
                     if not user.razorpay_fund_account_id:
                         fa_data = {
                             "contact_id": user.razorpay_contact_id,
@@ -393,17 +847,22 @@ class PayrollService:
                             "bank_account": {
                                 "name": f"{user.first_name} {user.last_name}",
                                 "ifsc": user.bank_ifsc_code,
-                                "account_number": user.bank_account_number
-                            }
+                                "account_number": user.bank_account_number,
+                            },
                         }
-                        res = requests.post("https://api.razorpay.com/v1/fund_accounts", json=fa_data, auth=auth)
+                        res = requests.post(
+                            "https://api.razorpay.com/v1/fund_accounts",
+                            json=fa_data,
+                            auth=auth,
+                        )
                         if res.status_code in [200, 201]:
-                            user.razorpay_fund_account_id = res.json()['id']
-                            user.save()
+                            user.razorpay_fund_account_id = res.json()["id"]
+                            user.save(update_fields=["razorpay_fund_account_id"])
                         else:
-                            raise Exception(f"Failed to create Razorpay Fund Account: {res.text}")
+                            raise Exception(
+                                f"Failed to create Razorpay Fund Account: {res.text}"
+                            )
 
-                    # 3. Create Payout
                     payout_data = {
                         "account_number": x_account_number,
                         "fund_account_id": user.razorpay_fund_account_id,
@@ -413,17 +872,24 @@ class PayrollService:
                         "purpose": "salary",
                         "queue_if_low_balance": True,
                         "reference_id": f"PAYSLIP_{payslip.id}",
-                        "narration": f"Salary {calendar.month_name[payslip.payroll_run.month]} {payslip.payroll_run.year}"
+                        "narration": (
+                            f"Salary {calendar.month_name[payslip.payroll_run.month]} "
+                            f"{payslip.payroll_run.year}"
+                        ),
                     }
-                    res = requests.post("https://api.razorpay.com/v1/payouts", json=payout_data, auth=auth)
+                    res = requests.post(
+                        "https://api.razorpay.com/v1/payouts",
+                        json=payout_data,
+                        auth=auth,
+                    )
                     if res.status_code in [200, 201]:
-                        payslip.status = 'paid'
-                        payslip.save()
+                        payslip.status = "paid"
+                        payslip.save(update_fields=["status"])
                         success_count += 1
                     else:
                         raise Exception(f"Payout API failed: {res.text}")
 
                 except Exception as e:
                     print(f"Payout failed for {user.email}: {str(e)}")
-                    
+
         return success_count

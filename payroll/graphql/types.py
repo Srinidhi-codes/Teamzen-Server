@@ -1,14 +1,22 @@
 from typing import Optional, List
+from decimal import Decimal
 import strawberry
 from strawberry import auto
 import strawberry.django
 from ..models import (
-    SalaryComponent, SalaryStructure, SalaryStructureComponent, 
-    EmployeeSalaryStructure, PayrollRun, Payslip, PayslipComponent,
-    PayrollAdjustment
+    SalaryComponent,
+    SalaryStructure,
+    SalaryStructureComponent,
+    EmployeeSalaryStructure,
+    PayrollRun,
+    Payslip,
+    PayslipComponent,
+    PayrollAdjustment,
+    SalaryAdvance,
 )
 from organizations.graphql.types import OrganizationType
 from users.graphql.types import UserType
+
 
 @strawberry.django.type(PayrollAdjustment)
 class PayrollAdjustmentType:
@@ -23,6 +31,49 @@ class PayrollAdjustmentType:
     is_processed: auto
     created_at: auto
 
+
+@strawberry.django.type(SalaryAdvance)
+class SalaryAdvanceType:
+    id: strawberry.ID
+    organization: OrganizationType
+    user: UserType
+    amount: auto
+    reason: auto
+    granted_on: auto
+    installments_total: auto
+    installment_amount: auto
+    remaining_balance: auto
+    recovered_so_far: auto
+    status: auto
+    created_at: auto
+
+
+@strawberry.type
+class AdvanceRecoveryPreviewType:
+    advance_id: strawberry.ID
+    user_id: strawberry.ID
+    user_name: str
+    deduct: Decimal
+    remaining_after: Decimal
+
+
+@strawberry.type
+class PayrollSettingsType:
+    plan: str
+    payroll_cycle_day: int
+    payroll_auto_enabled: bool
+    can_enable_payroll_auto: bool
+
+
+@strawberry.type
+class PayrollSetupChecklistType:
+    components: int
+    structures: int
+    employees_with_ctc: int
+    active_advances: int
+    ready: bool
+
+
 @strawberry.django.type(SalaryComponent)
 class SalaryComponentType:
     id: strawberry.ID
@@ -34,6 +85,7 @@ class SalaryComponentType:
     is_statutory: auto
     description: auto
 
+
 @strawberry.django.type(SalaryStructure)
 class SalaryStructureType:
     id: strawberry.ID
@@ -41,10 +93,11 @@ class SalaryStructureType:
     name: auto
     description: auto
     is_active: auto
-    
+
     @strawberry.field
     def components(self) -> List["SalaryStructureComponentType"]:
         return self.components.all()
+
 
 @strawberry.django.type(SalaryStructureComponent)
 class SalaryStructureComponentType:
@@ -55,6 +108,7 @@ class SalaryStructureComponentType:
     value: auto
     base_component: Optional[SalaryComponentType]
 
+
 @strawberry.django.type(EmployeeSalaryStructure)
 class EmployeeSalaryStructureType:
     id: strawberry.ID
@@ -63,6 +117,7 @@ class EmployeeSalaryStructureType:
     annual_ctc: auto
     effective_from: auto
     is_active: auto
+
 
 @strawberry.django.type(PayrollRun)
 class PayrollRunType:
@@ -81,10 +136,28 @@ class PayrollRunType:
     def payslips(self) -> List["PayslipType"]:
         return self.payslips.all()
 
+    @strawberry.field
+    def has_locked_payslips(self) -> bool:
+        return self.payslips.filter(status__in=["published", "paid"]).exists()
+
+    @strawberry.field
+    def published_count(self) -> int:
+        return self.payslips.filter(status="published").count()
+
+    @strawberry.field
+    def paid_count(self) -> int:
+        return self.payslips.filter(status="paid").count()
+
+    @strawberry.field
+    def draft_count(self) -> int:
+        return self.payslips.filter(status="draft").count()
+
+
 @strawberry.type
 class PayslipPdfType:
     url: str
     name: str
+
 
 @strawberry.django.type(Payslip)
 class PayslipType:
@@ -99,16 +172,17 @@ class PayslipType:
     total_deductions: auto
     net_pay: auto
     status: auto
-    
+
     @strawberry.field
     def payslip_pdf(self) -> Optional[PayslipPdfType]:
         if not self.payslip_pdf:
             return None
         return PayslipPdfType(url=self.payslip_pdf.url, name=self.payslip_pdf.name)
-    
+
     @strawberry.field
     def components(self) -> List["PayslipComponentType"]:
         return self.components.all()
+
 
 @strawberry.django.type(PayslipComponent)
 class PayslipComponentType:
