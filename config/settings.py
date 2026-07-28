@@ -15,14 +15,28 @@ from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
-from urllib.parse import urlparse, urlunparse, parse_qsl
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+
+def normalize_redis_url(url: str, db_index: int | None = None) -> str:
+    if not url:
+        fallback = f"redis://localhost:6379/{db_index or 0}"
+        return fallback
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    if parsed.scheme == "rediss" and "ssl_cert_reqs" not in query:
+        query["ssl_cert_reqs"] = "CERT_REQUIRED"
+
+    path = parsed.path
+    if db_index is not None:
+        path = f"/{db_index}"
+
+    return urlunparse(parsed._replace(path=path, query=urlencode(query)))
 
 def get_redis_url_with_db(url: str, db_index: int) -> str:
-    if not url:
-        return f"redis://localhost:6379/{db_index}"
-    parsed = urlparse(url)
-    # The path contains the db index like '/0' or is empty
-    return urlunparse(parsed._replace(path=f"/{db_index}"))
+    return normalize_redis_url(url, db_index=db_index)
 
 load_dotenv()
 
@@ -163,7 +177,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 # Prefer Redis when available; in local DEBUG fall back to in-memory so a
 # unreachable Redis Cloud host does not break websockets / chat / cache.
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+REDIS_URL = normalize_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379/0'))
 FORCE_REDIS = os.getenv('FORCE_REDIS', 'False') == 'True'
 USE_INMEMORY_CHANNELS = (DEBUG and not FORCE_REDIS) or os.getenv('USE_INMEMORY_CHANNELS', 'False') == 'True'
 
@@ -346,8 +360,8 @@ CLOUDINARY_STORAGE = {
 }
 # Celery Configuration
 # Use Redis as the primary message broker on DB 0 explicitly
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL'))
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL'))
+CELERY_BROKER_URL = normalize_redis_url(os.getenv('CELERY_BROKER_URL', os.getenv('REDIS_URL')))
+CELERY_RESULT_BACKEND = normalize_redis_url(os.getenv('CELERY_RESULT_BACKEND', os.getenv('REDIS_URL')))
 CELERY_CACHE_BACKEND = 'django-cache'
 
 # Eager mode for local development to avoid needing a separate celery worker process
@@ -427,10 +441,11 @@ else:
     }
 
 # Email Configuration
-# EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# Render commonly blocks or times out outbound SMTP on shared instances,
+# so default to the Brevo HTTP API backend instead of SMTP.
+EMAIL_BACKEND = 'notifications.email_backends.BrevoHTTPBackend'
 BREVO_API_KEY = os.getenv('BREVO_API_KEY')
-# SMTP is no longer used, but kept for fallback or legacy logic
+# SMTP is kept only as fallback / legacy configuration.
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
