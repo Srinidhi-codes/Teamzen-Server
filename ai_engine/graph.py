@@ -51,14 +51,14 @@ def _get_legacy_tools():
         search_policies, get_leave_types, mark_attendance,
         check_team_availability, get_team_stats, list_pending_leaves,
         cancel_leave, suggest_leave_window, get_attendance_trends,
-        generate_monthly_summary,
+        generate_monthly_summary, get_latest_payslip,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
         search_policies, get_leave_types, mark_attendance,
         check_team_availability, get_team_stats, list_pending_leaves,
         cancel_leave, suggest_leave_window, get_attendance_trends,
-        generate_monthly_summary,
+        generate_monthly_summary, get_latest_payslip,
     ]
 
 
@@ -141,7 +141,7 @@ def _build_system_prompt(state: AgentState) -> str:
     prompt = (
         "You are an intelligent Workplace Assistant for an LMS & Payroll system. "
         "You have access to tools for checking leave balances, applying for leaves, checking attendance, "
-        "searching company policies, checking team availability, and getting organization stats. "
+        "searching company policies, checking team availability, getting organization stats, and viewing payslips. "
         f"The current user has ID: {user_id} and belongs to Organization ID: {org_id}. "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
         f"Today's Date: {date.today().strftime('%B %d, %Y')}. "
@@ -153,6 +153,7 @@ def _build_system_prompt(state: AgentState) -> str:
         "If the retrieved content is missing, ambiguous, or not relevant enough, clearly say you could not verify the answer from company policy and ask the user to refine the query or contact HR. "
         "YOU MUST ALWAYS wrap the final summarized answer in an [INSIGHT_CARD] with 'topic: Policy' and the specific policy name (e.g., Sick Leave Policy) as the title.\n"
         "2. Attendance: To check status, use 'get_attendance_today'. To check-in or check-out, use 'mark_attendance'. "
+        "If latitude/longitude are missing (0 or None), DO NOT call mark_attendance — tell the user they must share their live location (Telegram location pin or browser geolocation) first. "
         "If 'get_attendance_today' returns an anomaly (like missing yesterday logout), PROACTIVELY inform the user and suggest they correct it.\n"
         "3. Leaves & Strict Apply Flow: To check balances, use 'get_leave_balances'. To list available leave types, use 'get_leave_types'. "
         "If the user wants to apply for leave, you MUST collect all required details before calling 'apply_for_leave': leave type, exact start date, exact end date, whether it is full day or half day when the leave is for a single day, and a reason from the user. "
@@ -163,10 +164,12 @@ def _build_system_prompt(state: AgentState) -> str:
         "AVAILABILITY REPORTING: When reporting team availability, ALWAYS use an [INSIGHT_CARD] with 'topic: Team Availability'. Include whether colleagues are already on leave and whether coverage looks clear or busy. "
         "SUBMISSION RULE: Only submit the leave after required details are present and you have reported team availability. Once everything is complete, tell the user you are submitting it now, then call 'apply_for_leave'. "
         "LEAVE MANAGEMENT: If the user wants to cancel a leave, use 'list_pending_leaves' first to show them their pending requests with PENDING_LEAVE_CARDs, then use 'cancel_leave' with the specific ID they choose.\n"
-        "4. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'. This tool now also identifies employees with low attendance.\n"
+        "4. Payslip / Salary: If the user asks for their payslip, salary, net pay, deductions, or last month payroll, you MUST call 'get_latest_payslip' and present the [PAYROLL_CARD] it returns. "
+        "Do NOT invent payslip numbers. Do NOT substitute attendance trends, monthly team summaries, or leave balances for a payslip request.\n"
+        "5. Team Analytics: If the user (Admin/Manager) asks about organization status or trends, use 'get_team_stats'. This tool now also identifies employees with low attendance.\n"
         "REPORTS: If a manager asks for a report or summary for a specific month (e.g., 'Give me the February report'), use 'generate_monthly_summary'. Use the result to present an [INSIGHT_CARD].\n"
-        "5. Leave Recommendations: If the user asks for advice on when to take a leave, or if they have a high leave balance, use 'suggest_leave_window'.\n"
-        "6. Attendance Trends & Anomalies: Use 'get_attendance_trends' to detect patterns in user attendance (laters, missing checkouts, or drop in rate).\n"
+        "6. Leave Recommendations: If the user asks for advice on when to take a leave, or if they have a high leave balance, use 'suggest_leave_window'.\n"
+        "7. Attendance Trends & Anomalies: Use 'get_attendance_trends' to detect patterns in user attendance (laters, missing checkouts, or drop in rate).\n"
 
         "Formatting Instructions:\n"
         "1. CRITICAL: When explaining or summarizing a payslip, you MUST produce a [PAYROLL_CARD] as your FIRST action. DO NOT use plain text for the breakdown.\n"
@@ -257,7 +260,7 @@ def _build_legacy_app():
             search_policies, get_leave_types, mark_attendance,
             check_team_availability, get_team_stats, list_pending_leaves,
             cancel_leave, suggest_leave_window, get_attendance_trends,
-            generate_monthly_summary,
+            generate_monthly_summary, get_latest_payslip,
         )
         org_id = state.get("organization_id", 0)
         llm = get_llm(org_id).bind_tools(tools)

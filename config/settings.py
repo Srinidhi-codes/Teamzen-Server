@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "attendance",
     "leaves.apps.LeavesConfig",
     "ai_engine.apps.AiEngineConfig",
+    "bot_gateway.apps.BotGatewayConfig",
     "graphql",
     "notifications",
     "channels",
@@ -477,4 +478,11 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ---------------------------------------------------------------------------
+# Telegram Bot Gateway (Sequence 1 — Conversational HR)
+# ---------------------------------------------------------------------------
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+BOT_SESSION_TTL_HOURS = int(os.getenv("BOT_SESSION_TTL_HOURS", "8"))
  

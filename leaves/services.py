@@ -192,6 +192,13 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
         print(f"FAILED TO SEND NOTIFICATION: {e}")
         traceback.print_exc()
 
+    # Telegram one-tap approve/reject for managers with an active bot session
+    try:
+        from bot_gateway.services import BotService
+        BotService().notify_managers_of_leave(request)
+    except Exception as e:
+        print(f"FAILED TO SEND TELEGRAM LEAVE APPROVAL: {e}")
+
     return request
 
 def approve_leave_request(request, approver, comments=None):

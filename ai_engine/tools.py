@@ -155,7 +155,7 @@ def mark_attendance(user_id: int, action: str, latitude: float = None, longitude
     """
     Marks attendance (check-in or check-out) for the user.
     action: 'check-in' or 'check-out'
-    If latitude/longitude are not provided, it uses the office's default coordinates.
+    latitude and longitude are REQUIRED for geofence verification.
     """
     from django.contrib.auth import get_user_model
     from attendance.services import check_in_user, check_out_user
@@ -192,6 +192,58 @@ def mark_attendance(user_id: int, action: str, latitude: float = None, longitude
             return "[ERROR_CARD] title: Invalid Action | message: Please use 'check-in' or 'check-out'. [/ERROR_CARD]"
     except Exception as e:
         return f"[ERROR_CARD] title: Attendance Error | message: {str(e)} [/ERROR_CARD]"
+
+
+@tool
+def get_latest_payslip(user_id: int):
+    """
+    Returns the user's most recent published/paid payslip with gross, net, deductions,
+    worked days, LOP, and component breakdown. Use this whenever the user asks about
+    their salary, payslip, net pay, or last month's payroll.
+    """
+    from payroll.models import Payslip
+
+    payslip = (
+        Payslip.objects.filter(user_id=user_id, status__in=["published", "paid"])
+        .select_related("payroll_run")
+        .prefetch_related("components")
+        .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")
+        .first()
+    )
+    if not payslip:
+        # Fall back to any latest slip (including draft) so the bot can still answer
+        payslip = (
+            Payslip.objects.filter(user_id=user_id)
+            .select_related("payroll_run")
+            .prefetch_related("components")
+            .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")
+            .first()
+        )
+    if not payslip:
+        return "No payslip found for this employee yet."
+
+    run = payslip.payroll_run
+    earnings = []
+    deductions = []
+    for c in payslip.components.all():
+        item = f"{c.component_name}:{c.amount}"
+        if str(c.component_type).lower().startswith("earn"):
+            earnings.append(item)
+        else:
+            deductions.append(item)
+
+    earnings_str = "{" + ", ".join(earnings) + "}" if earnings else "{}"
+    deductions_str = "{" + ", ".join(deductions) + "}" if deductions else "{}"
+
+    return (
+        f"[PAYROLL_CARD] month: {run.month} | year: {run.year} | "
+        f"gross: {payslip.gross_earnings} | net: {payslip.net_pay} | "
+        f"deductions: {payslip.total_deductions} | worked_days: {payslip.worked_days} | "
+        f"lop: {payslip.lop_days} | status: {payslip.status} | "
+        f"earnings_breakdown: {earnings_str} | deductions_breakdown: {deductions_str} "
+        f"[/PAYROLL_CARD]"
+    )
+
 
 @tool
 def get_attendance_today(user_id: int):
