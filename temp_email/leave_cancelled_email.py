@@ -9,7 +9,7 @@ def get_leave_cancelled_email_html(
     duration: str = "1 day",
     cancelled_by: str = "",
     dashboard_url: str = "https://teamzen-admin.vercel.app/leaves",
-    logo_url: str = "https://teamzen-admin.vercel.app/logo.png",
+    logo_url: str = "",
     company_name: str = "Teamzen",
     company_url: str = "#",
 ) -> str:
@@ -58,18 +58,6 @@ def get_leave_cancelled_email_html(
                                 {info_row_html("Duration", f"{duration} days", "⏱️", accent)}
                                 {info_row_html("Cancelled By", cancelled_by if cancelled_by else employee_name, "🚫", accent)}
                             </table>
-                        </div>
-                    </td>
-                </tr>
-
-                <!-- Impact Note -->
-                <tr>
-                    <td style="padding: 0 40px 24px 40px;">
-                        <div style="background: #FFFFFF; border: 1px solid #FED7AA; border-radius: 14px; padding: 16px 18px;">
-                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: #C2410C; text-transform: uppercase; letter-spacing: 0.08em;">Team update</p>
-                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
-                                This cancellation has been recorded so the team schedule and future leave availability remain accurate.
-                            </p>
                         </div>
                     </td>
                 </tr>

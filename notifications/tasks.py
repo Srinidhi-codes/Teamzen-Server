@@ -206,7 +206,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 employee_name=f"{recipient.first_name} {recipient.last_name}",
                 employee_email=recipient.email,
                 login_url="https://teamzen-client.vercel.app/login",
-                logo_url="https://teamzen-admin.vercel.app/logo.png"
+                logo_url=""
             )
             
         elif target_type == "Password Reset":
@@ -214,7 +214,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             html_content = get_password_reset_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}",
                 reset_url=f"https://teamzen-client.vercel.app/reset-password?token={target_id}" if target_id else "#",
-                logo_url="https://teamzen-admin.vercel.app/logo.png"
+                logo_url=""
             )
             
         elif target_type == "Payroll":
@@ -224,7 +224,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 month=target_id if target_id else "Current Month",
                 net_salary="Confidential", 
                 payslip_url="https://teamzen-client.vercel.app/payslips",
-                logo_url="https://teamzen-admin.vercel.app/logo.png"
+                logo_url=""
             )
 
         # 2. Build and send the email

@@ -295,7 +295,7 @@ class PasswordResetRequestView(APIView):
             html_content = get_password_reset_email_html(
                 employee_name=f"{user.first_name} {user.last_name}".strip() or "there",
                 reset_url=reset_url,
-                logo_url="https://teamzen-admin.vercel.app/logo.png",
+                logo_url="",
                 company_name="Teamzen",
                 company_url=settings.CLIENT_URL,
             )

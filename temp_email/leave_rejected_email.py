@@ -9,7 +9,7 @@ def get_leave_rejected_email_html(
     rejected_by: str = "",
     reason: str = "",
     dashboard_url: str = "https://teamzen-client.vercel.app/leaves",
-    logo_url: str = "https://teamzen-admin.vercel.app/logo.png",
+    logo_url: str = "",
     company_name: str = "Teamzen",
     company_url: str = "#",
 ) -> str:

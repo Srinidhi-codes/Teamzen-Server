@@ -10,7 +10,7 @@ def get_announcement_email_html(
     action_url: str = "https://teamzen-client.vercel.app/notifications",
     action_text: str = "View Details",
     priority: str = "normal",  # normal, high, urgent
-    logo_url: str = "https://teamzen-admin.vercel.app/logo.png",
+    logo_url: str = "",
     company_name: str = "Teamzen",
     company_url: str = "#",
 ) -> str:

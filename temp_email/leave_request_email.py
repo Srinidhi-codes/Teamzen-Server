@@ -9,7 +9,7 @@ def get_leave_request_email_html(
     duration: str = "1 day",
     reason: str = "",
     approval_url: str = "https://teamzen-admin.vercel.app/leaves",
-    logo_url: str = "https://teamzen-admin.vercel.app/logo.png",
+    logo_url: str = "",
     company_name: str = "Teamzen",
     company_url: str = "#",
 ) -> str:
