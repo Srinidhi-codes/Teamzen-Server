@@ -59,6 +59,27 @@ class EmployeeSalaryStructure(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.salary_structure.name}"
 
+class EmployeeComponentOverride(models.Model):
+    """Per-employee override for a salary component.
+    Allows including/excluding specific components or changing their value."""
+
+    employee_salary = models.ForeignKey(
+        EmployeeSalaryStructure, on_delete=models.CASCADE, related_name='component_overrides'
+    )
+    component = models.ForeignKey(SalaryComponent, on_delete=models.CASCADE)
+    is_excluded = models.BooleanField(default=False, help_text='If True, this component is skipped for this employee')
+    override_value = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Custom flat amount. If null, uses the structure default.'
+    )
+
+    class Meta:
+        unique_together = ('employee_salary', 'component')
+
+    def __str__(self):
+        return f"{self.employee_salary.user.email} - {self.component.name} ({'excluded' if self.is_excluded else self.override_value or 'default'})"
+
+
 class PayrollRun(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),

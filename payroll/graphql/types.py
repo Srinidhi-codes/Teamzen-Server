@@ -4,6 +4,7 @@ import strawberry
 from strawberry import auto
 import strawberry.django
 from ..models import (
+    EmployeeComponentOverride,
     SalaryComponent,
     SalaryStructure,
     SalaryStructureComponent,
@@ -109,6 +110,14 @@ class SalaryStructureComponentType:
     base_component: Optional[SalaryComponentType]
 
 
+@strawberry.django.type(EmployeeComponentOverride)
+class EmployeeComponentOverrideType:
+    id: strawberry.ID
+    component: SalaryComponentType
+    is_excluded: auto
+    override_value: Optional[Decimal]
+
+
 @strawberry.django.type(EmployeeSalaryStructure)
 class EmployeeSalaryStructureType:
     id: strawberry.ID
@@ -117,6 +126,10 @@ class EmployeeSalaryStructureType:
     annual_ctc: auto
     effective_from: auto
     is_active: auto
+
+    @strawberry.field
+    def component_overrides(self) -> List[EmployeeComponentOverrideType]:
+        return self.component_overrides.select_related("component").all()
 
 
 @strawberry.django.type(PayrollRun)

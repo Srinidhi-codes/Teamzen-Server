@@ -246,7 +246,7 @@ class OrganizationMutation:
         input: UpdateOfficeLocationInput
     ) -> OfficeLocationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         off_loc = OfficeLocation.objects.get(id=input.id)
@@ -270,7 +270,7 @@ class OrganizationMutation:
         self,info,office_location_id: strawberry.ID
     ) -> OfficeLocationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         off_loc = OfficeLocation.objects.get(id=office_location_id)
@@ -283,7 +283,7 @@ class OrganizationMutation:
         self,info,office_location_id: strawberry.ID
     ) -> OfficeLocationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         off_loc = OfficeLocation.objects.get(id=office_location_id)
@@ -299,7 +299,7 @@ class OrganizationMutation:
         input: CreateDepartmentInput,
     ) -> DepartmentType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         department = Department.objects.create(**vars(input))
@@ -312,7 +312,7 @@ class OrganizationMutation:
         input: UpdateDepartmentInput
     ) -> DepartmentType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         department = Department.objects.get(id=input.id)
@@ -328,7 +328,7 @@ class OrganizationMutation:
         self,info,department_id: strawberry.ID
     ) -> DepartmentType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         department = Department.objects.get(id=department_id)
@@ -341,7 +341,7 @@ class OrganizationMutation:
         self,info,department_id: strawberry.ID
     ) -> DepartmentType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         department = Department.objects.get(id=department_id)
@@ -358,7 +358,7 @@ class OrganizationMutation:
         input: CreateDesignationInput,
     ) -> DesignationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         designation = Designation.objects.create(**vars(input))
@@ -371,7 +371,7 @@ class OrganizationMutation:
         input: UpdateDesignationInput
     ) -> DesignationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
         
         designation = Designation.objects.get(id=input.id)
@@ -387,7 +387,7 @@ class OrganizationMutation:
         self,info,designation_id: strawberry.ID
     ) -> DesignationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         designation = Designation.objects.get(id=designation_id)
@@ -400,7 +400,7 @@ class OrganizationMutation:
         self,info,designation_id: strawberry.ID
     ) -> DesignationType:
         user = info.context.request.user
-        if user.is_anonymous or user.role not in ["admin","hr", "manager"]:
+        if user.is_anonymous or user.role not in ["admin", "superadmin", "hr", "manager"]:
             raise Exception("Not authorized")
 
         designation = Designation.objects.get(id=designation_id)

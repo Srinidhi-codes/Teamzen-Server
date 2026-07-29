@@ -8,6 +8,7 @@ from fpdf import FPDF
 from django.db import transaction
 from django.db.models import Prefetch
 from .models import (
+    EmployeeComponentOverride,
     EmployeeSalaryStructure,
     PayrollRun,
     Payslip,
@@ -290,57 +291,105 @@ class PayrollService:
                     status="draft",
                 )
 
+                # Build override lookup for this employee
+                overrides = {
+                    o.component_id: o
+                    for o in emp_struct.component_overrides.select_related("component").all()
+                }
+
                 gross_earnings = Decimal("0.00")
                 total_deductions = Decimal("0.00")
                 calculated_components = {"CTC": monthly_ctc}
+
+                def resolve_amount(sc):
+                    ovr = overrides.get(sc.component_id)
+                    if ovr and ovr.is_excluded:
+                        return None  # skip
+                    if ovr and ovr.override_value is not None:
+                        return Decimal(ovr.override_value).quantize(Decimal("0.01")), True
+                    if sc.calculation_type == "flat":
+                        return Decimal(sc.value).quantize(Decimal("0.01")), True
+                    if sc.calculation_type == "percentage":
+                        base_code = sc.base_component.code if sc.base_component else "CTC"
+                        # Wait until base component is calculated (except CTC which is always ready)
+                        if base_code not in calculated_components:
+                            return None, False
+                        base_val = calculated_components[base_code]
+                        amount = (base_val * sc.value) / Decimal(100)
+                        return Decimal(amount).quantize(Decimal("0.01")), True
+                    return Decimal("0.00"), True
+
+                def process_components(components, component_type):
+                    nonlocal gross_earnings, total_deductions
+                    pending = [
+                        sc for sc in components
+                        if not ((ovr := overrides.get(sc.component_id)) and ovr.is_excluded)
+                    ]
+                    # Resolve % dependencies in order (e.g. HRA after BASIC)
+                    max_passes = len(pending) + 1
+                    for _ in range(max_passes):
+                        if not pending:
+                            break
+                        next_pending = []
+                        progressed = False
+                        for sc in pending:
+                            amount, ready = resolve_amount(sc)
+                            if not ready:
+                                next_pending.append(sc)
+                                continue
+                            progressed = True
+                            if amount is None:
+                                continue
+                            PayslipComponent.objects.create(
+                                payslip=payslip,
+                                component_name=sc.component.name,
+                                component_code=sc.component.code,
+                                component_type=component_type,
+                                amount=amount,
+                            )
+                            if component_type == "earning":
+                                gross_earnings += amount
+                            else:
+                                total_deductions += amount
+                            calculated_components[sc.component.code] = amount
+                        pending = next_pending
+                        if not progressed:
+                            # Unresolved dependency — treat missing base as 0
+                            for sc in pending:
+                                ovr = overrides.get(sc.component_id)
+                                if ovr and ovr.override_value is not None:
+                                    amount = Decimal(ovr.override_value).quantize(Decimal("0.01"))
+                                elif sc.calculation_type == "flat":
+                                    amount = Decimal(sc.value).quantize(Decimal("0.01"))
+                                else:
+                                    amount = Decimal("0.00")
+                                PayslipComponent.objects.create(
+                                    payslip=payslip,
+                                    component_name=sc.component.name,
+                                    component_code=sc.component.code,
+                                    component_type=component_type,
+                                    amount=amount,
+                                )
+                                if component_type == "earning":
+                                    gross_earnings += amount
+                                else:
+                                    total_deductions += amount
+                                calculated_components[sc.component.code] = amount
+                            break
 
                 earnings = [
                     sc
                     for sc in emp_struct.salary_structure.components.all()
                     if sc.component.component_type == "earning"
                 ]
-                for sc in earnings:
-                    amount = Decimal("0.00")
-                    if sc.calculation_type == "flat":
-                        amount = sc.value
-                    elif sc.calculation_type == "percentage":
-                        base_code = sc.base_component.code if sc.base_component else "CTC"
-                        base_val = calculated_components.get(base_code, Decimal("0.00"))
-                        amount = (base_val * sc.value) / Decimal(100)
-                    amount = Decimal(amount).quantize(Decimal("0.01"))
-                    PayslipComponent.objects.create(
-                        payslip=payslip,
-                        component_name=sc.component.name,
-                        component_code=sc.component.code,
-                        component_type="earning",
-                        amount=amount,
-                    )
-                    gross_earnings += amount
-                    calculated_components[sc.component.code] = amount
+                process_components(earnings, "earning")
 
                 deductions = [
                     sc
                     for sc in emp_struct.salary_structure.components.all()
                     if sc.component.component_type == "deduction"
                 ]
-                for sc in deductions:
-                    amount = Decimal("0.00")
-                    if sc.calculation_type == "flat":
-                        amount = sc.value
-                    elif sc.calculation_type == "percentage":
-                        base_code = sc.base_component.code if sc.base_component else "CTC"
-                        base_val = calculated_components.get(base_code, Decimal("0.00"))
-                        amount = (base_val * sc.value) / Decimal(100)
-                    amount = Decimal(amount).quantize(Decimal("0.01"))
-                    PayslipComponent.objects.create(
-                        payslip=payslip,
-                        component_name=sc.component.name,
-                        component_code=sc.component.code,
-                        component_type="deduction",
-                        amount=amount,
-                    )
-                    total_deductions += amount
-                    calculated_components[sc.component.code] = amount
+                process_components(deductions, "deduction")
 
                 if lop_days > 0:
                     PayslipComponent.objects.create(
@@ -771,7 +820,8 @@ class PayrollService:
                 pass
 
         safe_month = month_name.replace(" ", "_")
-        public_id = f"payslip_{payslip.user.id}_{safe_month}_{year}.pdf"
+        # Include payslip id so recalculated slips do not reuse a stale Cloudinary URL
+        public_id = f"payslip_{payslip.user.id}_{safe_month}_{year}_{payslip.id}"
 
         import cloudinary.uploader
 
@@ -780,8 +830,12 @@ class PayrollService:
             public_id=public_id,
             folder="media/payslips",
             resource_type="raw",
+            overwrite=True,
+            invalidate=True,
+            format="pdf",
         )
-        payslip.payslip_pdf.name = upload_result["public_id"]
+        # Prefer secure versioned URL path when available
+        payslip.payslip_pdf.name = upload_result.get("public_id") or public_id
         payslip.save(update_fields=["payslip_pdf"])
 
     @staticmethod

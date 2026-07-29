@@ -3,11 +3,11 @@ Service for processing policy PDF files and generating embeddings
 """
 import os
 import tempfile
-import requests
 from PyPDF2 import PdfReader
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from django.conf import settings
+from django.contrib.postgres.search import SearchVector
 
 from ai_engine.models import PolicyDocument, PolicyFile
 
@@ -41,7 +41,6 @@ class PolicyProcessingService:
         """
         Download PDF from Cloudinary and process it.
         """
-        tmp_path = None
         try:
             import requests
             from cloudinary import utils
@@ -83,7 +82,8 @@ class PolicyProcessingService:
                     if res.status_code == 200:
                         response = res
                         break
-                except Exception: continue
+                except Exception:
+                    continue
             
             if not response:
                 raise ValueError(f"Could not download file from Cloudinary for processing (401/404).")
@@ -100,7 +100,8 @@ class PolicyProcessingService:
 
     def process_file_content(self, policy_file: PolicyFile, content: bytes, source_name: str):
         """
-        Common logic to process PDF content (bytes)
+        Common logic to process PDF content (bytes).
+        Extracts text per page so citations retain page numbers.
         """
         tmp_path = None
         try:
@@ -108,32 +109,46 @@ class PolicyProcessingService:
                 tmp_file.write(content)
                 tmp_path = tmp_file.name
             
-            text = self._extract_text_from_pdf(tmp_path)
-            if not text.strip():
+            pages = self._extract_pages_from_pdf(tmp_path)
+            if not any(text.strip() for _, text in pages):
                 raise ValueError("No text extracted from PDF.")
             
-            chunks = self.text_splitter.split_text(text)
             PolicyDocument.objects.filter(policy_file=policy_file).delete()
             
-            for i, chunk in enumerate(chunks):
-                embedding = self.embeddings_model.embed_query(chunk)
-                PolicyDocument.objects.create(
-                    policy_file=policy_file,
-                    title=policy_file.title,
-                    content=chunk,
-                    embedding=embedding,
-                    metadata={
-                        "chunk_index": i,
-                        "source": source_name,
-                        "organization_id": policy_file.organization.id,
-                    }
+            created_ids = []
+            global_chunk_index = 0
+            for page_number, page_text in pages:
+                if not page_text.strip():
+                    continue
+                chunks = self.text_splitter.split_text(page_text)
+                for chunk in chunks:
+                    embedding = self.embeddings_model.embed_query(chunk)
+                    doc = PolicyDocument.objects.create(
+                        policy_file=policy_file,
+                        title=policy_file.title,
+                        content=chunk,
+                        embedding=embedding,
+                        page_number=page_number,
+                        metadata={
+                            "chunk_index": global_chunk_index,
+                            "page_number": page_number,
+                            "source": source_name,
+                            "organization_id": policy_file.organization.id,
+                        },
+                    )
+                    created_ids.append(doc.id)
+                    global_chunk_index += 1
+
+            if created_ids:
+                PolicyDocument.objects.filter(id__in=created_ids).update(
+                    search_vector=SearchVector('content', config='english')
                 )
             
             policy_file.is_processed = True
             policy_file.is_active = True
             policy_file.processing_error = None
             policy_file.save()
-            return len(chunks)
+            return global_chunk_index
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -147,18 +162,21 @@ class PolicyProcessingService:
             public_id = policy_file.file.public_id
             cloudinary.uploader.destroy(public_id, resource_type="raw")
             return True
-        except Exception as e:
+        except Exception:
             return False
 
-    def _extract_text_from_pdf(self, pdf_path: str) -> str:
-        """Extract text from PDF file"""
+    def _extract_pages_from_pdf(self, pdf_path: str) -> list[tuple[int, str]]:
+        """Extract text from each PDF page as (1-based page_number, text)."""
         reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            content = page.extract_text()
-            if content:
-                text += content + "\n"
-        return text
+        pages = []
+        for i, page in enumerate(reader.pages, start=1):
+            content = page.extract_text() or ""
+            pages.append((i, content))
+        return pages
+
+    def _extract_text_from_pdf(self, pdf_path: str) -> str:
+        """Extract all text from PDF file (legacy helper)."""
+        return "\n".join(text for _, text in self._extract_pages_from_pdf(pdf_path) if text)
     
     def reprocess_all_active_policies(self, organization_id=None, include_inactive=False):
         """

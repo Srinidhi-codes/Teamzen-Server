@@ -60,7 +60,7 @@ class NotificationMutation:
     ) -> bool:
         user = info.context.request.user
         # In a real app, check if user is admin/hr
-        if not user.is_authenticated or user.role not in ['admin', 'hr']:
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
             return False
         
         from notifications.tasks import send_notification
@@ -83,14 +83,14 @@ class NotificationMutation:
         notification_type: str = "PUSH"
     ) -> bool:
         user = info.context.request.user
-        if not user.is_authenticated or user.role != 'admin':
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
             return False
         
         from users.models import CustomUser
         from notifications.tasks import send_notification
         
         # In a real large-scale app, this should be a single task that iterates in background
-        recipients = CustomUser.objects.filter(organization=user.organization, is_active=True)
+        recipients = CustomUser.objects.filter(organization=user.organization, is_active=True) if user.organization_id else CustomUser.objects.filter(is_active=True)
         for recipient in recipients:
             send_notification.delay(
                 recipient_id=recipient.id,

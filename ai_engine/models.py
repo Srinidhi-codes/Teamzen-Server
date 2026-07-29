@@ -1,4 +1,6 @@
 from django.db import models
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from pgvector.django import VectorField
 from cloudinary.models import CloudinaryField
 from organizations.models import Organization
@@ -47,12 +49,15 @@ class PolicyDocument(models.Model):
     content = models.TextField()
     metadata = models.JSONField(default=dict)
     embedding = VectorField(dimensions=1536)  # Default for OpenAI ada-002 / text-embedding-3-small
+    page_number = models.PositiveIntegerField(null=True, blank=True)
+    search_vector = SearchVectorField(null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['-created_at']),
+            GinIndex(fields=['search_vector']),
         ]
 
     def __str__(self):

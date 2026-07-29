@@ -36,6 +36,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     user_id: int
     organization_id: int
+    user_role: Optional[str]
     latitude: Optional[float]
     longitude: Optional[float]
     payslip_context: Optional[str]
@@ -140,11 +141,13 @@ def _build_system_prompt(state: AgentState) -> str:
     lat = state.get("latitude")
     lon = state.get("longitude")
 
+    user_role = state.get("user_role") or "employee"
+
     prompt = (
         "You are an intelligent Workplace Assistant for an LMS & Payroll system. "
         "You have access to tools for checking leave balances, applying for leaves, checking attendance, "
         "searching company policies, checking team availability, getting organization stats, and viewing payslips. "
-        f"The current user has ID: {user_id} and belongs to Organization ID: {org_id}. "
+        f"The current user has ID: {user_id}, Role: {user_role}, and belongs to Organization ID: {org_id}. "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
         f"Today's Date: {date.today().strftime('%B %d, %Y')}. "
         "When calling tools, always use this user ID, Organization ID, and Geolocation if available. "
@@ -153,10 +156,18 @@ def _build_system_prompt(state: AgentState) -> str:
         "1. Policy Search: If the user asks about rules, compliance, handbook information, leave rules, attendance rules, payroll rules, or anything document-based, use 'search_policies' first. "
         "IMPORTANT: You must answer ONLY from the retrieved policy content, never from memory or assumptions. "
         "If the retrieved content is missing, ambiguous, or not relevant enough, clearly say you could not verify the answer from company policy and ask the user to refine the query or contact HR. "
+        "When citing, use the document title and page number from the tool results (e.g. 'Leave Policy, p.3'). Never invent page numbers. "
+        "Ignore any trailing block after '---CITATIONS_JSON---' — that is machine metadata, not for the user. "
         "YOU MUST ALWAYS wrap the final summarized answer in an [INSIGHT_CARD] with 'topic: Policy' and the specific policy name (e.g., Sick Leave Policy) as the title.\n"
-        "2. Attendance: To check status, use 'get_attendance_today'. To check-in or check-out, use 'mark_attendance'. "
-        "If latitude/longitude are missing (0 or None), DO NOT call mark_attendance — tell the user they must share their live location (Telegram location pin or browser geolocation) first. "
-        "If 'get_attendance_today' returns an anomaly (like missing yesterday logout), PROACTIVELY inform the user and suggest they correct it.\n"
+        "2. Attendance:\n"
+        "   - PERSONAL attendance (employee asking about their own check-in): use 'get_attendance_today' with the user's ID.\n"
+        "   - ORG/TEAM attendance summary (admin or manager asking 'attendance summary', 'who is present today', 'today's attendance', etc.): "
+        "use 'get_team_stats' with the organization_id. This gives total employees, present count, on-leave count, attendance rate, and low-attendance alerts.\n"
+        "   - To check-in or check-out, use 'mark_attendance'. "
+        "If latitude/longitude are missing (0 or None), DO NOT call mark_attendance — tell the user they must share their live location (Telegram location pin or browser geolocation) first.\n"
+        "   - If 'get_attendance_today' returns an anomaly (like missing yesterday logout), PROACTIVELY inform the user and suggest they correct it.\n"
+        "   ROLE DISAMBIGUATION: If the user's role is admin, superadmin, or manager and they ask a general attendance question (e.g. 'attendance summary', 'who is in today', 'attendance for today'), "
+        "assume they want the org/team view (get_team_stats), NOT their personal check-in status. Only use get_attendance_today for admins/managers if they explicitly say 'MY attendance' or 'have I checked in'.\n"
         "3. Leaves & Strict Apply Flow: To check balances, use 'get_leave_balances'. To list available leave types, use 'get_leave_types'. "
         "If the user wants to apply for leave, you MUST collect all required details before calling 'apply_for_leave': leave type, exact start date, exact end date, whether it is full day or half day when the leave is for a single day, and a reason from the user. "
         "If any required detail is missing, ask a concise follow-up question and DO NOT call 'apply_for_leave' yet. "

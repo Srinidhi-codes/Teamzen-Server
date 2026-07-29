@@ -3,6 +3,7 @@ import django
 from PyPDF2 import PdfReader
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from django.contrib.postgres.search import SearchVector
 import sys
 
 # Capture API key BEFORE Django setup (Django might override environment)
@@ -19,38 +20,50 @@ from ai_engine.models import PolicyDocument
 def ingest_pdf(file_path):
     print(f"Starting ingestion for: {file_path}")
     
-    # 1. Read PDF
+    # 1. Read PDF per page
     reader = PdfReader(file_path)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text()
-    
-    # 2. Split Text
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=100,
         separators=["\n\n", "\n", " ", ""]
     )
-    chunks = text_splitter.split_text(text)
-    print(f"Split into {len(chunks)} chunks.")
 
-    # 3. Generate Embeddings and Store
     if not OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY not found in environment variables")
     
     print(f"Using API key: {OPENAI_API_KEY[:20]}...")
     embeddings_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
     
-    for i, chunk in enumerate(chunks):
-        embedding = embeddings_model.embed_query(chunk)
-        PolicyDocument.objects.create(
-            title=os.path.basename(file_path),
-            content=chunk,
-            embedding=embedding,
-            metadata={"chunk_index": i, "source": file_path}
+    created_ids = []
+    global_chunk_index = 0
+    for page_number, page in enumerate(reader.pages, start=1):
+        page_text = page.extract_text() or ""
+        if not page_text.strip():
+            continue
+        chunks = text_splitter.split_text(page_text)
+        print(f"Page {page_number}: {len(chunks)} chunks.")
+        for chunk in chunks:
+            embedding = embeddings_model.embed_query(chunk)
+            doc = PolicyDocument.objects.create(
+                title=os.path.basename(file_path),
+                content=chunk,
+                embedding=embedding,
+                page_number=page_number,
+                metadata={
+                    "chunk_index": global_chunk_index,
+                    "page_number": page_number,
+                    "source": file_path,
+                },
+            )
+            created_ids.append(doc.id)
+            global_chunk_index += 1
+
+    if created_ids:
+        PolicyDocument.objects.filter(id__in=created_ids).update(
+            search_vector=SearchVector('content', config='english')
         )
     
-    print("Ingestion complete!")
+    print(f"Ingestion complete! {global_chunk_index} chunks.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

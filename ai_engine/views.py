@@ -5,14 +5,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
-from pgvector.django import L2Distance
 
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
-from .models import PolicyFile, PolicyDocument, AIConfiguration
+from .models import PolicyFile, AIConfiguration
 from .serializers import PolicyFileSerializer, AIConfigurationSerializer
 
 logger = logging.getLogger(__name__)
@@ -108,22 +106,9 @@ class PolicyQAView(APIView):
             organization_id = request.user.organization.id
             
         try:
-            # Generate embedding for the query
-            embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
-            query_embedding = embeddings.embed_query(query)
-            
-            # Semantic search using pgvector
-            # Filter by organization if applicable
-            search_qs = PolicyDocument.objects.all()
-            if organization_id:
-                search_qs = search_qs.filter(policy_file__organization_id=organization_id)
-                
-            # Get top 5 most similar chunks
-            # Using L2Distance (Euclidean) - smaller is closer
-            # Note: For normalized vectors (OpenAI), Cosine and L2 are related.
-            similar_docs = search_qs.annotate(
-                distance=L2Distance('embedding', query_embedding)
-            ).order_by('distance')[:5]
+            from .retrieval import hybrid_search
+
+            similar_docs = hybrid_search(query, organization_id)
             
             if not similar_docs:
                 return Response({
@@ -132,7 +117,12 @@ class PolicyQAView(APIView):
                 })
 
             # Prepare context
-            context_text = "\n\n".join([doc.content for doc in similar_docs])
+            context_parts = []
+            for doc in similar_docs:
+                page = doc.get('page_number')
+                page_note = f" (page {page})" if page else ""
+                context_parts.append(f"[{doc['title']}{page_note}]\n{doc['content']}")
+            context_text = "\n\n".join(context_parts)
             
             # Generate answer using LLM
             llm = ChatOpenAI(
@@ -148,6 +138,7 @@ class PolicyQAView(APIView):
             
             If the answer is not in the context, say "I don't have enough information in the provided policies to answer that."
             Do not hallucinate or use outside knowledge.
+            When you cite a policy, mention the document title and page number when available.
 
             FORMATTING: If you find an answer, wrap the most important part of the policy in:
             [INSIGHT_CARD] title: {Policy Name} | message: {The core policy details} | type: info | topic: Policy [/INSIGHT_CARD]
@@ -161,13 +152,16 @@ class PolicyQAView(APIView):
                 "question": query
             })
             
-            # Collect sources
+            # Collect sources with page citations
             sources = [
                 {
-                    'title': doc.title,
-                    'file_id': doc.policy_file.id if doc.policy_file else None,
-                    'score': float(doc.distance) if hasattr(doc, 'distance') else None
-                } 
+                    'title': doc['title'],
+                    'file_id': doc.get('file_id'),
+                    'file_url': doc.get('file_url'),
+                    'page_number': doc.get('page_number'),
+                    'score': doc.get('score'),
+                    'match_type': doc.get('match_type'),
+                }
                 for doc in similar_docs
             ]
             
@@ -319,6 +313,7 @@ class SmartAssistantChatView(APIView):
                     "messages": all_messages,
                     "user_id": request.user.id,
                     "organization_id": org_id,
+                    "user_role": getattr(request.user, "role", "employee"),
                     "latitude": request.data.get('latitude', 0),
                     "longitude": request.data.get('longitude', 0),
                     "payslip_context": payslip_context,
@@ -374,6 +369,13 @@ class SmartAssistantChatView(APIView):
                                     else:
                                         logger.info(f"[Tool→END] {candidate}")
                                         q.put({'tool_end': candidate})
+                                        # Emit structured citation sources for policy RAG
+                                        if candidate == "search_policies":
+                                            from .retrieval import parse_citations_from_tool_output
+                                            tool_output = event.get("data", {}).get("output")
+                                            sources = parse_citations_from_tool_output(tool_output)
+                                            if sources:
+                                                q.put({'sources': sources})
 
                         # Save to history
                         now_iso = timezone.now().isoformat()

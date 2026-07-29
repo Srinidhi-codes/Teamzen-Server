@@ -8,9 +8,31 @@ from organizations.models import Department, Designation, OfficeLocation
 from organizations.graphql.types import OfficeLocationType, OrganizationType, DepartmentType, DesignationType
 
 @strawberry.type
+class StructureComponentSummaryType:
+    id: strawberry.ID
+    component: "ComponentSummaryType"
+    calculation_type: str
+    value: float
+
+@strawberry.type
+class ComponentSummaryType:
+    id: strawberry.ID
+    name: str
+    code: str
+    component_type: str
+
+@strawberry.type
 class SalaryStructureSummaryType:
     id: strawberry.ID
     name: str
+    components: List[StructureComponentSummaryType]
+
+@strawberry.type
+class ComponentOverrideSummaryType:
+    id: strawberry.ID
+    component: ComponentSummaryType
+    is_excluded: bool
+    override_value: Optional[float]
 
 @strawberry.type
 class SalarySummaryType:
@@ -19,6 +41,7 @@ class SalarySummaryType:
     effective_from: str
     is_active: bool
     salary_structure: SalaryStructureSummaryType
+    component_overrides: List[ComponentOverrideSummaryType]
 
 @strawberry.django.type(UserLoginHistory)
 class UserLoginHistoryType:
@@ -68,9 +91,37 @@ class UserType:
     
     @strawberry.field
     def salary_details(self) -> Optional[SalarySummaryType]:
-        struct = self.salary_structures.filter(is_active=True).first()
+        struct = self.salary_structures.filter(is_active=True).select_related("salary_structure").first()
         if not struct:
             return None
+        # Build structure components
+        sc_list = []
+        for sc in struct.salary_structure.components.select_related("component").all():
+            sc_list.append(StructureComponentSummaryType(
+                id=str(sc.id),
+                component=ComponentSummaryType(
+                    id=str(sc.component.id),
+                    name=sc.component.name,
+                    code=sc.component.code,
+                    component_type=sc.component.component_type,
+                ),
+                calculation_type=sc.calculation_type,
+                value=float(sc.value),
+            ))
+        # Build overrides
+        ovr_list = []
+        for o in struct.component_overrides.select_related("component").all():
+            ovr_list.append(ComponentOverrideSummaryType(
+                id=str(o.id),
+                component=ComponentSummaryType(
+                    id=str(o.component.id),
+                    name=o.component.name,
+                    code=o.component.code,
+                    component_type=o.component.component_type,
+                ),
+                is_excluded=o.is_excluded,
+                override_value=float(o.override_value) if o.override_value is not None else None,
+            ))
         return SalarySummaryType(
             id=str(struct.id),
             annual_ctc=float(struct.annual_ctc),
@@ -78,8 +129,10 @@ class UserType:
             is_active=struct.is_active,
             salary_structure=SalaryStructureSummaryType(
                 id=str(struct.salary_structure.id),
-                name=struct.salary_structure.name
-            )
+                name=struct.salary_structure.name,
+                components=sc_list,
+            ),
+            component_overrides=ovr_list,
         )
 
     has_seen_onboarding: auto

@@ -311,9 +311,9 @@ def get_payroll_history(user_id: int, limit: int = 6) -> str:
 @mcp.tool()
 def search_policies(query: str, organization_id: int) -> str:
     """
-    Searches company policy documents using semantic similarity (RAG / pgvector).
+    Searches company policy documents using hybrid RAG (vector + full-text).
     Use when the user asks about rules, policies, or handbook information.
-    Returns the most relevant policy excerpts as a combined string.
+    Returns relevant policy excerpts with page numbers for citations.
     """
     from ai_engine.tools import search_policies as _tool
     return _tool.invoke({"query": query, "organization_id": organization_id})

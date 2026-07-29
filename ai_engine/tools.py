@@ -605,29 +605,14 @@ def get_team_stats(organization_id: int):
 @tool
 def search_policies(query: str, organization_id: int):
     """
-    Searches the company policy documents (RAG) for the given query.
-    Use this when the user asks about rules, policies, or handbook information.
+    Searches the company policy documents (RAG) for the given query using hybrid
+    vector + full-text retrieval. Use this when the user asks about rules,
+    policies, or handbook information. Results include page numbers for citations.
     """
-    from langchain_openai import OpenAIEmbeddings
-    from django.conf import settings
-    from .models import PolicyDocument
-    from pgvector.django import L2Distance
-    
-    embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
-    query_embedding = embeddings.embed_query(query)
-    
-    search_qs = PolicyDocument.objects.filter(policy_file__organization_id=organization_id)
-    similar_docs = search_qs.annotate(
-        distance=L2Distance('embedding', query_embedding)
-    ).filter(distance__lt=0.6).order_by('distance')[:4]
-    
-    if not similar_docs:
-        return "No policy documents found for your organization."
-        
-    results = []
-    for doc in similar_docs:
-        results.append(f"Source: {doc.title}\nContent: {doc.content}")
-    return "\n\n---\n\n".join(results)
+    from .retrieval import format_hits_for_llm, hybrid_search
+
+    hits = hybrid_search(query, organization_id)
+    return format_hits_for_llm(hits)
         
 @tool
 def suggest_leave_window(user_id: int, month: int = None):

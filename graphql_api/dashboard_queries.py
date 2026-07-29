@@ -112,10 +112,15 @@ class DashboardQuery:
             raise Exception("Unauthorized")
 
         # 0. Define scope filters based on role to prevent hierarchy leakage
-        # HR/Admin see everything in organization, Managers only see their department
-        base_user_filter = Q(organization=user.organization)
-        leave_filter = Q(user__organization=user.organization)
-        correction_filter = Q(attendance_record__user__organization=user.organization)
+        # Superadmin (no org required) sees all orgs; HR/Admin see their org; Managers see department
+        if user.role == 'superadmin':
+            base_user_filter = Q()
+            leave_filter = Q()
+            correction_filter = Q()
+        else:
+            base_user_filter = Q(organization=user.organization)
+            leave_filter = Q(user__organization=user.organization)
+            correction_filter = Q(attendance_record__user__organization=user.organization)
         
         if user.role == 'manager' and user.department:
             base_user_filter &= Q(department=user.department)
@@ -132,15 +137,16 @@ class DashboardQuery:
         now = timezone.now()
         
         attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
-        present_today = AttendanceRecord.objects.filter(
+        present_today_qs = AttendanceRecord.objects.filter(
             attendance_date=today, 
             status__in=attendance_statuses,
-            user__organization=user.organization
         )
+        if user.role != 'superadmin':
+            present_today_qs = present_today_qs.filter(user__organization=user.organization)
         if user.role == 'manager' and user.department:
-            present_today = present_today.filter(user__department=user.department)
+            present_today_qs = present_today_qs.filter(user__department=user.department)
         
-        present_today = present_today.count()
+        present_today = present_today_qs.count()
         
         attendance_rate = (present_today / active_employees * 100) if active_employees > 0 else 0
 
@@ -163,7 +169,11 @@ class DashboardQuery:
         # 3. Department Distribution
         dept_dist = []
         colors = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4"]
-        departments = Department.objects.filter(organization=user.organization)
+        departments = (
+            Department.objects.all()
+            if user.role == 'superadmin'
+            else Department.objects.filter(organization=user.organization)
+        )
         for i, dept in enumerate(departments):
             count = CustomUser.objects.filter(base_user_filter, department=dept).count()
             if count > 0: # Only show departments with employees

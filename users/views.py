@@ -284,13 +284,17 @@ class PasswordResetRequestView(APIView):
 
         try:
             user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "No account found with this email address."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            
-            # frontend_url = f"{settings.CLIENT_URL}/reset-password?uid={uid}&token={token}"
-            # For robustness, handle both User and Admin clients or just one central reset page
             reset_url = f"{settings.CLIENT_URL}/reset-password?uid={uid}&token={token}"
-            
+
             plain_text = f"Click the link below to reset your password:\n{reset_url}"
             html_content = get_password_reset_email_html(
                 employee_name=f"{user.first_name} {user.last_name}".strip() or "there",
@@ -308,9 +312,6 @@ class PasswordResetRequestView(APIView):
             email_msg.attach_alternative(html_content, "text/html")
             email_msg.send(fail_silently=False)
             return Response({"success": "Password reset link sent to your email."}, status=status.HTTP_200_OK)
-        except User.DoesNotExist:
-            # Don't reveal if user exists or not for security, but return same success msg
-            return Response({"success": "If an account exists with this email, a reset link has been sent."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
