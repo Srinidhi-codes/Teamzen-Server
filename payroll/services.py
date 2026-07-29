@@ -478,6 +478,37 @@ class PayrollService:
             payroll_run.total_net_pay = total_org_net
             payroll_run.status = "completed"
             payroll_run.save()
+
+            try:
+                from payroll.anomaly import scan_payroll_anomalies, format_anomaly_digest
+                from notifications.utils import notify_user
+                anomaly_flags = scan_payroll_anomalies(payroll_run.id)
+                if anomaly_flags:
+                    digest = format_anomaly_digest(anomaly_flags, payroll_run)
+                    admins = CustomUser.objects.filter(
+                        organization_id=payroll_run.organization_id,
+                        role__in=["admin", "superadmin"],
+                        is_active=True,
+                    )
+                    for admin in admins:
+                        notify_user(
+                            recipient_id=admin.id,
+                            verb="payroll_anomaly",
+                            message=digest,
+                            target_type="Payroll Run",
+                            target_id=str(payroll_run.id),
+                            level="admin",
+                        )
+                    try:
+                        from notifications.proactive import notify_telegram_user
+                        for admin in admins:
+                            notify_telegram_user(admin, digest)
+                    except Exception:
+                        pass
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Anomaly scan failed for run=%s", payroll_run.id)
+
             return True
 
         except Exception as e:

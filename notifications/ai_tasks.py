@@ -60,7 +60,10 @@ def notify_missing_checkout():
         notify_user(
             recipient_id=record.user.id,
             verb="Missing Checkout",
-            message=f"It looks like you forgot to clock out yesterday ({yesterday}). Please submit a correction request.",
+            message=(
+                f"It looks like you forgot to clock out yesterday ({yesterday}). "
+                "Ask the AI assistant to list pending corrections and confirm your checkout in one tap."
+            ),
             target_type="Attendance Correction",
             level="personal"
         )
@@ -143,3 +146,77 @@ def notify_manager_team_absence():
             count += 1
             
     return f"Notified {count} managers about high team absence."
+
+
+@shared_task(name="notifications.ai_tasks.send_team_pulse_brief")
+def send_team_pulse_brief():
+    """
+    Monday Team Pulse for managers/admins/HR.
+    Prior-week attendance rate, pending leaves, top late offenders.
+    """
+    from notifications.utils import notify_user
+    from notifications.proactive import (
+        MANAGER_ROLES,
+        build_team_pulse,
+        notify_telegram_user,
+    )
+
+    managers = CustomUser.objects.filter(
+        is_active=True, role__in=MANAGER_ROLES, organization_id__isnull=False
+    ).select_related("organization")
+
+    count = 0
+    for manager in managers:
+        org_id = manager.organization_id
+        pulse = build_team_pulse(org_id, manager=manager)
+        if pulse["headcount"] == 0:
+            continue
+
+        message = pulse["message"]
+        notify_user(
+            recipient_id=manager.id,
+            verb="Team Pulse",
+            message=message,
+            level="admin",
+            target_type="Team Pulse",
+        )
+        notify_telegram_user(manager.id, f"<b>Team Pulse</b>\n\n{message}")
+        count += 1
+
+    return f"Sent Team Pulse to {count} manager(s)."
+
+@shared_task(name="notifications.ai_tasks.detect_burnout_signals")
+def detect_burnout_signals():
+    """
+    Weekly burnout/attrition flags for managers (late + missed checkout + leave spike).
+    """
+    from notifications.utils import notify_user
+    from notifications.proactive import (
+        MANAGER_ROLES,
+        detect_burnout_for_org,
+        format_burnout_message,
+        notify_telegram_user,
+    )
+
+    managers = CustomUser.objects.filter(
+        is_active=True, role__in=MANAGER_ROLES, organization_id__isnull=False
+    )
+
+    count = 0
+    for manager in managers:
+        signals = detect_burnout_for_org(manager.organization_id, manager=manager)
+        if not signals:
+            continue
+
+        message = format_burnout_message(signals)
+        notify_user(
+            recipient_id=manager.id,
+            verb="Burnout Watch",
+            message=message,
+            level="admin",
+            target_type="Burnout Signal",
+        )
+        notify_telegram_user(manager.id, f"<b>Burnout Watch</b>\n\n{message}")
+        count += 1
+
+    return f"Sent burnout alerts to {count} manager(s)."

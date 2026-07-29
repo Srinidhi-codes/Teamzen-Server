@@ -54,6 +54,9 @@ def _get_legacy_tools():
         cancel_leave, suggest_leave_window, get_attendance_trends,
         generate_monthly_summary, get_latest_payslip, get_payslip,
         explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
+        get_team_pulse, list_pending_corrections, confirm_attendance_correction,
+        review_attendance_correction,
+        check_payroll_anomalies,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
@@ -62,6 +65,8 @@ def _get_legacy_tools():
         cancel_leave, suggest_leave_window, get_attendance_trends,
         generate_monthly_summary, get_latest_payslip, get_payslip,
         explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
+        get_team_pulse, list_pending_corrections, confirm_attendance_correction,
+        review_attendance_correction, check_payroll_anomalies,
     ]
 
 
@@ -187,6 +192,11 @@ def _build_system_prompt(state: AgentState) -> str:
         "REPORTS: If a manager asks for a report or summary for a specific month (e.g., 'Give me the February report'), use 'generate_monthly_summary'. Use the result to present an [INSIGHT_CARD].\n"
         "6. Leave Recommendations: If the user asks for advice on when to take a leave, or if they have a high leave balance, use 'suggest_leave_window'.\n"
         "7. Attendance Trends & Anomalies: Use 'get_attendance_trends' to detect patterns in user attendance (laters, missing checkouts, or drop in rate).\n"
+        "8. Team Pulse: If a manager asks for team pulse, weekly team digest, or attendance summary for the team, use 'get_team_pulse' with organization_id and user_id.\n"
+        "9. Attendance Corrections: If the user mentions missing checkout, square-off, or pending corrections, call 'list_pending_corrections' first and present CORRECTION_CARDs. "
+        "To confirm a draft, call 'confirm_attendance_correction' (optional logout_time HH:MM). "
+        "Managers approving/rejecting use 'review_attendance_correction' with decision approved|rejected.\n"
+        "10. Payroll Anomalies: Admins can ask 'check payroll anomalies'. Use 'check_payroll_anomalies' with organization_id, month, year to scan for LOP spikes, net pay swings, double deductions, zero net, missing salary structures, and new-joiner pro-rata issues.\n"
 
         "Formatting Instructions:\n"
         "1. CRITICAL: When explaining or summarizing a payslip, you MUST produce a [PAYROLL_CARD] as your FIRST action. DO NOT use plain text for the breakdown.\n"
@@ -202,6 +212,7 @@ def _build_system_prompt(state: AgentState) -> str:
         "   [INSIGHT_CARD] title: {Title} | message: {Reasoning/Message} | type: {info/warning/stats} | topic: {Topic} | stats: {Key1:Val1, Key2:Val2} [/INSIGHT_CARD]\n"
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
         "6. Never claim a policy rule, leave rule, payroll rule, or attendance rule unless it came from a tool result or explicit application context. If unsure, say so clearly.\n"
+        "7. When listing pending attendance corrections, output the [CORRECTION_CARD] tags returned by the tool exactly (do not convert them to plain text).\n"
     )
 
     payslip_ctx = state.get("payslip_context")
@@ -279,6 +290,8 @@ def _build_legacy_app():
             cancel_leave, suggest_leave_window, get_attendance_trends,
             generate_monthly_summary, get_latest_payslip, get_payslip,
             explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
+            get_team_pulse, list_pending_corrections, confirm_attendance_correction,
+            review_attendance_correction, check_payroll_anomalies,
         )
         org_id = state.get("organization_id", 0)
         llm = get_llm(org_id).bind_tools(tools)

@@ -320,6 +320,64 @@ def search_policies(query: str, organization_id: int) -> str:
 
 
 # ===========================================================================
+# PROACTIVE / CORRECTION TOOLS
+# ===========================================================================
+
+@mcp.tool()
+def get_team_pulse(organization_id: int, user_id: int = None) -> str:
+    """Team Pulse brief: prior-week attendance, pending leaves, late offenders."""
+    from ai_engine.tools import get_team_pulse as _tool
+    payload = {"organization_id": organization_id}
+    if user_id is not None:
+        payload["user_id"] = user_id
+    return _tool.invoke(payload)
+
+
+@mcp.tool()
+def list_pending_corrections(user_id: int) -> str:
+    """List pending attendance corrections with CORRECTION_CARD tags."""
+    from ai_engine.tools import list_pending_corrections as _tool
+    return _tool.invoke({"user_id": user_id})
+
+
+@mcp.tool()
+def confirm_attendance_correction(
+    user_id: int, correction_id: int, logout_time: str = None
+) -> str:
+    """Employee confirms a pending correction (optional logout_time HH:MM)."""
+    from ai_engine.tools import confirm_attendance_correction as _tool
+    payload = {"user_id": user_id, "correction_id": correction_id}
+    if logout_time:
+        payload["logout_time"] = logout_time
+    return _tool.invoke(payload)
+
+
+@mcp.tool()
+def review_attendance_correction(
+    approver_id: int, correction_id: int, decision: str, comments: str = ""
+) -> str:
+    """Manager/HR approve or reject a pending attendance correction."""
+    from ai_engine.tools import review_attendance_correction as _tool
+    return _tool.invoke(
+        {
+            "approver_id": approver_id,
+            "correction_id": correction_id,
+            "decision": decision,
+            "comments": comments or "",
+        }
+    )
+
+
+@mcp.tool()
+def check_payroll_anomalies(organization_id: int, month: int, year: int) -> str:
+    """Scan a completed payroll run for anomalies (LOP spikes, net pay swings, double deductions, zero net, missing salary structures, new-joiner pro-rata)."""
+    from ai_engine.tools import check_payroll_anomalies as _tool
+    return _tool.invoke(
+        {"organization_id": organization_id, "month": month, "year": year}
+    )
+
+
+# ===========================================================================
 # Entry Point
 # ===========================================================================
 

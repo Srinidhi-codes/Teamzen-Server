@@ -891,3 +891,215 @@ def generate_monthly_summary(organization_id: int, month: int, year: int):
     except Exception as e:
         return f"Error generating monthly summary: {str(e)}"
 
+
+@tool
+def get_team_pulse(organization_id: int, user_id: int = None):
+    """
+    Returns a Team Pulse brief for managers: prior-week attendance rate,
+    pending leaves, and top late offenders. Use when a manager asks for
+    team pulse, weekly team summary, or attendance digest.
+    """
+    from django.contrib.auth import get_user_model
+    from notifications.proactive import build_team_pulse
+
+    User = get_user_model()
+    manager = None
+    if user_id:
+        try:
+            manager = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            manager = None
+
+    pulse = build_team_pulse(organization_id, manager=manager)
+    stats = (
+        f"{{Attendance: {pulse['attendance_rate']}%, "
+        f"Headcount: {pulse['headcount']}, "
+        f"Pending Leaves: {pulse['pending_leaves']}}}"
+    )
+    return (
+        f"[INSIGHT_CARD] title: Team Pulse | message: {pulse['message']} | "
+        f"type: stats | topic: Team Pulse | stats: {stats} [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def list_pending_corrections(user_id: int):
+    """
+    Lists pending attendance corrections for the user (missed checkout drafts).
+    Always call this before confirming a correction. Returns CORRECTION_CARD tags.
+    """
+    from attendance.models import AttendanceCorrection
+
+    corrections = (
+        AttendanceCorrection.objects.filter(
+            requested_by_id=user_id,
+            _status="pending",
+        )
+        .select_related("attendance_record")
+        .order_by("-created_at")[:10]
+    )
+    if not corrections:
+        return "You have no pending attendance corrections."
+
+    cards = []
+    for c in corrections:
+        rec = c.attendance_record
+        suggested = (
+            c.corrected_logout_time.strftime("%H:%M")
+            if c.corrected_logout_time
+            else "—"
+        )
+        login = rec.login_time.strftime("%H:%M") if rec.login_time else "—"
+        cards.append(
+            f"[CORRECTION_CARD] id: {c.id} | date: {rec.attendance_date} | "
+            f"login: {login} | suggested_logout: {suggested} | "
+            f"record_id: {rec.id} | reason: {(c.reason or '')[:120]} [/CORRECTION_CARD]"
+        )
+    return "\n".join(cards)
+
+
+@tool
+def confirm_attendance_correction(user_id: int, correction_id: int, logout_time: str = None):
+    """
+    Employee confirms a pending attendance correction.
+    logout_time optional HH:MM — if omitted, keeps the suggested corrected_logout_time.
+    Does not auto-approve; keeps status pending for manager review unless org auto-applies.
+    Updates the correction draft so HR can approve the confirmed times.
+    """
+    from attendance.models import AttendanceCorrection
+    from datetime import time as dt_time
+
+    try:
+        correction = AttendanceCorrection.objects.select_related(
+            "attendance_record"
+        ).get(id=correction_id, requested_by_id=user_id)
+    except AttendanceCorrection.DoesNotExist:
+        return f"Error: Correction #{correction_id} not found for this user."
+
+    if correction._status != "pending":
+        return f"Error: Correction is already {correction._status}."
+
+    if logout_time:
+        try:
+            parts = logout_time.strip().split(":")
+            hour, minute = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+            correction.corrected_logout_time = dt_time(hour, minute, 0)
+        except (ValueError, IndexError):
+            return "Error: logout_time must be HH:MM (e.g. 18:30)."
+    elif not correction.corrected_logout_time:
+        return "Error: No suggested logout time. Provide logout_time as HH:MM."
+
+    correction.reason = (
+        f"{correction.reason}\n[Confirmed by employee via AI assistant "
+        f"at {timezone.now().isoformat()}]"
+    ).strip()
+    correction.save()
+
+    suggested = correction.corrected_logout_time.strftime("%H:%M")
+    date_str = correction.attendance_record.attendance_date
+    return (
+        f"[INSIGHT_CARD] title: Correction Confirmed | "
+        f"message: Confirmed logout {suggested} for {date_str}. "
+        f"Pending manager/HR approval. | type: info | topic: Attendance [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def review_attendance_correction(
+    approver_id: int, correction_id: int, decision: str, comments: str = ""
+):
+    """
+    Manager/HR/admin approves or rejects a pending attendance correction.
+    decision: 'approved' or 'rejected'.
+    """
+    from django.contrib.auth import get_user_model
+    from attendance.models import AttendanceCorrection
+    from django.db import transaction as db_transaction
+
+    User = get_user_model()
+    try:
+        approver = User.objects.get(id=approver_id)
+    except User.DoesNotExist:
+        return "Error: Approver not found."
+
+    if approver.role not in ("admin", "superadmin", "hr", "manager"):
+        return "Error: Not authorized to review corrections."
+
+    try:
+        correction = AttendanceCorrection.objects.select_related(
+            "attendance_record", "requested_by"
+        ).get(id=correction_id)
+    except AttendanceCorrection.DoesNotExist:
+        return f"Error: Correction #{correction_id} not found."
+
+    if correction._status != "pending":
+        return f"Error: Correction already {correction._status}."
+
+    decision_l = (decision or "").lower().strip()
+    if decision_l not in ("approved", "rejected"):
+        return "Error: decision must be 'approved' or 'rejected'."
+
+    with db_transaction.atomic():
+        if decision_l == "approved":
+            correction.approve(approver, comments or None)
+        else:
+            correction.reject(approver, comments or None)
+        correction.save()
+
+        from notifications.utils import notify_user
+
+        notify_user(
+            recipient_id=correction.requested_by_id,
+            verb=decision_l,
+            message=(
+                f"Your attendance correction for "
+                f"{correction.attendance_record.attendance_date} was {decision_l.upper()}."
+            ),
+            actor_id=approver.id,
+            target_type="Attendance Correction",
+            target_id=str(correction.id),
+            level="personal",
+        )
+
+    return (
+        f"[INSIGHT_CARD] title: Correction {decision_l.title()} | "
+        f"message: Correction #{correction_id} for "
+        f"{correction.attendance_record.attendance_date} marked {decision_l}. | "
+        f"type: info | topic: Attendance [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def check_payroll_anomalies(organization_id: int, month: int, year: int):
+    """
+    Scan a completed payroll run for anomalies (high LOP, net pay swings,
+    double deductions, zero net, missing salary structures, new-joiner pro-rata).
+    Returns a structured insight card with the anomaly digest.
+    """
+    from payroll.models import PayrollRun
+    from payroll.anomaly import scan_payroll_anomalies, format_anomaly_digest
+
+    run = PayrollRun.objects.filter(
+        organization_id=organization_id,
+        month=month,
+        year=year,
+        status="completed",
+    ).order_by("-created_at").first()
+
+    if not run:
+        return (
+            "[INSIGHT_CARD] title: No Payroll Run | "
+            f"message: No completed payroll run found for {month}/{year}. | "
+            "type: info | topic: Payroll [/INSIGHT_CARD]"
+        )
+
+    flags = scan_payroll_anomalies(run.id)
+    digest = format_anomaly_digest(flags, run)
+
+    card_type = "warning" if flags else "info"
+    return (
+        f"[INSIGHT_CARD] title: Payroll Anomaly Scan | "
+        f"message: {digest} | "
+        f"type: {card_type} | topic: Payroll [/INSIGHT_CARD]"
+    )
+

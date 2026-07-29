@@ -94,6 +94,17 @@ def format_for_bot(ai_response: str) -> str:
         dates = _escape(f.get("dates", f.get("Dates", "")))
         return f"📋 Pending #{leave_id}: <b>{leave_type}</b> {dates}".strip()
 
+    def replace_correction(match: re.Match) -> str:
+        f = _parse_fields(match.group(1))
+        corr_id = _escape(f.get("id", "?"))
+        corr_date = _escape(f.get("date", ""))
+        suggested = _escape(f.get("suggested_logout", f.get("suggested logout", "—")))
+        return (
+            f"⏱ Correction #{corr_id}: <b>{corr_date}</b> "
+            f"suggested logout {suggested}. "
+            f"Reply: confirm correction {corr_id}"
+        ).strip()
+
     replacements = [
         (r"\[PAYROLL_CARD\](.*?)\[/PAYROLL_CARD\]", replace_payroll),
         (r"\[BALANCE_CARD\](.*?)\[/BALANCE_CARD\]", replace_balance),
@@ -101,6 +112,7 @@ def format_for_bot(ai_response: str) -> str:
         (r"\[INSIGHT_CARD\](.*?)\[/INSIGHT_CARD\]", replace_insight),
         (r"\[ERROR_CARD\](.*?)\[/ERROR_CARD\]", replace_error),
         (r"\[PENDING_LEAVE_CARD\](.*?)\[/PENDING_LEAVE_CARD\]", replace_pending_leave),
+        (r"\[CORRECTION_CARD\](.*?)\[/CORRECTION_CARD\]", replace_correction),
     ]
 
     for pattern, replacer in replacements:

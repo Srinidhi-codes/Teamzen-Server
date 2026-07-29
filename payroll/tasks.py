@@ -76,3 +76,56 @@ def auto_run_payroll_for_due_orgs():
             logger.exception("Auto payroll error org=%s", org.id)
 
     return {"processed": processed, "month": month, "year": year}
+
+
+@shared_task(name="payroll.tasks.scan_payroll_anomalies_task")
+def scan_payroll_anomalies_task():
+    """
+    Daily Beat task (01:30): scan any PayrollRun completed in the last 24 hours
+    that hasn't already been flagged.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from payroll.models import PayrollRun
+    from payroll.anomaly import scan_payroll_anomalies, format_anomaly_digest
+    from notifications.utils import notify_user
+    from users.models import CustomUser
+
+    cutoff = timezone.now() - timedelta(hours=24)
+    runs = PayrollRun.objects.filter(
+        status="completed",
+        created_at__gte=cutoff,
+    )
+
+    total_flags = 0
+    for run in runs:
+        try:
+            flags = scan_payroll_anomalies(run.id)
+            if not flags:
+                continue
+            total_flags += len(flags)
+            digest = format_anomaly_digest(flags, run)
+            admins = CustomUser.objects.filter(
+                organization_id=run.organization_id,
+                role__in=["admin", "superadmin"],
+                is_active=True,
+            )
+            for admin in admins:
+                notify_user(
+                    recipient_id=admin.id,
+                    verb="payroll_anomaly",
+                    message=digest,
+                    target_type="Payroll Run",
+                    target_id=str(run.id),
+                    level="admin",
+                )
+            try:
+                from notifications.proactive import notify_telegram_user
+                for admin in admins:
+                    notify_telegram_user(admin, digest)
+            except Exception:
+                pass
+        except Exception:
+            logger.exception("Anomaly scan error run=%s", run.id)
+
+    return {"runs_scanned": runs.count(), "total_flags": total_flags}

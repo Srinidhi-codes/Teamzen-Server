@@ -443,6 +443,18 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.ai_tasks.notify_manager_team_absence',
         'schedule': crontab(day_of_week='sunday', hour=19, minute=0),
     },
+    'ai-send-team-pulse-brief': {
+        'task': 'notifications.ai_tasks.send_team_pulse_brief',
+        'schedule': crontab(day_of_week='monday', hour=9, minute=15),
+    },
+    'ai-detect-burnout-signals': {
+        'task': 'notifications.ai_tasks.detect_burnout_signals',
+        'schedule': crontab(day_of_week='monday', hour=10, minute=45),
+    },
+    'scan-payroll-anomalies': {
+        'task': 'payroll.tasks.scan_payroll_anomalies_task',
+        'schedule': crontab(hour=1, minute=30),
+    },
     'auto-run-payroll-for-due-orgs': {
         'task': 'payroll.tasks.auto_run_payroll_for_due_orgs',
         'schedule': crontab(hour=1, minute=0),  # Daily 01:00; respects org payroll_cycle_day
