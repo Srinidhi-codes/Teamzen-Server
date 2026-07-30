@@ -10,7 +10,7 @@
 - Env: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
 - Guidance: `python manage.py slack_bot_setup`
 - Scopes: `chat:write`, `commands`, `im:history`, `im:read`, `users:read`, `app_mentions:read`
-- Slash: `/teamzen`, `/leave`, `/checkin`, `/payslip`, `/balance`
+- Slash: `/teamzen`, `/leaves`, `/checkin`, `/checkout`, `/payslip`, `/balance`
 - Auth: same OTP email flow as Telegram (`BotSession.platform=slack`, `chat_id` = Slack user id)
 - Check-in on Slack: reply with `lat,lng` after starting check-in (or use web/mobile)
 

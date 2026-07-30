@@ -44,7 +44,7 @@ HELP_TEXT = (
     "Tap a button below, or type freely.\n\n"
     "I can help with leave, attendance, payslips, and policies.\n\n"
     "Commands: /start · /help · /logout · /clear\n"
-    "Slack: /teamzen · /leave · /payslip · /balance"
+    "Slack: /teamzen · /leaves · /payslip · /balance"
 )
 
 # Reply-keyboard labels → action keys

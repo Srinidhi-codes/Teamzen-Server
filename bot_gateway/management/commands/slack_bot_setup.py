@@ -29,6 +29,6 @@ class Command(BaseCommand):
             self.stdout.write(f"  - {scope}")
         self.stdout.write("")
         self.stdout.write("Subscribe to bot events: message.im, app_mention")
-        self.stdout.write("Slash commands: /teamzen, /leave, /checkin, /payslip, /balance")
+        self.stdout.write("Slash commands: /teamzen, /leaves, /checkin, /checkout, /payslip, /balance")
         self.stdout.write("")
         self.stdout.write("Env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET")

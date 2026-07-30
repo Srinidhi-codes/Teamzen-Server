@@ -189,7 +189,7 @@ def slash_command_map(command: str, text: str) -> str:
     """Map slash command (+ optional text) to a BotService text/menu action string."""
     cmd = (command or "").strip().lower().lstrip("/")
     arg = (text or "").strip().lower()
-    if cmd in ("leave", "teamzen-leave"):
+    if cmd in ("leave", "leaves", "teamzen-leave"):
         return "apply leave" if not arg else f"apply leave {arg}"
     if cmd in ("checkin", "teamzen-checkin"):
         return "check-in"

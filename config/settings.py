@@ -42,10 +42,11 @@ def normalize_redis_url(
 def get_redis_url_with_db(url: str, db_index: int) -> str:
     return normalize_redis_url(url, db_index=db_index, ssl_cert_reqs="required")
 
-load_dotenv()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Always load backend/.env (not CWD-dependent)
+load_dotenv(BASE_DIR / ".env", override=True)
 
 
 # Quick-start development settings - unsuitable for production
