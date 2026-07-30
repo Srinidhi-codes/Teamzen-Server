@@ -5,9 +5,18 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+import httpx
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+# Import at module load so cold requests don't pay import cost inside the 3s Slack window.
+try:
+    from slack_sdk import WebClient
+    from slack_sdk.signature import SignatureVerifier
+except Exception:  # pragma: no cover
+    WebClient = None  # type: ignore
+    SignatureVerifier = None  # type: ignore
 
 
 def _token() -> str:
@@ -18,8 +27,8 @@ def _token() -> str:
 
 
 def _client():
-    from slack_sdk import WebClient
-
+    if WebClient is None:
+        raise RuntimeError("slack-sdk is not installed")
     return WebClient(token=_token())
 
 
@@ -31,21 +40,19 @@ def verify_request(body: bytes, timestamp: str, signature: str) -> bool:
     if not timestamp or not signature:
         logger.warning("Slack verify missing timestamp or signature header")
         return False
+    if SignatureVerifier is None:
+        logger.error("slack-sdk SignatureVerifier unavailable")
+        return False
     try:
-        from slack_sdk.signature import SignatureVerifier
-
         verifier = SignatureVerifier(signing_secret=secret)
-        ok = verifier.is_valid(
-            body=body if isinstance(body, bytes) else body.encode("utf-8"),
-            timestamp=timestamp,
-            signature=signature,
-        )
+        raw = body if isinstance(body, (bytes, bytearray)) else str(body).encode("utf-8")
+        ok = verifier.is_valid(body=bytes(raw), timestamp=str(timestamp), signature=str(signature))
         if not ok:
             logger.warning(
-                "Slack signature mismatch (check SLACK_SIGNING_SECRET matches "
-                "Basic Information → Signing Secret; no quotes/spaces in env)"
+                "Slack signature mismatch — Render SLACK_SIGNING_SECRET must match "
+                "Slack app Basic Information → Signing Secret (no quotes/spaces)"
             )
-        return ok
+        return bool(ok)
     except Exception:
         logger.exception("Slack signature verification error")
         return False
@@ -234,8 +241,6 @@ def post_response_url(response_url: str, payload: dict[str, Any]) -> bool:
     if not response_url:
         return False
     try:
-        import httpx
-
         with httpx.Client(timeout=15.0) as client:
             resp = client.post(response_url, json=payload)
             return 200 <= resp.status_code < 300
