@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _token() -> str:
-    token = getattr(settings, "SLACK_BOT_TOKEN", "") or ""
+    token = (getattr(settings, "SLACK_BOT_TOKEN", "") or "").strip().strip('"').strip("'")
     if not token:
         raise RuntimeError("SLACK_BOT_TOKEN is not configured")
     return token
@@ -25,16 +25,29 @@ def _client():
 
 def verify_request(body: bytes, timestamp: str, signature: str) -> bool:
     """Verify Slack request signature. In DEBUG with no secret, allow."""
-    secret = getattr(settings, "SLACK_SIGNING_SECRET", "") or ""
+    secret = (getattr(settings, "SLACK_SIGNING_SECRET", "") or "").strip().strip('"').strip("'")
     if not secret:
         return bool(getattr(settings, "DEBUG", False))
+    if not timestamp or not signature:
+        logger.warning("Slack verify missing timestamp or signature header")
+        return False
     try:
         from slack_sdk.signature import SignatureVerifier
 
         verifier = SignatureVerifier(signing_secret=secret)
-        return verifier.is_valid(body=body, timestamp=timestamp, signature=signature)
+        ok = verifier.is_valid(
+            body=body if isinstance(body, bytes) else body.encode("utf-8"),
+            timestamp=timestamp,
+            signature=signature,
+        )
+        if not ok:
+            logger.warning(
+                "Slack signature mismatch (check SLACK_SIGNING_SECRET matches "
+                "Basic Information → Signing Secret; no quotes/spaces in env)"
+            )
+        return ok
     except Exception:
-        logger.exception("Slack signature verification failed")
+        logger.exception("Slack signature verification error")
         return False
 
 
@@ -244,4 +257,4 @@ def slash_payload(text: str, reply_markup: Optional[dict] = None) -> dict[str, A
 
 
 def is_configured() -> bool:
-    return bool(getattr(settings, "SLACK_BOT_TOKEN", "") or "")
+    return bool((getattr(settings, "SLACK_BOT_TOKEN", "") or "").strip().strip('"').strip("'"))
