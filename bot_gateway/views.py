@@ -231,10 +231,22 @@ class SlackWebhookView(View):
             return JsonResponse({"challenge": payload.get("challenge", "")})
 
         if payload.get("type") == "event_callback":
-            try:
-                self._handle_event(payload.get("event") or {})
-            except Exception:
-                logger.exception("Slack event dispatch failed")
+            # Ack within 3s — process in background (same constraint as slash commands)
+            import threading
+            event = payload.get("event") or {}
+
+            def _run_event():
+                from django.db import close_old_connections
+
+                close_old_connections()
+                try:
+                    self._handle_event(event)
+                except Exception:
+                    logger.exception("Slack event dispatch failed")
+                finally:
+                    close_old_connections()
+
+            threading.Thread(target=_run_event, daemon=True).start()
             return HttpResponse("ok")
 
         return HttpResponse("ok")
