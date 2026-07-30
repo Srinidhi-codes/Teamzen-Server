@@ -547,6 +547,101 @@ def check_team_availability(user_id: int, start_date_str: str, end_date_str: str
     except Exception as e:
         return f"Error checking team availability: {str(e)}"
 
+def _serialize_user_details(user) -> dict:
+    """Safe profile payload — no bank/tax/2FA secrets."""
+    manager = getattr(user, "manager", None)
+    org = getattr(user, "organization", None)
+    dept = getattr(user, "department", None)
+    desig = getattr(user, "designation", None)
+    office = getattr(user, "office_location", None)
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email,
+        "employee_id": user.employee_id,
+        "role": user.role,
+        "employment_type": user.employment_type,
+        "phone_number": user.phone_number,
+        "date_of_joining": user.date_of_joining.isoformat() if user.date_of_joining else None,
+        "date_of_exit": user.date_of_exit.isoformat() if user.date_of_exit else None,
+        "is_active": user.is_active,
+        "is_verified": user.is_verified,
+        "organization_id": user.organization_id,
+        "organization_name": getattr(org, "name", None) if org else None,
+        "department_id": user.department_id,
+        "department_name": getattr(dept, "name", None) if dept else None,
+        "designation_id": user.designation_id,
+        "designation_name": getattr(desig, "name", None) if desig else None,
+        "office_location_id": user.office_location_id,
+        "office_location_name": getattr(office, "name", None) if office else None,
+        "manager_id": user.manager_id,
+        "manager_name": (
+            f"{manager.first_name or ''} {manager.last_name or ''}".strip() or manager.email
+            if manager
+            else None
+        ),
+        "manager_email": manager.email if manager else None,
+    }
+
+
+@tool
+def get_user_details(
+    user_id: int,
+    lookup_email: str = None,
+    lookup_employee_id: str = None,
+    lookup_user_id: int = None,
+):
+    """
+    Returns HR profile details for a user (name, email, role, department, designation, manager, org).
+    Without lookup_* args, returns the authenticated user's own profile (whoami).
+    Managers/HR/admins can look up another person in the same organization via
+    lookup_email, lookup_employee_id, or lookup_user_id.
+    Does not return bank, PAN, Aadhaar, or other sensitive tax/identity fields.
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    actor = (
+        User.objects.filter(id=user_id, is_active=True)
+        .select_related(
+            "organization", "department", "designation", "office_location", "manager"
+        )
+        .first()
+    )
+    if not actor:
+        return "Error: Authenticated user not found or inactive."
+
+    target = actor
+    looking_up = any([lookup_email, lookup_employee_id, lookup_user_id])
+    if looking_up:
+        privileged = actor.role in ("superadmin", "admin", "hr", "manager")
+        qs = User.objects.filter(is_active=True).select_related(
+            "organization", "department", "designation", "office_location", "manager"
+        )
+        if actor.organization_id:
+            qs = qs.filter(organization_id=actor.organization_id)
+        elif actor.role != "superadmin":
+            return "Error: Your account has no organization."
+
+        if lookup_user_id is not None:
+            target = qs.filter(id=lookup_user_id).first()
+        elif lookup_employee_id:
+            target = qs.filter(employee_id__iexact=lookup_employee_id.strip()).first()
+        elif lookup_email:
+            target = qs.filter(email__iexact=lookup_email.strip()).first()
+
+        if not target:
+            return "Error: User not found in your organization."
+
+        if target.id != actor.id and not privileged:
+            return "Error: Only managers, HR, or admins can look up other users."
+
+    return _serialize_user_details(target)
+
+
 @tool
 def get_team_stats(organization_id: int):
     """

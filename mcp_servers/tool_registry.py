@@ -211,6 +211,29 @@ def register_leave_tools(mcp) -> None:
 
 def register_hr_tools(mcp) -> None:
     @mcp.tool()
+    def get_user_details(
+        user_id: int,
+        lookup_email: str = None,
+        lookup_employee_id: str = None,
+        lookup_user_id: int = None,
+    ) -> dict:
+        """
+        Returns user profile details (name, email, role, department, designation, manager, org).
+        Without lookup_* args this is whoami for the authenticated user.
+        Managers/HR/admins may pass lookup_email, lookup_employee_id, or lookup_user_id
+        to fetch another person in the same organization.
+        """
+        from ai_engine.tools import get_user_details as _tool
+        payload = {"user_id": user_id}
+        if lookup_email:
+            payload["lookup_email"] = lookup_email
+        if lookup_employee_id:
+            payload["lookup_employee_id"] = lookup_employee_id
+        if lookup_user_id is not None:
+            payload["lookup_user_id"] = lookup_user_id
+        return invoke_tool(_tool, payload, required_scope="hr:read")
+
+    @mcp.tool()
     def get_team_stats(organization_id: int) -> dict:
         """
         Fetches high-level attendance and leave stats for the whole organization.

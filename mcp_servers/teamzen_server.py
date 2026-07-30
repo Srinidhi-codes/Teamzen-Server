@@ -26,7 +26,7 @@ mcp = create_mcp(
     name="teamzen-hr",
     instructions=(
         "You are the Teamzen HR tool server. "
-        "Use these tools to look up attendance, leaves, team stats, payroll, and policies "
+        "Use these tools to look up user profiles, attendance, leaves, team stats, payroll, and policies "
         "on behalf of authenticated employees and managers."
     ),
     port=port,
