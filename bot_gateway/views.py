@@ -190,19 +190,35 @@ class SlackWebhookView(View):
         )
 
     def post(self, request):
-        if not slack_api.is_configured():
-            return JsonResponse({"ok": False, "error": "bot_not_configured"}, status=503)
-
         body = request.body
         timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
         signature = request.headers.get("X-Slack-Signature", "")
+        content_type = (request.content_type or "").lower()
+        is_form = "application/x-www-form-urlencoded" in content_type
+
+        # Slash/interact must get a 200 quickly — never 503/401 without Slack-shaped body
+        if not slack_api.is_configured():
+            if is_form:
+                return JsonResponse(
+                    slack_api.slash_payload(
+                        "Teamzen Slack bot is not configured on the server "
+                        "(missing SLACK_BOT_TOKEN)."
+                    )
+                )
+            return JsonResponse({"ok": False, "error": "bot_not_configured"}, status=503)
+
         if not slack_api.verify_request(body, timestamp, signature):
+            if is_form:
+                return JsonResponse(
+                    slack_api.slash_payload(
+                        "Slack request signature check failed. "
+                        "Verify SLACK_SIGNING_SECRET on the server."
+                    )
+                )
             return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
-        content_type = (request.content_type or "").lower()
-
         # Slash commands + interactivity use form-urlencoded
-        if "application/x-www-form-urlencoded" in content_type:
+        if is_form:
             return self._handle_form(request)
 
         try:
@@ -224,35 +240,72 @@ class SlackWebhookView(View):
         return HttpResponse("ok")
 
     def _handle_form(self, request):
+        import threading
+
         form = parse_qs(request.body.decode("utf-8"), keep_blank_values=True)
 
-        # Interactivity payload
+        # Interactivity payload — ack immediately
         if "payload" in form:
             try:
                 payload = json.loads(form["payload"][0])
             except Exception:
                 return JsonResponse({"ok": False, "error": "invalid_payload"}, status=400)
-            try:
-                self._handle_interaction(payload)
-            except Exception:
-                logger.exception("Slack interaction failed")
+
+            def _run_interaction():
+                try:
+                    self._handle_interaction(payload)
+                except Exception:
+                    logger.exception("Slack interaction failed")
+
+            threading.Thread(target=_run_interaction, daemon=True).start()
             return HttpResponse("")
 
-        # Slash command
+        # Slash command — Slack requires a response within 3s (Render cold starts often exceed that).
+        # Ack immediately, then post the real reply to response_url.
         command = (form.get("command") or [""])[0]
         text = (form.get("text") or [""])[0]
         user_id = (form.get("user_id") or [""])[0]
+        response_url = (form.get("response_url") or [""])[0]
+
         if not user_id:
-            return JsonResponse({"response_type": "ephemeral", "text": "Missing user"})
+            return JsonResponse(slack_api.slash_payload("Missing Slack user id."))
 
         mapped = slack_api.slash_command_map(command, text)
-        reply = service.handle_text(BotSession.PLATFORM_SLACK, str(user_id), mapped)
+
+        def _run_slash():
+            from django.db import close_old_connections
+
+            close_old_connections()
+            try:
+                reply = service.handle_text(
+                    BotSession.PLATFORM_SLACK, str(user_id), mapped
+                )
+                payload = slack_api.slash_payload(
+                    reply.rendered_text(), reply.reply_markup
+                )
+            except Exception:
+                logger.exception("Slack slash command failed cmd=%s", command)
+                payload = slack_api.slash_payload(
+                    "Sorry — Teamzen hit an error. Please try again in a moment."
+                )
+            finally:
+                close_old_connections()
+            if response_url:
+                ok = slack_api.post_response_url(response_url, payload)
+                if not ok:
+                    logger.warning("Failed to deliver slash reply via response_url")
+            else:
+                try:
+                    _send_slack_reply(
+                        user_id,
+                        BotReply(payload["text"], platform=BotSession.PLATFORM_SLACK),
+                    )
+                except Exception:
+                    logger.exception("Slack slash DM fallback failed")
+
+        threading.Thread(target=_run_slash, daemon=True).start()
         return JsonResponse(
-            {
-                "response_type": "ephemeral",
-                "text": reply.rendered_text(),
-                "blocks": (reply.reply_markup or {}).get("blocks"),
-            }
+            slack_api.slash_payload("One moment — fetching that from Teamzen…")
         )
 
     def _handle_event(self, event: dict) -> None:

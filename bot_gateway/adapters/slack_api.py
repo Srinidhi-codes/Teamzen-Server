@@ -216,5 +216,32 @@ def slash_command_map(command: str, text: str) -> str:
     return text or "/help"
 
 
+def post_response_url(response_url: str, payload: dict[str, Any]) -> bool:
+    """Post a delayed slash-command / interaction reply (within Slack's 30m window)."""
+    if not response_url:
+        return False
+    try:
+        import httpx
+
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(response_url, json=payload)
+            return 200 <= resp.status_code < 300
+    except Exception:
+        logger.exception("Slack response_url post failed")
+        return False
+
+
+def slash_payload(text: str, reply_markup: Optional[dict] = None) -> dict[str, Any]:
+    """Build a valid slash-command response (omit null blocks)."""
+    payload: dict[str, Any] = {
+        "response_type": "ephemeral",
+        "text": (text or "Done.")[:3900],
+    }
+    blocks = (reply_markup or {}).get("blocks") if isinstance(reply_markup, dict) else None
+    if blocks:
+        payload["blocks"] = blocks
+    return payload
+
+
 def is_configured() -> bool:
     return bool(getattr(settings, "SLACK_BOT_TOKEN", "") or "")
