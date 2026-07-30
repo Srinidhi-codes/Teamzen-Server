@@ -58,6 +58,25 @@ def verify_request(body: bytes, timestamp: str, signature: str) -> bool:
         return False
 
 
+def _blocks_with_text(text: str, reply_markup: Optional[dict] = None) -> list:
+    """
+    Slack only renders `blocks` when present — top-level `text` is fallback/notification.
+    Always put the body in a section block so it appears above action buttons.
+    """
+    body = (text or "Done.")[:3000]
+    blocks: list = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": body},
+        }
+    ]
+    extra = (reply_markup or {}).get("blocks") if isinstance(reply_markup, dict) else None
+    if extra:
+        # Avoid duplicating if caller already sent a section
+        blocks.extend(extra)
+    return blocks
+
+
 def send_message(
     chat_id: str | int,
     text: str,
@@ -68,7 +87,7 @@ def send_message(
 ) -> dict:
     """
     Post a DM/channel message.
-    reply_markup for Slack is Block Kit: {"blocks": [...]} or {"attachments": ...}.
+    reply_markup for Slack is Block Kit: {"blocks": [...]}.
     """
     try:
         client = _client()
@@ -76,11 +95,10 @@ def send_message(
             "channel": str(chat_id),
             "text": (text or "")[:3900],
         }
-        if reply_markup and isinstance(reply_markup, dict):
-            if "blocks" in reply_markup:
-                kwargs["blocks"] = reply_markup["blocks"]
-            if "attachments" in reply_markup:
-                kwargs["attachments"] = reply_markup["attachments"]
+        if reply_markup and isinstance(reply_markup, dict) and reply_markup.get("blocks"):
+            kwargs["blocks"] = _blocks_with_text(text, reply_markup)
+        elif reply_markup and isinstance(reply_markup, dict) and reply_markup.get("attachments"):
+            kwargs["attachments"] = reply_markup["attachments"]
         result = client.chat_postMessage(**kwargs)
         return {"ok": bool(result.get("ok")), "data": result.data if hasattr(result, "data") else dict(result)}
     except Exception:
@@ -270,14 +288,13 @@ def post_response_url(response_url: str, payload: dict[str, Any]) -> bool:
 
 
 def slash_payload(text: str, reply_markup: Optional[dict] = None) -> dict[str, Any]:
-    """Build a valid slash-command response (omit null blocks)."""
+    """Build a valid slash-command response (text visible even when buttons present)."""
     payload: dict[str, Any] = {
         "response_type": "ephemeral",
         "text": (text or "Done.")[:3900],
     }
-    blocks = (reply_markup or {}).get("blocks") if isinstance(reply_markup, dict) else None
-    if blocks:
-        payload["blocks"] = blocks
+    if reply_markup and isinstance(reply_markup, dict) and reply_markup.get("blocks"):
+        payload["blocks"] = _blocks_with_text(text, reply_markup)
     return payload
 
 
