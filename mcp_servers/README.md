@@ -12,6 +12,11 @@
 #   Device:   python mcp_oauth/device_login.py
 #   See mcp_oauth/README.md for OAuth endpoints.
 #
+# Slack + Google Calendar (Sequence 6):
+#   Slack webhook: POST /api/bot/slack/  (SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET)
+#   GCal OAuth:    /api/integrations/google/calendar/connect/
+#   Tool:          check_calendar_conflicts (leaves:read)
+#
 # Auth / identity:
 #   MCP_AUTH_REQUIRED=false          — open (local default; no trusted user)
 #   MCP_INTERNAL_SECRET=<secret>     — LangGraph sends this + X-MCP-User-Id / Org-Id

@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     path("api/ai/", include("ai_engine.urls")),
     path("api/bot/", include("bot_gateway.urls")),
+    path("api/integrations/", include("integrations.urls")),
     path("api/", include("organizations.urls")),
     path("api/", include("payroll.urls")),
     path("mcp/", include("mcp_oauth.urls")),

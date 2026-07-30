@@ -120,6 +120,7 @@ class LeaveRequest(models.Model):
     approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_leaves')
     approval_comments = models.TextField(blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
+    google_event_id = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

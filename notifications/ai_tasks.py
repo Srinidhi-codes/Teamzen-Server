@@ -158,7 +158,7 @@ def send_team_pulse_brief():
     from notifications.proactive import (
         MANAGER_ROLES,
         build_team_pulse,
-        notify_telegram_user,
+        notify_bot_user,
     )
 
     managers = CustomUser.objects.filter(
@@ -180,7 +180,7 @@ def send_team_pulse_brief():
             level="admin",
             target_type="Team Pulse",
         )
-        notify_telegram_user(manager.id, f"<b>Team Pulse</b>\n\n{message}")
+        notify_bot_user(manager.id, f"<b>Team Pulse</b>\n\n{message}")
         count += 1
 
     return f"Sent Team Pulse to {count} manager(s)."
@@ -195,7 +195,7 @@ def detect_burnout_signals():
         MANAGER_ROLES,
         detect_burnout_for_org,
         format_burnout_message,
-        notify_telegram_user,
+        notify_bot_user,
     )
 
     managers = CustomUser.objects.filter(
@@ -216,7 +216,7 @@ def detect_burnout_signals():
             level="admin",
             target_type="Burnout Signal",
         )
-        notify_telegram_user(manager.id, f"<b>Burnout Watch</b>\n\n{message}")
+        notify_bot_user(manager.id, f"<b>Burnout Watch</b>\n\n{message}")
         count += 1
 
     return f"Sent burnout alerts to {count} manager(s)."

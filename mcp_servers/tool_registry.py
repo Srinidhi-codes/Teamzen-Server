@@ -195,6 +195,27 @@ def register_leave_tools(mcp) -> None:
         )
 
     @mcp.tool()
+    def check_calendar_conflicts(
+        user_id: int,
+        start_date_str: str,
+        end_date_str: str,
+    ) -> str:
+        """
+        Checks the user's connected Google Calendar for events overlapping a date range.
+        start_date_str / end_date_str: YYYY-MM-DD. Advisory only — does not block leave.
+        """
+        from ai_engine.tools import check_calendar_conflicts as _tool
+        return invoke_tool(
+            _tool,
+            {
+                "user_id": user_id,
+                "start_date_str": start_date_str,
+                "end_date_str": end_date_str,
+            },
+            required_scope="leaves:read",
+        )
+
+    @mcp.tool()
     def suggest_leave_window(user_id: int, month: Optional[int] = None) -> str:
         """
         Analyses and suggests the best time for the user to take leave in a given month.

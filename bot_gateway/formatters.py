@@ -1,9 +1,11 @@
-"""Convert GenUI card markup from the LangGraph agent into Telegram-friendly text."""
+"""Convert GenUI card markup from the LangGraph agent into bot-friendly text."""
 
 from __future__ import annotations
 
 import html
 import re
+
+from bot_gateway.models import BotSession
 
 
 def _parse_fields(body: str) -> dict[str, str]:
@@ -18,6 +20,28 @@ def _parse_fields(body: str) -> dict[str, str]:
 
 def _escape(text: str) -> str:
     return html.escape(text or "", quote=False)
+
+
+def html_to_mrkdwn(text: str) -> str:
+    """Convert simple Telegram HTML tags to Slack mrkdwn."""
+    if not text:
+        return ""
+    out = text
+    out = re.sub(r"<b>(.*?)</b>", r"*\1*", out, flags=re.DOTALL | re.IGNORECASE)
+    out = re.sub(r"<strong>(.*?)</strong>", r"*\1*", out, flags=re.DOTALL | re.IGNORECASE)
+    out = re.sub(r"<i>(.*?)</i>", r"_\1_", out, flags=re.DOTALL | re.IGNORECASE)
+    out = re.sub(r"<em>(.*?)</em>", r"_\1_", out, flags=re.DOTALL | re.IGNORECASE)
+    out = re.sub(r"<code>(.*?)</code>", r"`\1`", out, flags=re.DOTALL | re.IGNORECASE)
+    out = re.sub(r"<[^>]+>", "", out)
+    out = html.unescape(out)
+    return out
+
+
+def format_for_platform(text: str, platform: str) -> str:
+    """Adapt HTML bot text for the target platform."""
+    if platform == BotSession.PLATFORM_SLACK:
+        return html_to_mrkdwn(text)
+    return text
 
 
 def format_for_bot(ai_response: str) -> str:

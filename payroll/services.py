@@ -500,9 +500,9 @@ class PayrollService:
                             level="admin",
                         )
                     try:
-                        from notifications.proactive import notify_telegram_user
+                        from notifications.proactive import notify_bot_user
                         for admin in admins:
-                            notify_telegram_user(admin, digest)
+                            notify_bot_user(admin, digest)
                     except Exception:
                         pass
             except Exception:

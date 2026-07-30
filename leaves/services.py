@@ -209,6 +209,17 @@ def approve_leave_request(request, approver, comments=None):
     request.approve(approved_by=approver, comments=comments)
     request.save()
 
+    # --- GOOGLE CALENDAR PUSH (soft) ---
+    try:
+        from integrations.google_calendar import create_leave_event
+
+        event_id = create_leave_event(request)
+        if event_id:
+            request.google_event_id = event_id
+            request.save(update_fields=["google_event_id", "updated_at"])
+    except Exception as e:
+        print(f"FAILED TO SYNC GOOGLE CALENDAR: {e}")
+
     # --- NOTIFY USER ---
     try:
         from notifications.utils import notify_user
@@ -244,6 +255,14 @@ def cancel_leave_request(request):
     if request._status == 'approved':
         balance.used = F('used') - request.duration_days
         balance.save(update_fields=['used'])
+        # Remove Google Calendar event if present
+        try:
+            from integrations.google_calendar import delete_leave_event
+
+            if delete_leave_event(request):
+                request.google_event_id = ""
+        except Exception as e:
+            print(f"FAILED TO REMOVE GOOGLE CALENDAR EVENT: {e}")
     elif request._status == 'pending':
         release_balance(balance, request.duration_days)
         

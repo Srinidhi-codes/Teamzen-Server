@@ -98,7 +98,7 @@ def _get_legacy_tools():
         explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
         get_team_pulse, list_pending_corrections, confirm_attendance_correction,
         review_attendance_correction,
-        check_payroll_anomalies,
+        check_payroll_anomalies, check_calendar_conflicts,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
@@ -108,7 +108,7 @@ def _get_legacy_tools():
         generate_monthly_summary, get_latest_payslip, get_payslip,
         explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
         get_team_pulse, list_pending_corrections, confirm_attendance_correction,
-        review_attendance_correction, check_payroll_anomalies,
+        review_attendance_correction, check_payroll_anomalies, check_calendar_conflicts,
     ]
 
 
@@ -242,6 +242,7 @@ def _build_system_prompt(state: AgentState) -> str:
         "You MUST NOT invent, assume, or auto-fill a leave reason. "
         "You SHOULD infer duration from the dates only after dates are known, but for a same-day leave you must clarify whether it is full day, first half, or second half if the user did not specify. "
         "When the user provides dates for a leave request, call 'check_team_availability' before submission and summarize the result to the user. "
+        "Also call 'check_calendar_conflicts' for the same dates when Google Calendar may be connected; treat conflicts as advisory (do not block apply). "
         "AVAILABILITY REPORTING: When reporting team availability, ALWAYS use an [INSIGHT_CARD] with 'topic: Team Availability'. Include whether colleagues are already on leave and whether coverage looks clear or busy. "
         "SUBMISSION RULE: Only submit the leave after required details are present and you have reported team availability. Once everything is complete, tell the user you are submitting it now, then call 'apply_for_leave'. "
         "LEAVE MANAGEMENT: If the user wants to cancel a leave, use 'list_pending_leaves' first to show them their pending requests with PENDING_LEAVE_CARDs, then use 'cancel_leave' with the specific ID they choose.\n"
@@ -365,7 +366,7 @@ def _build_legacy_app():
             generate_monthly_summary, get_latest_payslip, get_payslip,
             explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
             get_team_pulse, list_pending_corrections, confirm_attendance_correction,
-            review_attendance_correction, check_payroll_anomalies,
+            review_attendance_correction, check_payroll_anomalies, check_calendar_conflicts,
         )
         org_id = state.get("organization_id", 0)
         llm = get_llm(org_id).bind_tools(tools)

@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     "ai_engine.apps.AiEngineConfig",
     "bot_gateway.apps.BotGatewayConfig",
     "mcp_oauth.apps.McpOauthConfig",
+    "integrations.apps.IntegrationsConfig",
     "graphql",
     "notifications",
     "channels",
@@ -502,4 +503,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 BOT_SESSION_TTL_HOURS = int(os.getenv("BOT_SESSION_TTL_HOURS", "8"))
+
+# ---------------------------------------------------------------------------
+# Slack Bot Gateway (Sequence 6)
+# ---------------------------------------------------------------------------
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+
+# ---------------------------------------------------------------------------
+# Google Calendar (Sequence 6)
+# ---------------------------------------------------------------------------
+GOOGLE_CALENDAR_CLIENT_ID = os.getenv("GOOGLE_CALENDAR_CLIENT_ID", "")
+GOOGLE_CALENDAR_CLIENT_SECRET = os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+GOOGLE_CALENDAR_REDIRECT_URI = os.getenv(
+    "GOOGLE_CALENDAR_REDIRECT_URI",
+    "http://localhost:8000/api/integrations/google/calendar/callback/",
+)
+FRONTEND_URL = os.getenv("FRONTEND_URL", os.getenv("CLIENT_URL", "http://localhost:3000"))
  

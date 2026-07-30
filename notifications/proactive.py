@@ -218,25 +218,51 @@ def format_burnout_message(
 
 def notify_telegram_user(user_id: int, html_text: str) -> bool:
     """Send HTML Telegram message if user has a verified active session."""
+    return notify_bot_user(user_id, html_text, platforms=["telegram"])
+
+
+def notify_bot_user(
+    user_id: int,
+    html_text: str,
+    platforms: list[str] | None = None,
+) -> bool:
+    """
+    Fan-out HTML (Telegram) / converted mrkdwn (Slack) to verified bot sessions.
+    Returns True if at least one platform delivered successfully.
+    """
     try:
-        from bot_gateway.adapters import telegram_api
+        from bot_gateway.adapters.registry import get_adapter
+        from bot_gateway.formatters import format_for_platform
         from bot_gateway.models import BotSession
     except Exception:
         return False
 
-    session = (
+    wanted = platforms or [
+        BotSession.PLATFORM_TELEGRAM,
+        BotSession.PLATFORM_SLACK,
+    ]
+    sessions = (
         BotSession.objects.filter(
             user_id=user_id,
-            platform=BotSession.PLATFORM_TELEGRAM,
+            platform__in=wanted,
             is_verified=True,
         )
         .order_by("-updated_at")
-        .first()
     )
-    if not session or not session.is_active:
-        return False
-    try:
-        telegram_api.send_message(session.chat_id, html_text)
-        return True
-    except Exception:
-        return False
+    sent = False
+    seen_platforms: set[str] = set()
+    for session in sessions:
+        if session.platform in seen_platforms:
+            continue
+        if not session.is_active:
+            continue
+        seen_platforms.add(session.platform)
+        try:
+            adapter = get_adapter(session.platform)
+            text = format_for_platform(html_text, session.platform)
+            result = adapter.send_message(session.chat_id, text)
+            if result.get("ok", True):
+                sent = True
+        except Exception:
+            continue
+    return sent

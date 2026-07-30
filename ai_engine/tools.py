@@ -76,6 +76,22 @@ def apply_for_leave(
     try:
         leave_type = LeaveType.objects.get(id=leave_type_id)
         
+        conflict_note = ""
+        try:
+            from integrations.google_calendar import list_busy_events
+
+            busy = list_busy_events(user_id, from_date, to_date)
+            if busy:
+                titles = ", ".join(
+                    (e.get("summary") or "busy")[:40] for e in busy[:3]
+                )
+                conflict_note = (
+                    f" Note: your Google Calendar shows {len(busy)} event(s) "
+                    f"overlapping these dates ({titles}). Leave was still submitted."
+                )
+        except Exception:
+            pass
+
         with transaction.atomic():
             from leaves.services import create_leave_request
             from django.contrib.auth import get_user_model
@@ -95,11 +111,59 @@ def apply_for_leave(
 
             return {
                 "status": "success",
-                "message": f"Successfully submitted pending {leave_type.name} request for {inferred_duration}.",
-                "request_id": request.id
+                "message": (
+                    f"Successfully submitted pending {leave_type.name} request "
+                    f"for {inferred_duration}.{conflict_note}"
+                ),
+                "request_id": request.id,
+                "calendar_conflicts": bool(conflict_note),
             }
     except Exception as e:
         return f"[ERROR_CARD] title: Leave Application Error | message: {str(e)} [/ERROR_CARD]"
+
+
+@tool
+def check_calendar_conflicts(user_id: int, start_date_str: str, end_date_str: str):
+    """
+    Checks the user's connected Google Calendar for events overlapping a date range.
+    start_date_str and end_date_str must be 'YYYY-MM-DD'.
+    Soft advisory only — does not block leave. Returns conflicts or a not-connected message.
+    """
+    try:
+        start = date.fromisoformat(start_date_str)
+        end = date.fromisoformat(end_date_str)
+        if end < start:
+            return "Error: end date must be on or after start date."
+
+        from integrations.google_calendar import get_connection, list_busy_events
+
+        if not get_connection(user_id):
+            return (
+                "Google Calendar is not connected. "
+                "Connect it from Profile → Integrations to check conflicts."
+            )
+
+        events = list_busy_events(user_id, start, end)
+        if not events:
+            return (
+                f"No Google Calendar events found between {start} and {end}. "
+                "Looks clear from a calendar perspective."
+            )
+
+        lines = [
+            f"Found {len(events)} Google Calendar event(s) overlapping "
+            f"{start} → {end}:"
+        ]
+        for e in events[:10]:
+            lines.append(
+                f"- {e.get('summary', '(busy)')}: {e.get('start', '?')} → {e.get('end', '?')}"
+            )
+        if len(events) > 10:
+            lines.append(f"...and {len(events) - 10} more.")
+        lines.append("This is advisory only — you can still apply for leave.")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error checking calendar conflicts: {str(e)}"
 
 @tool
 def list_pending_leaves(user_id: int):
@@ -765,6 +829,20 @@ def suggest_leave_window(user_id: int, month: int = None):
                         count += 1
                 daily_absence[curr_date] = count
 
+        # Optional: Google Calendar busy days (soft boost for free days)
+        busy_dates = set()
+        try:
+            from integrations.google_calendar import list_busy_events
+
+            for ev in list_busy_events(user_id, start_date, end_date):
+                raw = (ev.get("start") or "")[:10]
+                try:
+                    busy_dates.add(date.fromisoformat(raw))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # 4. Find the "Best Window"
         best_window = None
         window_score = -100
@@ -796,6 +874,10 @@ def suggest_leave_window(user_id: int, month: int = None):
             # Lower score if team absence is high
             absence_count = daily_absence.get(curr_date, 0)
             score -= (absence_count * 5)
+
+            # Prefer days free of personal Google Calendar busy blocks
+            if curr_date in busy_dates:
+                score -= 8
             
             if score > window_score:
                 window_score = score

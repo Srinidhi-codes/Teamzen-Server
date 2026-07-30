@@ -16,8 +16,9 @@ from django.core.mail import EmailMultiAlternatives
 from django.db.models import Q
 from django.utils import timezone
 
+from bot_gateway.adapters.registry import get_adapter
 from bot_gateway.agent import clear_bot_history, run_agent_for_user
-from bot_gateway.formatters import format_for_bot
+from bot_gateway.formatters import format_for_bot, format_for_platform
 from bot_gateway.models import BotSession
 from users.models import CustomUser
 
@@ -28,6 +29,10 @@ logger = logging.getLogger(__name__)
 class BotReply:
     text: str
     reply_markup: Optional[dict] = None
+    platform: str = BotSession.PLATFORM_TELEGRAM
+
+    def rendered_text(self) -> str:
+        return format_for_platform(self.text, self.platform)
 
 
 WELCOME = (
@@ -38,7 +43,8 @@ WELCOME = (
 HELP_TEXT = (
     "Tap a button below, or type freely.\n\n"
     "I can help with leave, attendance, payslips, and policies.\n\n"
-    "Commands: /start · /help · /logout · /clear"
+    "Commands: /start · /help · /logout · /clear\n"
+    "Slack: /teamzen · /leave · /payslip · /balance"
 )
 
 # Reply-keyboard labels → action keys
@@ -93,20 +99,20 @@ def _escape(text: str) -> str:
     return html.escape(text or "", quote=False)
 
 
-def _menu_markup():
-    from bot_gateway.adapters import telegram_api
-
-    return telegram_api.main_menu_keyboard()
+def _menu_markup(platform: str = BotSession.PLATFORM_TELEGRAM):
+    return get_adapter(platform).main_menu_keyboard()
 
 
-def _inline_menu():
-    from bot_gateway.adapters import telegram_api
+def _inline_menu(platform: str = BotSession.PLATFORM_TELEGRAM):
+    return get_adapter(platform).quick_actions_inline()
 
-    return telegram_api.quick_actions_inline()
+
+def _reply(platform: str, text: str, reply_markup: Optional[dict] = None) -> BotReply:
+    return BotReply(text=text, reply_markup=reply_markup, platform=platform)
 
 
 class BotService:
-    """Platform-agnostic bot orchestration (Telegram Phase 1)."""
+    """Platform-agnostic bot orchestration (Telegram + Slack)."""
 
     def get_or_create_session(self, platform: str, chat_id: str) -> BotSession:
         session, _ = BotSession.objects.get_or_create(
@@ -137,7 +143,7 @@ class BotService:
     def handle_text(self, platform: str, chat_id: str, text: str) -> BotReply:
         text = (text or "").strip()
         if not text:
-            return BotReply("Please send a text message.")
+            return _reply(platform, "Please send a text message.")
 
         session = self.get_or_create_session(platform, chat_id)
         lower = text.lower().strip()
@@ -151,30 +157,31 @@ class BotService:
             return self._logout(session)
         if menu_key == "help" or lower in ("/help", "help"):
             if session.is_active:
-                return BotReply(HELP_TEXT, reply_markup=_inline_menu())
-            return BotReply(WELCOME)
+                return _reply(platform, HELP_TEXT, reply_markup=_inline_menu(platform))
+            return _reply(platform, WELCOME)
 
         if menu_key and not session.is_active:
-            return BotReply("Please sign in first — send /start and verify with OTP.")
+            return _reply(
+                platform,
+                "Please sign in first — send /start and verify with OTP.",
+            )
 
         if lower in ("/clear", "clear"):
             if session.is_active:
                 clear_bot_history(session.user_id)
-                return BotReply(
+                return _reply(
+                    platform,
                     "Conversation memory cleared. Ask me anything.",
-                    reply_markup=_menu_markup(),
+                    reply_markup=_menu_markup(platform),
                 )
-            return BotReply(WELCOME)
+            return _reply(platform, WELCOME)
 
         if not session.is_active:
             msg = self._handle_auth_flow(session, text)
             session.refresh_from_db()
             if session.is_active:
-                return BotReply(
-                    msg,
-                    reply_markup=_menu_markup(),
-                )
-            return BotReply(msg)
+                return _reply(platform, msg, reply_markup=_menu_markup(platform))
+            return _reply(platform, msg)
 
         if menu_key:
             return self._handle_menu_action(session, menu_key)
@@ -185,11 +192,28 @@ class BotService:
         if re.search(r"\bcheck[\s-]?in\b", lower):
             return self._request_location(session, "check-in")
 
+        # Slack: accept "lat,lng" when a check-in/out is pending
+        if platform == BotSession.PLATFORM_SLACK:
+            coords = self._parse_coords(text)
+            if coords:
+                lat, lng = coords
+                return self.handle_location(platform, chat_id, lat, lng)
+
         approval_reply = self._try_text_approval(session, text)
         if approval_reply is not None:
-            return BotReply(approval_reply, reply_markup=_menu_markup())
+            return _reply(platform, approval_reply, reply_markup=_menu_markup(platform))
 
         return self._handle_agent_message(session, text)
+
+    @staticmethod
+    def _parse_coords(text: str) -> Optional[tuple[float, float]]:
+        m = re.match(
+            r"^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$",
+            text or "",
+        )
+        if not m:
+            return None
+        return float(m.group(1)), float(m.group(2))
 
     def handle_location(
         self,
@@ -198,23 +222,25 @@ class BotService:
         latitude: float,
         longitude: float,
     ) -> BotReply:
-        """Process a shared Telegram location for pending check-in/out."""
+        """Process a shared location for pending check-in/out."""
         session = self.get_or_create_session(platform, chat_id)
         if not session.is_active:
-            return BotReply("Please sign in first with /start.")
+            return _reply(platform, "Please sign in first with /start.")
 
         action = cache.get(_attendance_action_key(platform, chat_id))
         if not action:
-            return BotReply(
+            return _reply(
+                platform,
                 "Got your location. Tap <b>Check-in</b> or <b>Check-out</b> first, "
                 "then share location when asked.",
-                reply_markup=_menu_markup(),
+                reply_markup=_menu_markup(platform),
             )
 
         cache.delete(_attendance_action_key(platform, chat_id))
-        return BotReply(
+        return _reply(
+            platform,
             self._perform_attendance(session.user, action, latitude, longitude),
-            reply_markup=_menu_markup(),
+            reply_markup=_menu_markup(platform),
         )
 
     def handle_callback(
@@ -231,15 +257,15 @@ class BotService:
         if data.startswith("menu:"):
             session = self.get_or_create_session(platform, chat_id)
             if not session.is_active:
-                return BotReply("Please verify with /start first."), False
+                return _reply(platform, "Please verify with /start first."), False
             action = data.split(":", 1)[1]
             return self._handle_menu_action(session, action), True
 
         if data.startswith("lv:"):
             text, ok = self.handle_leave_callback(platform, chat_id, data)
-            return BotReply(text, reply_markup=_menu_markup()), ok
+            return _reply(platform, text, reply_markup=_menu_markup(platform)), ok
 
-        return BotReply("Unknown action."), False
+        return _reply(platform, "Unknown action."), False
 
     def handle_leave_callback(
         self,
@@ -271,6 +297,7 @@ class BotService:
 
     # ---------------------------------------------------------------- menu
     def _handle_menu_action(self, session: BotSession, action: str) -> BotReply:
+        platform = session.platform
         action = (action or "").lower().strip()
         if action in ("checkin", "check-in"):
             return self._request_location(session, "check-in")
@@ -278,33 +305,51 @@ class BotService:
             return self._request_location(session, "check-out")
         if action == "cancel_location":
             cache.delete(_attendance_action_key(session.platform, session.chat_id))
-            return BotReply("Cancelled.", reply_markup=_menu_markup())
+            return _reply(platform, "Cancelled.", reply_markup=_menu_markup(platform))
         if action == "balance":
-            return BotReply(self._quick_leave_balance(session.user), reply_markup=_menu_markup())
+            return _reply(
+                platform,
+                self._quick_leave_balance(session.user),
+                reply_markup=_menu_markup(platform),
+            )
         if action == "attendance":
-            return BotReply(self._quick_attendance(session.user), reply_markup=_menu_markup())
+            return _reply(
+                platform,
+                self._quick_attendance(session.user),
+                reply_markup=_menu_markup(platform),
+            )
         if action == "pending":
-            return BotReply(self._quick_pending_leaves(session.user), reply_markup=_menu_markup())
+            return _reply(
+                platform,
+                self._quick_pending_leaves(session.user),
+                reply_markup=_menu_markup(platform),
+            )
         if action == "payslip":
-            return BotReply(self._quick_payslip(session.user), reply_markup=_menu_markup())
+            return _reply(
+                platform,
+                self._quick_payslip(session.user),
+                reply_markup=_menu_markup(platform),
+            )
         if action == "apply":
             return self._handle_agent_message(
                 session,
                 "I want to apply for leave. Ask me for leave type, dates, and reason.",
             )
         if action == "help":
-            return BotReply(HELP_TEXT, reply_markup=_inline_menu())
+            return _reply(platform, HELP_TEXT, reply_markup=_inline_menu(platform))
         if action == "logout":
             return self._logout(session)
-        return BotReply("Unknown menu action.", reply_markup=_menu_markup())
+        return _reply(platform, "Unknown menu action.", reply_markup=_menu_markup(platform))
 
     def _request_location(self, session: BotSession, action: str) -> BotReply:
-        from bot_gateway.adapters import telegram_api
+        platform = session.platform
+        adapter = get_adapter(platform)
 
         if not session.user.office_location_id:
-            return BotReply(
+            return _reply(
+                platform,
                 "You don't have an assigned office location. Please contact HR.",
-                reply_markup=_menu_markup(),
+                reply_markup=_menu_markup(platform),
             )
 
         cache.set(
@@ -313,10 +358,20 @@ class BotService:
             timeout=300,
         )
         label = "check in" if action == "check-in" else "check out"
-        return BotReply(
+        if platform == BotSession.PLATFORM_SLACK:
+            return _reply(
+                platform,
+                f"To <b>{label}</b>, I need your live location for geofence verification.\n"
+                f"Reply with coordinates as <code>latitude,longitude</code> "
+                f"(e.g. <code>12.9716,77.5946</code>), or use the Teamzen web/mobile app.\n"
+                f"Request expires in 5 minutes.",
+                reply_markup=_menu_markup(platform),
+            )
+        return _reply(
+            platform,
             f"To <b>{label}</b>, I need your live location for geofence verification.\n"
             f"Tap <b>Share my location</b> below (expires in 5 minutes).",
-            reply_markup=telegram_api.location_request_keyboard(),
+            reply_markup=adapter.location_request_keyboard(),
         )
 
     def _perform_attendance(
@@ -451,8 +506,7 @@ class BotService:
 
     # ------------------------------------------------------------------ auth
     def _restart_auth(self, session: BotSession) -> BotReply:
-        from bot_gateway.adapters import telegram_api
-
+        adapter = get_adapter(session.platform)
         session.is_verified = False
         session.auth_state = BotSession.AUTH_AWAITING_IDENTITY
         session.user = None
@@ -468,20 +522,20 @@ class BotService:
                 "updated_at",
             ]
         )
-        return BotReply(WELCOME, reply_markup=telegram_api.remove_keyboard())
+        return _reply(session.platform, WELCOME, reply_markup=adapter.remove_keyboard())
 
     def _logout(self, session: BotSession) -> BotReply:
-        from bot_gateway.adapters import telegram_api
-
+        adapter = get_adapter(session.platform)
         if session.user_id:
             try:
                 clear_bot_history(session.user_id)
             except Exception:
                 pass
         session.mark_expired()
-        return BotReply(
+        return _reply(
+            session.platform,
             "You've been logged out. Send /start to sign in again.",
-            reply_markup=telegram_api.remove_keyboard(),
+            reply_markup=adapter.remove_keyboard(),
         )
 
     def _handle_auth_flow(self, session: BotSession, text: str) -> str:
@@ -571,6 +625,14 @@ class BotService:
                     "https://app.brevo.com/security/authorised_ips"
                 )
 
+        if session.platform == BotSession.PLATFORM_SLACK and not email_ok:
+            if getattr(settings, "DEBUG", False):
+                logger.warning("[bot_gateway] DEBUG OTP for %s: %s", user.email, otp)
+                return (
+                    f"Email delivery failed. DEBUG OTP: <b>{otp}</b> "
+                    f"(valid 5 minutes)."
+                )
+
         if not email_ok:
             return (
                 "I found your account but could not send the OTP email. "
@@ -590,10 +652,10 @@ class BotService:
             expiry_minutes=5,
         )
         email_msg = EmailMultiAlternatives(
-            subject="Your Teamzen Telegram Login OTP",
+            subject="Your Teamzen Bot Login OTP",
             body=(
                 f"Hi {employee_name},\n\n"
-                f"Your Teamzen Telegram security code is {otp}. "
+                f"Your Teamzen bot security code is {otp}. "
                 f"It is valid for 5 minutes.\n"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -649,14 +711,20 @@ class BotService:
     # --------------------------------------------------------------- agent
     def _handle_agent_message(self, session: BotSession, text: str) -> BotReply:
         try:
-            raw = run_agent_for_user(session.user, text, context="telegram")
-            return BotReply(format_for_bot(raw), reply_markup=_menu_markup())
+            context = "slack" if session.platform == BotSession.PLATFORM_SLACK else "telegram"
+            raw = run_agent_for_user(session.user, text, context=context)
+            return _reply(
+                session.platform,
+                format_for_bot(raw),
+                reply_markup=_menu_markup(session.platform),
+            )
         except Exception:
             logger.exception("Agent failed for bot user=%s", session.user_id)
-            return BotReply(
+            return _reply(
+                session.platform,
                 "Sorry — I hit an error talking to the assistant. "
                 "Please try again in a moment.",
-                reply_markup=_menu_markup(),
+                reply_markup=_menu_markup(session.platform),
             )
 
     # ----------------------------------------------------------- approvals
@@ -699,7 +767,7 @@ class BotService:
             logger.exception("Approve leave failed")
             return (f"Could not approve: {e}", False)
 
-        self._notify_employee_telegram(
+        self._notify_employee_bots(
             leave.user_id,
             (
                 f"✅ Your <b>{leave.leave_type.name}</b> leave "
@@ -735,7 +803,7 @@ class BotService:
             logger.exception("Reject leave failed")
             return (f"Could not reject: {e}", False)
 
-        self._notify_employee_telegram(
+        self._notify_employee_bots(
             leave.user_id,
             (
                 f"❌ Your <b>{leave.leave_type.name}</b> leave "
@@ -747,19 +815,15 @@ class BotService:
             True,
         )
 
-    def _notify_employee_telegram(self, user_id: int, html_text: str) -> None:
+    def _notify_employee_bots(self, user_id: int, html_text: str) -> None:
         try:
-            from bot_gateway.adapters import telegram_api
+            from notifications.proactive import notify_bot_user
 
-            session = self.get_verified_session_for_user(user_id)
-            if not session:
-                return
-            telegram_api.send_message(session.chat_id, html_text)
+            notify_bot_user(user_id, html_text)
         except Exception:
-            logger.exception("Failed to notify employee via Telegram user_id=%s", user_id)
+            logger.exception("Failed to notify employee via bots user_id=%s", user_id)
 
     def notify_managers_of_leave(self, leave) -> None:
-        from bot_gateway.adapters import telegram_api
         from leaves.models import LeaveRequest
         from notifications.utils import get_management_ids
 
@@ -789,23 +853,26 @@ class BotService:
             f"Tap a button below, or reply <code>APPROVE {leave.id}</code> / "
             f"<code>REJECT {leave.id}</code>"
         )
-        keyboard = telegram_api.leave_approval_keyboard(leave.id)
 
         sessions = BotSession.objects.filter(
             user_id__in=recipient_ids,
-            platform=BotSession.PLATFORM_TELEGRAM,
+            platform__in=[BotSession.PLATFORM_TELEGRAM, BotSession.PLATFORM_SLACK],
             is_verified=True,
         )
         for session in sessions:
             if not session.is_active:
                 continue
             try:
-                telegram_api.send_message(
+                adapter = get_adapter(session.platform)
+                keyboard = adapter.leave_approval_keyboard(leave.id)
+                adapter.send_message(
                     session.chat_id,
-                    body,
+                    format_for_platform(body, session.platform),
                     reply_markup=keyboard,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to send leave approval Telegram to chat=%s", session.chat_id
+                    "Failed to send leave approval to %s chat=%s",
+                    session.platform,
+                    session.chat_id,
                 )
