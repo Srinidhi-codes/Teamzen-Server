@@ -1,6 +1,7 @@
 """Browser connect pages: login, OTP, device code entry, consent, success."""
 from __future__ import annotations
 
+import os
 import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
@@ -35,6 +36,24 @@ def _authenticate_request(request):
     except Exception:
         pass
     return None
+
+
+def _mcp_public_url(request=None) -> str:
+    """
+    Public MCP streamable-HTTP URL for Cursor mcp.json snippets.
+    Prefer MCP_PUBLIC_URL, then MCP_SERVER_URL, else local default.
+    """
+    for key in ("MCP_PUBLIC_URL", "MCP_SERVER_URL"):
+        val = (os.environ.get(key) or "").strip().rstrip("/")
+        if val:
+            return val if val.endswith("/mcp") else f"{val}/mcp"
+    return "http://localhost:8001/mcp"
+
+
+def _success_ctx(request=None, **extra) -> dict:
+    ctx = {"mcp_url": _mcp_public_url(request), "denied": False, "token": None, "device_flow": False}
+    ctx.update(extra)
+    return ctx
 
 
 def _next_url(request, default_name="mcp_oauth:connect"):
@@ -343,7 +362,7 @@ class ConsentView(View):
                 device.status = MCPDeviceCode.STATUS_DENIED
                 device.save(update_fields=["status"])
             request.session.pop("mcp_device_user_code", None)
-            return render(request, "mcp_oauth/success.html", {"denied": True, "token": None})
+            return render(request, "mcp_oauth/success.html", _success_ctx(request, denied=True))
 
         # approve
         token, plaintext = issue_bound_mcp_token(
@@ -375,14 +394,14 @@ class ConsentView(View):
             return render(
                 request,
                 "mcp_oauth/success.html",
-                {"denied": False, "token": None, "device_flow": True},
+                _success_ctx(request, device_flow=True),
             )
 
         # Manual connect: show token once
         return render(
             request,
             "mcp_oauth/success.html",
-            {"denied": False, "token": plaintext, "device_flow": False, "scopes": scopes},
+            _success_ctx(request, token=plaintext, scopes=scopes),
         )
 
 
@@ -457,7 +476,7 @@ class ConsentOAuthView(View):
             if redirect_uri:
                 sep = "&" if "?" in redirect_uri else "?"
                 return redirect(f"{redirect_uri}{sep}error=access_denied&state={state}")
-            return render(request, "mcp_oauth/success.html", {"denied": True, "token": None})
+            return render(request, "mcp_oauth/success.html", _success_ctx(request, denied=True))
 
         scopes = normalize_scopes(request.POST.getlist("scopes"))
         code = secrets.token_urlsafe(32)
