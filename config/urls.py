@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/bot/", include("bot_gateway.urls")),
     path("api/", include("organizations.urls")),
     path("api/", include("payroll.urls")),
+    path("mcp/", include("mcp_oauth.urls")),
 ]
 
 if settings.DEBUG:

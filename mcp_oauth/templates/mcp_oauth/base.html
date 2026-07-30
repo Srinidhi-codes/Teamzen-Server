@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Teamzen MCP{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0b1016;
+      --card: #15202b;
+      --text: #f1f5f9;
+      --muted: #a8b6c9;
+      --accent: #2dd4bf;
+      --accent-dim: #115e59;
+      --danger: #f87171;
+      --warn: #fbbf24;
+      --border: #2c3b4f;
+      --surface: #0d1520;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, #1e3a3a 0%, transparent 55%),
+        var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 16px;
+      line-height: 1.45;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 24px 24px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }
+    .card.wide { max-width: 520px; }
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 8px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: 0 0 18px;
+    }
+    .sub code, code.inline {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.84em;
+      color: #e2e8f0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 14px 0 6px;
+      font-weight: 550;
+    }
+    input[type=email], input[type=password], input[type=text] {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    input:focus {
+      outline: 2px solid rgba(45, 212, 191, 0.35);
+      border-color: var(--accent);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 16px;
+      padding: 11px 14px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #042f2e;
+      font-weight: 650;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn.danger {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      margin-top: 10px;
+    }
+    .btn.sm {
+      width: auto;
+      margin: 0;
+      padding: 7px 12px;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+    .error {
+      background: rgba(127, 29, 29, 0.45);
+      color: #fecaca;
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+    .ok {
+      background: rgba(19, 78, 74, 0.55);
+      color: var(--accent);
+      border: 1px solid rgba(45, 212, 191, 0.3);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+    .warn {
+      background: rgba(120, 53, 15, 0.4);
+      color: #fde68a;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin: 0 0 16px;
+    }
+    .scopes {
+      max-height: 200px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--surface);
+    }
+    .scopes label {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 6px 0;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 400;
+    }
+    .field-block { margin: 0 0 14px; }
+    .field-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .field-head span {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .token-box {
+      word-break: break-all;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: #e2e8f0;
+      margin: 0;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    pre.token-box {
+      white-space: pre-wrap;
+      margin: 0;
+    }
+    a.link { color: var(--accent); font-size: 0.85rem; }
+    .brand {
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .copy-feedback {
+      font-size: 0.75rem;
+      color: var(--accent);
+      min-height: 1.1em;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card{% block card_class %}{% endblock %}">
+    <div class="brand">TEAMZEN MCP</div>
+    {% block content %}{% endblock %}
+  </div>
+  <script>
+    async function copyText(text, feedbackId) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const el = document.getElementById(feedbackId);
+        if (el) {
+          el.textContent = "Copied";
+          setTimeout(() => { el.textContent = ""; }, 1800);
+        }
+      } catch (e) {
+        const el = document.getElementById(feedbackId);
+        if (el) el.textContent = "Copy failed — select and copy manually";
+      }
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

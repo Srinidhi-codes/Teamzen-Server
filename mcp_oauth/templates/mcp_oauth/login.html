@@ -1,0 +1,17 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Sign in — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Sign in to connect MCP</h1>
+<p class="sub">Use your Teamzen email and password.</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="{% url 'mcp_oauth:login' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}" />
+  <label>Email</label>
+  <input type="email" name="email" value="{{ email|default:'' }}" required autofocus />
+  <label>Password</label>
+  <input type="password" name="password" required />
+  <button class="btn" type="submit">Sign in</button>
+</form>
+<p style="margin-top:16px"><a class="link" href="{% url 'mcp_oauth:otp' %}?next={{ next|urlencode }}">Sign in with email OTP instead</a></p>
+{% endblock %}

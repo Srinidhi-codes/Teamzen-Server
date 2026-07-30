@@ -28,6 +28,48 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8001/mcp")
 MCP_ENABLED = os.environ.get("MCP_ENABLED", "true").lower() == "true"
+MCP_MULTI_SERVER = os.environ.get("MCP_MULTI_SERVER", "false").lower() == "true"
+MCP_INTERNAL_SECRET = os.environ.get("MCP_INTERNAL_SECRET", "").strip()
+MCP_ATTENDANCE_URL = os.environ.get("MCP_ATTENDANCE_URL", "http://localhost:8002/mcp")
+MCP_LEAVES_URL = os.environ.get("MCP_LEAVES_URL", "http://localhost:8003/mcp")
+MCP_PAYROLL_URL = os.environ.get("MCP_PAYROLL_URL", "http://localhost:8004/mcp")
+MCP_POLICY_URL = os.environ.get("MCP_POLICY_URL", "http://localhost:8005/mcp")
+
+
+def _mcp_headers(
+    user_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+) -> dict:
+    """Headers for LangGraph -> MCP (internal secret + logged-in identity)."""
+    headers: dict = {}
+    if MCP_INTERNAL_SECRET:
+        headers["X-MCP-Internal-Secret"] = MCP_INTERNAL_SECRET
+    if user_id is not None:
+        headers["X-MCP-User-Id"] = str(user_id)
+    if organization_id is not None:
+        headers["X-MCP-Organization-Id"] = str(organization_id)
+    if user_role:
+        headers["X-MCP-User-Role"] = str(user_role)
+    return headers
+
+
+def _mcp_server_config(
+    url: str,
+    *,
+    user_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+) -> dict:
+    cfg = {
+        "url": url,
+        "transport": "streamable_http",
+    }
+    headers = _mcp_headers(user_id, organization_id, user_role)
+    if headers:
+        cfg["headers"] = headers
+    return cfg
+
 
 # ---------------------------------------------------------------------------
 # State Definition
@@ -73,24 +115,45 @@ def _get_legacy_tools():
 # ---------------------------------------------------------------------------
 # MCP tool loader (async)
 # ---------------------------------------------------------------------------
-async def _get_mcp_tools():
+async def _get_mcp_tools(
+    user_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+):
     """
-    Connect to the Teamzen MCP server and retrieve all tools.
-    Returns (tools, None) since v0.2+ no longer uses a context manager.
-    Returns (None, None) if the server is unreachable.
+    Connect to Teamzen MCP server(s) and retrieve tools.
+    Passes logged-in user identity headers so the MCP server can overwrite tool args.
     """
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
-        client = MultiServerMCPClient({
-            "teamzen": {
-                "url": MCP_SERVER_URL,
-                "transport": "streamable_http",
+
+        kw = dict(
+            user_id=user_id,
+            organization_id=organization_id,
+            user_role=user_role,
+        )
+        if MCP_MULTI_SERVER:
+            servers = {
+                "attendance": _mcp_server_config(MCP_ATTENDANCE_URL, **kw),
+                "leaves": _mcp_server_config(MCP_LEAVES_URL, **kw),
+                "payroll": _mcp_server_config(MCP_PAYROLL_URL, **kw),
+                "policy": _mcp_server_config(MCP_POLICY_URL, **kw),
             }
-        })
-        # v0.2+: no context manager, call get_tools() directly
+        else:
+            servers = {
+                "teamzen": _mcp_server_config(MCP_SERVER_URL, **kw),
+            }
+
+        client = MultiServerMCPClient(servers)
         tools = await client.get_tools()
-        logger.info(f"[MCP] Loaded {len(tools)} tools from {MCP_SERVER_URL}")
-        return tools, None  # No client to close in v0.2+
+        logger.info(
+            "[MCP] Loaded %s tools from %s (user=%s org=%s)",
+            len(tools),
+            "multi-server" if MCP_MULTI_SERVER else MCP_SERVER_URL,
+            user_id,
+            organization_id,
+        )
+        return tools, None
     except Exception as e:
         logger.warning(f"[MCP] Server unavailable ({e}), falling back to legacy tools.")
         return None, None
@@ -229,17 +292,26 @@ def _build_system_prompt(state: AgentState) -> str:
 # ---------------------------------------------------------------------------
 # Graph Builder (async, MCP-aware)
 # ---------------------------------------------------------------------------
-async def build_graph(organization_id: int):
+async def build_graph(
+    organization_id: int,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+):
     """
     Builds a compiled LangGraph workflow.
     Attempts to load tools from the MCP server first; falls back to legacy tools.
+    Passes the logged-in user identity to MCP so tool args cannot be spoofed.
     Returns (compiled_app, mcp_client_or_None).
     """
     mcp_client = None
     tools = []
 
     if MCP_ENABLED:
-        tools, mcp_client = await _get_mcp_tools()
+        tools, mcp_client = await _get_mcp_tools(
+            user_id=user_id,
+            organization_id=organization_id,
+            user_role=user_role,
+        )
 
     if not tools:
         tools = _get_legacy_tools()

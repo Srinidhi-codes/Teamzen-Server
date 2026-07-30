@@ -1,0 +1,7 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Error — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Something went wrong</h1>
+<div class="error">{{ message }}</div>
+<p><a class="link" href="{% url 'mcp_oauth:connect' %}">Start over</a></p>
+{% endblock %}
