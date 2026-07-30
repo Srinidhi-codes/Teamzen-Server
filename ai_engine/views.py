@@ -335,7 +335,9 @@ class SmartAssistantChatView(APIView):
                         from .graph import build_graph
                         # Build graph with MCP tools (or legacy fallback)
                         compiled_app, mcp_client = await build_graph(
-                            organization_id=initial_state["organization_id"]
+                            organization_id=initial_state["organization_id"],
+                            user_id=initial_state["user_id"],
+                            user_role=initial_state.get("user_role"),
                         )
 
                         async for event in compiled_app.astream_events(initial_state, version="v2"):

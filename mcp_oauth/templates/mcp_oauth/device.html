@@ -1,0 +1,13 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Enter code — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Link Cursor to Teamzen</h1>
+<p class="sub">Enter the code shown in your MCP client (e.g. ABCD-EFGH).</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="{% url 'mcp_oauth:device' %}">
+  {% csrf_token %}
+  <label>User code</label>
+  <input type="text" name="user_code" value="{{ user_code }}" required autofocus style="text-transform:uppercase;letter-spacing:0.08em" />
+  <button class="btn" type="submit">Continue</button>
+</form>
+{% endblock %}

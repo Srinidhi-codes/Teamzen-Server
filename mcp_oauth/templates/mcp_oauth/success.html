@@ -1,0 +1,67 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Connected — Teamzen MCP{% endblock %}
+{% block card_class %}{% if token %} wide{% endif %}{% endblock %}
+{% block content %}
+{% if denied %}
+<h1>Access denied</h1>
+<p class="sub">You declined MCP access. You can close this window.</p>
+{% elif device_flow %}
+<h1>You're connected</h1>
+<p class="sub">Return to Cursor — it will finish linking automatically. You can close this tab.</p>
+<div class="ok">Device authorization approved.</div>
+{% elif token %}
+<h1>MCP token ready</h1>
+<p class="sub">
+  Add this token to your MCP server as
+  <code class="inline">Authorization: Bearer …</code>
+  in <code class="inline">mcp.json</code>.
+</p>
+<div class="warn">Shown once — store it now. Anyone with this token can act as your user.</div>
+
+<div class="field-block">
+  <div class="field-head">
+    <span>Access token</span>
+    <button type="button" class="btn sm secondary" id="btn-copy-token">Copy token</button>
+  </div>
+  <div class="token-box" id="token-value">{{ token }}</div>
+  <div class="copy-feedback" id="fb-token"></div>
+</div>
+
+<div class="field-block">
+  <div class="field-head">
+    <span>Cursor mcp.json snippet</span>
+    <button type="button" class="btn sm secondary" id="btn-copy-json">Copy JSON</button>
+  </div>
+  <pre class="token-box" id="json-snippet">{
+  "teamzen-hr": {
+    "url": "http://localhost:8001/mcp",
+    "headers": {
+      "Authorization": "Bearer {{ token }}"
+    }
+  }
+}</pre>
+  <div class="copy-feedback" id="fb-json"></div>
+</div>
+{% else %}
+<h1>Done</h1>
+<p class="sub">You can close this window.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if token %}
+<script>
+  (function () {
+    const token = document.getElementById("token-value").textContent.trim();
+    const jsonEl = document.getElementById("json-snippet");
+    const jsonText = jsonEl.textContent.replace(/^\n/, "").replace(/\n$/, "");
+    document.getElementById("btn-copy-token").addEventListener("click", function () {
+      copyText(token, "fb-token");
+    });
+    document.getElementById("btn-copy-json").addEventListener("click", function () {
+      copyText(jsonText, "fb-json");
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

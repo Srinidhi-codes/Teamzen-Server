@@ -1,0 +1,22 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Authorize — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Allow MCP access?</h1>
+<p class="sub">
+  Client <strong>{{ client_id }}</strong> wants to use Teamzen tools as
+  <strong>{{ user.email }}</strong>.
+  {% if device %} Device code <strong>{{ device.user_code }}</strong>.{% endif %}
+</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="{% if oauth_redirect %}{% url 'mcp_oauth:consent_oauth' %}{% else %}{% url 'mcp_oauth:consent' %}{% endif %}">
+  {% csrf_token %}
+  <label>Scopes</label>
+  <div class="scopes">
+    {% for s in scopes %}
+    <label><input type="checkbox" name="scopes" value="{{ s }}" {% if s in selected_scopes %}checked{% endif %} /> {{ s }}</label>
+    {% endfor %}
+  </div>
+  <button class="btn" type="submit" name="action" value="approve">Approve</button>
+  <button class="btn danger" type="submit" name="action" value="deny">Deny</button>
+</form>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}Authenticator — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Two-factor code</h1>
+<p class="sub">Enter the code from your authenticator app.</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="{% url 'mcp_oauth:totp' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}" />
+  <input type="hidden" name="temp_token" value="{{ temp_token }}" />
+  <label>Authenticator code</label>
+  <input type="text" name="code" inputmode="numeric" required autofocus />
+  <button class="btn" type="submit">Verify</button>
+</form>
+{% endblock %}

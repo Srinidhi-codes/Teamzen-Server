@@ -1,0 +1,23 @@
+{% extends "mcp_oauth/base.html" %}
+{% block title %}OTP — Teamzen MCP{% endblock %}
+{% block content %}
+<h1>Email OTP</h1>
+<p class="sub">We’ll send a one-time code to your Teamzen email.</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if sent %}<div class="ok">Code sent{% if dev_otp %} (dev: {{ dev_otp }}){% endif %}</div>{% endif %}
+<form method="post" action="{% url 'mcp_oauth:otp' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}" />
+  <label>Email</label>
+  <input type="email" name="email" value="{{ email }}" required />
+  {% if sent %}
+  <label>OTP code</label>
+  <input type="text" name="otp" inputmode="numeric" autocomplete="one-time-code" required autofocus />
+  <button class="btn" type="submit" name="action" value="verify">Verify &amp; continue</button>
+  <button class="btn secondary" type="submit" name="action" value="send">Resend code</button>
+  {% else %}
+  <button class="btn" type="submit" name="action" value="send">Send code</button>
+  {% endif %}
+</form>
+<p style="margin-top:16px"><a class="link" href="{% url 'mcp_oauth:login' %}?next={{ next|urlencode }}">Back to password login</a></p>
+{% endblock %}

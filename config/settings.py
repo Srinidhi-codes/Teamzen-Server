@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     "leaves.apps.LeavesConfig",
     "ai_engine.apps.AiEngineConfig",
     "bot_gateway.apps.BotGatewayConfig",
+    "mcp_oauth.apps.McpOauthConfig",
     "graphql",
     "notifications",
     "channels",
