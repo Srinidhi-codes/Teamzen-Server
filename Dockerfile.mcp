@@ -1,0 +1,17 @@
+# MCP-only image (same deps as API; different process)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV DJANGO_SETTINGS_MODULE=config.settings
+ENV MCP_AUTH_REQUIRED=true
+
+EXPOSE 8000
+
+# Render sets $PORT — bind MCP to it
+CMD ["sh", "-c", "exec env MCP_SERVER_PORT=${PORT:-8000} python mcp_servers/teamzen_server.py"]

@@ -26,6 +26,7 @@
 #
 # Django (LangGraph) env:
 #   MCP_SERVER_URL=http://localhost:8001/mcp
+#   MCP_PUBLIC_URL=https://teamzen-mcp.onrender.com/mcp   # shown in connect success snippet
 #   MCP_INTERNAL_SECRET=dev-internal-secret
 #   MCP_MULTI_SERVER=false
 #
