@@ -43,9 +43,21 @@ WELCOME = (
 HELP_TEXT = (
     "Tap a button below, or type freely.\n\n"
     "I can help with leave, attendance, payslips, and policies.\n\n"
-    "Commands: /start · /help · /logout · /clear\n"
-    "Slack: /teamzen · /leaves · /payslip · /balance"
+    "Telegram: /start · /help · /logout · /clear\n"
+    "Slack: type <b>start</b> (no slash) · /teamzen start · /leaves · /balance · /payslip"
 )
+
+SIGN_IN_HINT_TELEGRAM = "Please sign in first — send /start and verify with OTP."
+SIGN_IN_HINT_SLACK = (
+    "Please sign in first — in this chat type <b>start</b> (without /), "
+    "or run <b>/teamzen start</b>, then verify with the OTP emailed to you."
+)
+
+
+def _sign_in_hint(platform: str) -> str:
+    if platform == BotSession.PLATFORM_SLACK:
+        return SIGN_IN_HINT_SLACK
+    return SIGN_IN_HINT_TELEGRAM
 
 # Reply-keyboard labels → action keys
 MENU_LABELS = {
@@ -161,10 +173,7 @@ class BotService:
             return _reply(platform, WELCOME)
 
         if menu_key and not session.is_active:
-            return _reply(
-                platform,
-                "Please sign in first — send /start and verify with OTP.",
-            )
+            return _reply(platform, _sign_in_hint(platform))
 
         if lower in ("/clear", "clear"):
             if session.is_active:
@@ -225,7 +234,7 @@ class BotService:
         """Process a shared location for pending check-in/out."""
         session = self.get_or_create_session(platform, chat_id)
         if not session.is_active:
-            return _reply(platform, "Please sign in first with /start.")
+            return _reply(platform, _sign_in_hint(platform))
 
         action = cache.get(_attendance_action_key(platform, chat_id))
         if not action:
@@ -257,7 +266,7 @@ class BotService:
         if data.startswith("menu:"):
             session = self.get_or_create_session(platform, chat_id)
             if not session.is_active:
-                return _reply(platform, "Please verify with /start first."), False
+                return _reply(platform, _sign_in_hint(platform)), False
             action = data.split(":", 1)[1]
             return self._handle_menu_action(session, action), True
 
@@ -277,7 +286,7 @@ class BotService:
     ) -> tuple[str, bool]:
         session = self.get_or_create_session(platform, chat_id)
         if not session.is_active:
-            return ("Please verify your account first with /start", False)
+            return (_sign_in_hint(platform), False)
 
         parts = (callback_data or "").split(":")
         if len(parts) != 3 or parts[0] != "lv":
@@ -534,7 +543,14 @@ class BotService:
         session.mark_expired()
         return _reply(
             session.platform,
-            "You've been logged out. Send /start to sign in again.",
+            (
+                "You've been logged out. "
+                + (
+                    "Type <b>start</b> or run <b>/teamzen start</b> to sign in again."
+                    if session.platform == BotSession.PLATFORM_SLACK
+                    else "Send /start to sign in again."
+                )
+            ),
             reply_markup=adapter.remove_keyboard(),
         )
 

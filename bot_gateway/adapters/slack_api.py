@@ -220,7 +220,9 @@ def slash_command_map(command: str, text: str) -> str:
     if cmd in ("balance", "teamzen-balance"):
         return "leave balance"
     if cmd in ("teamzen", "hr"):
-        if arg in ("leave", "apply"):
+        if arg in ("start", "login", "signin", "sign-in"):
+            return "/start"
+        if arg in ("leave", "apply", "leaves"):
             return "apply leave"
         if arg in ("checkin", "check-in"):
             return "check-in"
@@ -230,9 +232,13 @@ def slash_command_map(command: str, text: str) -> str:
             return "payslip"
         if arg in ("balance",):
             return "leave balance"
+        if arg in ("logout",):
+            return "/logout"
         if arg in ("help", ""):
             return "/help"
         return arg or "/help"
+    if cmd in ("signin", "login", "tzstart"):
+        return "/start"
     return text or "/help"
 
 
