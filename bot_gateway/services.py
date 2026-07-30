@@ -40,18 +40,36 @@ WELCOME = (
     "Please enter your registered work <b>email</b> or <b>phone number</b> to continue."
 )
 
+WELCOME_SLACK = (
+    "Welcome to <b>Teamzen HR Assistant</b>\n\n"
+    "Sign in with slash commands (DMs may not be delivered until Events are enabled):\n"
+    "1. <code>/teamzen your@work-email.com</code>\n"
+    "2. Check your email for a 6-digit OTP\n"
+    "3. <code>/teamzen 123456</code> (paste the OTP)\n\n"
+    "Then try <code>/balance</code> or <code>/leaves</code>."
+)
+
 HELP_TEXT = (
     "Tap a button below, or type freely.\n\n"
     "I can help with leave, attendance, payslips, and policies.\n\n"
     "Telegram: /start · /help · /logout · /clear\n"
-    "Slack: type <b>start</b> (no slash) · /teamzen start · /leaves · /balance · /payslip"
+    "Slack: /teamzen start · /teamzen you@email.com · /teamzen 123456 · "
+    "/leaves · /balance · /payslip"
 )
 
 SIGN_IN_HINT_TELEGRAM = "Please sign in first — send /start and verify with OTP."
 SIGN_IN_HINT_SLACK = (
-    "Please sign in first — in this chat type <b>start</b> (without /), "
-    "or run <b>/teamzen start</b>, then verify with the OTP emailed to you."
+    "Please sign in first:\n"
+    "1. <code>/teamzen start</code>\n"
+    "2. <code>/teamzen your@work-email.com</code>\n"
+    "3. <code>/teamzen 123456</code> (OTP from email)"
 )
+
+
+def _welcome(platform: str) -> str:
+    if platform == BotSession.PLATFORM_SLACK:
+        return WELCOME_SLACK
+    return WELCOME
 
 
 def _sign_in_hint(platform: str) -> str:
@@ -170,7 +188,7 @@ class BotService:
         if menu_key == "help" or lower in ("/help", "help"):
             if session.is_active:
                 return _reply(platform, HELP_TEXT, reply_markup=_inline_menu(platform))
-            return _reply(platform, WELCOME)
+            return _reply(platform, _welcome(platform))
 
         if menu_key and not session.is_active:
             return _reply(platform, _sign_in_hint(platform))
@@ -183,7 +201,7 @@ class BotService:
                     "Conversation memory cleared. Ask me anything.",
                     reply_markup=_menu_markup(platform),
                 )
-            return _reply(platform, WELCOME)
+            return _reply(platform, _welcome(platform))
 
         if not session.is_active:
             msg = self._handle_auth_flow(session, text)
@@ -531,7 +549,7 @@ class BotService:
                 "updated_at",
             ]
         )
-        return _reply(session.platform, WELCOME, reply_markup=adapter.remove_keyboard())
+        return _reply(session.platform, _welcome(session.platform), reply_markup=adapter.remove_keyboard())
 
     def _logout(self, session: BotSession) -> BotReply:
         adapter = get_adapter(session.platform)

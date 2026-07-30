@@ -207,10 +207,14 @@ def quick_actions_inline() -> dict:
 
 def slash_command_map(command: str, text: str) -> str:
     """Map slash command (+ optional text) to a BotService text/menu action string."""
+    import re
+
     cmd = (command or "").strip().lower().lstrip("/")
-    arg = (text or "").strip().lower()
+    arg = (text or "").strip()
+    arg_l = arg.lower()
+
     if cmd in ("leave", "leaves", "teamzen-leave"):
-        return "apply leave" if not arg else f"apply leave {arg}"
+        return "apply leave" if not arg_l else f"apply leave {arg}"
     if cmd in ("checkin", "teamzen-checkin"):
         return "check-in"
     if cmd in ("checkout", "teamzen-checkout"):
@@ -220,22 +224,32 @@ def slash_command_map(command: str, text: str) -> str:
     if cmd in ("balance", "teamzen-balance"):
         return "leave balance"
     if cmd in ("teamzen", "hr"):
-        if arg in ("start", "login", "signin", "sign-in"):
+        if arg_l in ("start", "login", "signin", "sign-in"):
             return "/start"
-        if arg in ("leave", "apply", "leaves"):
+        if arg_l in ("leave", "apply", "leaves"):
             return "apply leave"
-        if arg in ("checkin", "check-in"):
+        if arg_l in ("checkin", "check-in"):
             return "check-in"
-        if arg in ("checkout", "check-out"):
+        if arg_l in ("checkout", "check-out"):
             return "check-out"
-        if arg in ("payslip", "pay"):
+        if arg_l in ("payslip", "pay"):
             return "payslip"
-        if arg in ("balance",):
+        if arg_l in ("balance",):
             return "leave balance"
-        if arg in ("logout",):
+        if arg_l in ("logout",):
             return "/logout"
-        if arg in ("help", ""):
+        if arg_l in ("help", ""):
             return "/help"
+        # Auth continuation without needing DM events:
+        # /teamzen you@company.com  |  /teamzen otp 123456  |  /teamzen 123456
+        if arg_l.startswith("email "):
+            return arg.split(None, 1)[1].strip()
+        if arg_l.startswith("otp "):
+            return arg.split(None, 1)[1].strip()
+        if re.fullmatch(r"\d{6}", arg.strip()):
+            return arg.strip()
+        if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", arg.strip()):
+            return arg.strip()
         return arg or "/help"
     if cmd in ("signin", "login", "tzstart"):
         return "/start"
