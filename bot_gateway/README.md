@@ -1,4 +1,4 @@
-# Bot Gateway (Telegram + Slack)
+# Bot Gateway (Telegram + Slack + WhatsApp)
 
 ## Telegram
 - Webhook: `POST /api/bot/telegram/`
@@ -14,4 +14,16 @@
 - Auth: same OTP email flow as Telegram (`BotSession.platform=slack`, `chat_id` = Slack user id)
 - Check-in on Slack: reply with `lat,lng` after starting check-in (or use web/mobile)
 
-Both platforms share `BotService` and proactive `notify_bot_user`.
+## WhatsApp (Meta Cloud API)
+- Webhook: `GET/POST /api/bot/whatsapp/`
+- Env: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_API_VERSION`
+- Guidance: `python manage.py whatsapp_bot_setup`
+- Meta console: developers.facebook.com → WhatsApp → Configuration
+  - Callback URL: `https://<host>/api/bot/whatsapp/`
+  - Verify token: same as `WHATSAPP_VERIFY_TOKEN`
+  - Subscribe: `messages`
+- Auth: OTP email (`BotSession.platform=whatsapp`, `chat_id` = phone digits)
+- Check-in: attachment → Location → current location
+- Sandbox: allowlist test recipient numbers in API Setup
+
+All platforms share `BotService` and proactive `notify_bot_user`.

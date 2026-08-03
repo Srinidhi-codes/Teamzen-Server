@@ -170,34 +170,58 @@ def get_llm(organization_id: int):
 
     model_name = config.model_name if config else "gpt-4o-mini"
     temp = config.temperature if config else 0
+    max_tokens = config.max_tokens if config else 1024
+
+    # Remap retired provider model IDs so older org configs keep working
+    model_name = AIConfiguration.LEGACY_MODEL_MAP.get(model_name, model_name)
 
     if "gemini" in model_name:
         from langchain_google_genai import ChatGoogleGenerativeAI
+
         api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_API_KEY is not configured. Set it in the backend environment "
+                "to use Gemini models."
+            )
         return ChatGoogleGenerativeAI(
             model=model_name,
             temperature=temp,
             google_api_key=api_key,
+            max_output_tokens=max_tokens,
             streaming=True,
         )
 
-    elif "llama" in model_name or "mixtral" in model_name:
+    if "llama" in model_name or "mixtral" in model_name:
         from langchain_groq import ChatGroq
+
         api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GROQ_API_KEY is not configured. Set it in the backend environment "
+                "to use Groq / Llama models."
+            )
         return ChatGroq(
             model=model_name,
             temperature=temp,
             groq_api_key=api_key,
+            max_tokens=max_tokens,
             streaming=True,
         )
 
-    else:
-        return ChatOpenAI(
-            model=model_name,
-            temperature=temp,
-            openai_api_key=settings.OPENAI_API_KEY,
-            streaming=True,
+    openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not configured. Set it in the backend environment "
+            "to use OpenAI models."
         )
+    return ChatOpenAI(
+        model=model_name,
+        temperature=temp,
+        openai_api_key=openai_key,
+        max_tokens=max_tokens,
+        streaming=True,
+    )
 
 
 # ---------------------------------------------------------------------------

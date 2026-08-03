@@ -35,9 +35,20 @@ def get_management_ids(user):
     # Return unique IDs only
     return list(set(recipients))
 
-def notify_user(recipient_id, verb, message, actor_id=None, target_type=None, target_id=None, level='personal', notification_type='BOTH'):
+def notify_user(
+    recipient_id,
+    verb,
+    message,
+    actor_id=None,
+    target_type=None,
+    target_id=None,
+    level="personal",
+    notification_type="BOTH",
+    extra_context=None,
+):
     """
     Wrapper for send_notification task.
+    extra_context: optional dict passed to email templates (e.g. temp_password for Welcome).
     """
     _dispatch_notification(
         recipient_id=recipient_id,
@@ -48,6 +59,7 @@ def notify_user(recipient_id, verb, message, actor_id=None, target_type=None, ta
         target_id=target_id,
         level=level,
         notification_type=notification_type,
+        extra_context=extra_context or {},
     )
 
 def notify_management(user, verb, message, target_type=None, target_id=None):

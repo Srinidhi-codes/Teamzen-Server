@@ -41,27 +41,45 @@ def get_base_template(
         else logo_badge_html(accent_color)
     )
 
+    # Force light rendering: iOS Mail dark mode often inverts text to white while
+    # leaving light backgrounds, which makes headings like "Your One-Time Password" unreadable.
     return f"""<!DOCTYPE html>
-<html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="color-scheme" content="light only">
+        <meta name="supported-color-schemes" content="light only">
         <title>{title}</title>
         <style>
-            body {{ background: #F4F7FB; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px 10px; color: #334155; }}
+            :root {{ color-scheme: light only; supported-color-schemes: light only; }}
+            body {{ background-color: #F4F7FB !important; background: #F4F7FB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; margin: 0; padding: 24px 10px; color: #0F172A !important; }}
             .shell {{ max-width: 640px; margin: 0 auto; }}
             .brandbar {{ text-align: center; margin: 0 0 14px 0; }}
-            .brandchip {{ display: inline-block; padding: 7px 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #E2E8F0; color: #0F172A; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
-            .container {{ background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08); }}
+            .brandchip {{ display: inline-block; padding: 7px 14px; border-radius: 999px; background-color: #FFFFFF !important; border: 1px solid #E2E8F0; color: #0F172A !important; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
+            .container {{ background-color: #FFFFFF !important; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08); }}
             .topline {{ height: 4px; background: linear-gradient(90deg, {accent_color}, #0EA5E9); }}
-            .header {{ padding: 26px 32px 18px 32px; background: linear-gradient(180deg, {accent_light}, #FFFFFF 70%); border-bottom: 1px solid #EEF2F7; }}
-            .content {{ padding: 0; }}
-            .footer {{ padding: 24px 32px 32px 32px; background: #FAFBFD; border-top: 1px solid #E2E8F0; }}
-            .eyebrow {{ margin: 0 0 8px 0; color: {accent_color}; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }}
-            .title {{ margin: 0; color: #0F172A; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }}
-            p {{ font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 16px 0; }}
-            .footer-note {{ color: #64748B; font-size: 12px; margin: 0; }}
-            .footer-links a {{ color: {accent_color}; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600; }}
+            .header {{ padding: 26px 32px 18px 32px; background-color: #EEF2FF !important; background: linear-gradient(180deg, {accent_light}, #FFFFFF 70%); border-bottom: 1px solid #EEF2F7; }}
+            .content {{ padding: 0; background-color: #FFFFFF !important; }}
+            .footer {{ padding: 24px 32px 32px 32px; background-color: #FAFBFD !important; border-top: 1px solid #E2E8F0; }}
+            .eyebrow {{ margin: 0 0 8px 0; color: {accent_color} !important; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }}
+            .title {{ margin: 0; color: #0F172A !important; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }}
+            p {{ font-size: 15px; color: #334155 !important; line-height: 1.7; margin: 0 0 16px 0; }}
+            .footer-note {{ color: #475569 !important; font-size: 12px; margin: 0; }}
+            .footer-links a {{ color: {accent_color} !important; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600; }}
+            /* Keep light palette even if the client ignores color-scheme meta */
+            @media (prefers-color-scheme: dark) {{
+                body {{
+                    background-color: #F4F7FB !important;
+                    color: #0F172A !important;
+                }}
+                .container, .content, .header, .footer, .brandchip {{
+                    background-color: #FFFFFF !important;
+                }}
+                .title, h1, .footer-note, p {{
+                    color: #0F172A !important;
+                }}
+            }}
             @media only screen and (max-width: 640px) {{
                 body {{ padding: 12px 0; }}
                 .header {{ padding: 22px 22px 14px 22px; }}
@@ -70,39 +88,47 @@ def get_base_template(
             }}
         </style>
     </head>
-    <body>
+    <body style="background-color: #F4F7FB; margin: 0; padding: 24px 10px; color: #0F172A;">
         <div class="shell">
             <div class="brandbar">
-                <span class="brandchip">Teamzen Product Update</span>
+                <span class="brandchip" style="background-color: #FFFFFF; color: #0F172A;">Teamzen Product Update</span>
             </div>
-            <div class="container">
-                <div class="topline"></div>
-                <div class="header">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                        <tr>
-                            <td style="vertical-align: middle;">
-                                <p class="eyebrow">Teamzen HRMS</p>
-                                <h1 class="title">{title}</h1>
-                            </td>
-                            <td style="width: 132px; text-align: right; vertical-align: middle;">
-                                {logo_html}
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-                <div class="content">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                    {body_content}
-                    </table>
-                </div>
-                <div class="footer">
-                    <p class="footer-note">This notification was generated by {footer_text}. If you did not expect this message, please contact your HR or platform administrator.</p>
-                    <p class="footer-links" style="margin: 12px 0 0 0;">
-                        <a href="{company_url}">Open workspace</a>
-                        <a href="{company_url}">Visit company portal</a>
-                    </p>
-                </div>
-            </div>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="container" bgcolor="#FFFFFF" style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden;">
+                <tr>
+                    <td class="topline" bgcolor="{accent_color}" style="height: 4px; background-color: {accent_color}; font-size: 0; line-height: 0;">&nbsp;</td>
+                </tr>
+                <tr>
+                    <td class="header" bgcolor="#EEF2FF" style="padding: 26px 32px 18px 32px; background-color: #EEF2FF; border-bottom: 1px solid #EEF2F7;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                            <tr>
+                                <td style="vertical-align: middle;">
+                                    <p class="eyebrow" style="margin: 0 0 8px 0; color: {accent_color}; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">Teamzen HRMS</p>
+                                    <h1 class="title" style="margin: 0; color: #0F172A; font-size: 28px; font-weight: 800; letter-spacing: -0.03em;">{title}</h1>
+                                </td>
+                                <td style="width: 132px; text-align: right; vertical-align: middle;">
+                                    {logo_html}
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="content" bgcolor="#FFFFFF" style="padding: 0; background-color: #FFFFFF;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="#FFFFFF" style="background-color: #FFFFFF;">
+                        {body_content}
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="footer" bgcolor="#FAFBFD" style="padding: 24px 32px 32px 32px; background-color: #FAFBFD; border-top: 1px solid #E2E8F0;">
+                        <p class="footer-note" style="margin: 0; color: #475569; font-size: 12px;">This notification was generated by {footer_text}. If you did not expect this message, please contact your HR or platform administrator.</p>
+                        <p class="footer-links" style="margin: 12px 0 0 0;">
+                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600;">Open workspace</a>
+                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600;">Visit company portal</a>
+                        </p>
+                    </td>
+                </tr>
+            </table>
         </div>
     </body>
 </html>

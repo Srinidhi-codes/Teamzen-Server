@@ -20,7 +20,7 @@ def get_leave_request_model():
 User = get_user_model()
 
 @shared_task(name="notifications.tasks.send_notification")
-def send_notification(recipient_id, verb, message, actor_id=None, notification_type='BOTH', target_type=None, target_id=None, level='personal'):
+def send_notification(recipient_id, verb, message, actor_id=None, notification_type='BOTH', target_type=None, target_id=None, level='personal', extra_context=None):
     """
     Asynchronous task to send notifications via multiple channels.
     """
@@ -90,6 +90,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                     target_type,
                     target_id,
                     actor_id=actor_id,
+                    extra_context=extra_context or {},
                 )
             except Exception:
                 send_email_notification(
@@ -99,6 +100,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                     target_type,
                     target_id,
                     actor_id=actor_id,
+                    extra_context=extra_context or {},
                 )
             
         return f"Notification {notification.id} processed for {recipient.email}"
@@ -106,14 +108,16 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
         return f"Error sending notification: {str(e)}"
 
 @shared_task(name="notifications.tasks.send_email_notification")
-def send_email_notification(recipient_id, subject, message, target_type=None, target_id=None, actor_id=None):
+def send_email_notification(recipient_id, subject, message, target_type=None, target_id=None, actor_id=None, extra_context=None):
     """
     Dedicated task for sending emails with a strict timeout to prevent SMTP freezes.
     Supports dynamic HTML templates if target_type is provided.
+    extra_context: optional dict for template fields (e.g. Welcome temp_password).
     """
     try:
         recipient = User.objects.get(id=recipient_id)
         html_content = None
+        extra_context = extra_context or {}
         
         # 1. Generate HTML content based on target_type
         if target_type == "Leave Request" and target_id:
@@ -202,10 +206,42 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 
         elif target_type == "Welcome":
             from temp_email.welcome_email import get_welcome_email_html
+
+            manager_name = ""
+            if recipient.manager_id:
+                mgr = recipient.manager
+                if mgr:
+                    manager_name = f"{mgr.first_name} {mgr.last_name}".strip()
+
+            designation = ""
+            if recipient.designation_id and recipient.designation:
+                designation = recipient.designation.name
+            department = ""
+            if recipient.department_id and recipient.department:
+                department = recipient.department.name
+            joining_date = ""
+            if recipient.date_of_joining:
+                joining_date = recipient.date_of_joining.strftime("%b %d, %Y")
+
+            login_base = getattr(settings, "FRONTEND_URL", None) or getattr(
+                settings, "CLIENT_URL", "https://teamzen-client.vercel.app"
+            )
+            login_url = f"{login_base.rstrip('/')}/login"
+
             html_content = get_welcome_email_html(
-                employee_name=f"{recipient.first_name} {recipient.last_name}",
+                employee_name=f"{recipient.first_name} {recipient.last_name}".strip(),
                 employee_email=recipient.email,
-                login_url="https://teamzen-client.vercel.app/login",
+                designation=designation,
+                department=department,
+                joining_date=joining_date,
+                login_url=login_url,
+                temp_password=extra_context.get("temp_password", ""),
+                manager_name=manager_name or extra_context.get("manager_name", ""),
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
             )
             
         elif target_type == "Password Reset":

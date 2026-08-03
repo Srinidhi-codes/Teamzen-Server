@@ -53,11 +53,16 @@ HELP_TEXT = (
     "Tap a button below, or type freely.\n\n"
     "I can help with leave, attendance, payslips, and policies.\n\n"
     "Telegram: /start · /help · /logout · /clear\n"
+    "WhatsApp: send hi · Menu button · share location for check-in\n"
     "Slack: /teamzen start · /teamzen you@email.com · /teamzen 123456 · "
     "/leaves · /balance · /payslip"
 )
 
 SIGN_IN_HINT_TELEGRAM = "Please sign in first — send /start and verify with OTP."
+SIGN_IN_HINT_WHATSAPP = (
+    "Please sign in first — send <b>hi</b> or your work email, "
+    "then enter the 6-digit OTP from email."
+)
 SIGN_IN_HINT_SLACK = (
     "Please sign in first:\n"
     "1. <code>/teamzen start</code>\n"
@@ -75,6 +80,8 @@ def _welcome(platform: str) -> str:
 def _sign_in_hint(platform: str) -> str:
     if platform == BotSession.PLATFORM_SLACK:
         return SIGN_IN_HINT_SLACK
+    if platform == BotSession.PLATFORM_WHATSAPP:
+        return SIGN_IN_HINT_WHATSAPP
     return SIGN_IN_HINT_TELEGRAM
 
 # Reply-keyboard labels → action keys
@@ -142,7 +149,7 @@ def _reply(platform: str, text: str, reply_markup: Optional[dict] = None) -> Bot
 
 
 class BotService:
-    """Platform-agnostic bot orchestration (Telegram + Slack)."""
+    """Platform-agnostic bot orchestration (Telegram + Slack + WhatsApp)."""
 
     def get_or_create_session(self, platform: str, chat_id: str) -> BotSession:
         session, _ = BotSession.objects.get_or_create(
@@ -178,7 +185,9 @@ class BotService:
         session = self.get_or_create_session(platform, chat_id)
         lower = text.lower().strip()
 
-        if lower in ("/start", "start"):
+        if lower in ("/start", "start") or (
+            not session.is_active and lower in ("hi", "hello")
+        ):
             return self._restart_auth(session)
 
         # Map reply-keyboard taps (and synonyms) before auth checks where needed
@@ -394,6 +403,15 @@ class BotService:
                 f"Request expires in 5 minutes.",
                 reply_markup=_menu_markup(platform),
             )
+        if platform == BotSession.PLATFORM_WHATSAPP:
+            return _reply(
+                platform,
+                f"To <b>{label}</b>, I need your live location for geofence verification.\n"
+                f"Tap the <b>📎</b> attachment → <b>Location</b> → "
+                f"<b>Send your current location</b>.\n"
+                f"Request expires in 5 minutes.",
+                reply_markup=_menu_markup(platform),
+            )
         return _reply(
             platform,
             f"To <b>{label}</b>, I need your live location for geofence verification.\n"
@@ -566,7 +584,11 @@ class BotService:
                 + (
                     "Type <b>start</b> or run <b>/teamzen start</b> to sign in again."
                     if session.platform == BotSession.PLATFORM_SLACK
-                    else "Send /start to sign in again."
+                    else (
+                        "Send <b>hi</b> to sign in again."
+                        if session.platform == BotSession.PLATFORM_WHATSAPP
+                        else "Send /start to sign in again."
+                    )
                 )
             ),
             reply_markup=adapter.remove_keyboard(),
@@ -659,6 +681,26 @@ class BotService:
                     "https://app.brevo.com/security/authorised_ips"
                 )
 
+        if session.platform == BotSession.PLATFORM_WHATSAPP and not email_ok:
+            if getattr(settings, "DEBUG", False):
+                logger.warning("[bot_gateway] DEBUG OTP for %s: %s", user.email, otp)
+            try:
+                from bot_gateway.adapters import whatsapp_api
+
+                whatsapp_api.send_message(
+                    session.chat_id,
+                    (
+                        f"Your Teamzen login code is *{otp}*\n"
+                        f"Valid for 5 minutes. Reply with this code to continue."
+                    ),
+                )
+                return (
+                    "Email delivery failed. I sent your OTP in this chat — "
+                    "enter the 6-digit code."
+                )
+            except Exception:
+                logger.exception("WhatsApp OTP fallback also failed")
+
         if session.platform == BotSession.PLATFORM_SLACK and not email_ok:
             if getattr(settings, "DEBUG", False):
                 logger.warning("[bot_gateway] DEBUG OTP for %s: %s", user.email, otp)
@@ -745,7 +787,10 @@ class BotService:
     # --------------------------------------------------------------- agent
     def _handle_agent_message(self, session: BotSession, text: str) -> BotReply:
         try:
-            context = "slack" if session.platform == BotSession.PLATFORM_SLACK else "telegram"
+            context = {
+                BotSession.PLATFORM_SLACK: "slack",
+                BotSession.PLATFORM_WHATSAPP: "whatsapp",
+            }.get(session.platform, "telegram")
             raw = run_agent_for_user(session.user, text, context=context)
             return _reply(
                 session.platform,
@@ -890,7 +935,11 @@ class BotService:
 
         sessions = BotSession.objects.filter(
             user_id__in=recipient_ids,
-            platform__in=[BotSession.PLATFORM_TELEGRAM, BotSession.PLATFORM_SLACK],
+            platform__in=[
+                BotSession.PLATFORM_TELEGRAM,
+                BotSession.PLATFORM_SLACK,
+                BotSession.PLATFORM_WHATSAPP,
+            ],
             is_verified=True,
         )
         for session in sessions:

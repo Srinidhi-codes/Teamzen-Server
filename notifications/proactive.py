@@ -227,7 +227,7 @@ def notify_bot_user(
     platforms: list[str] | None = None,
 ) -> bool:
     """
-    Fan-out HTML (Telegram) / converted mrkdwn (Slack) to verified bot sessions.
+    Fan-out HTML (Telegram) / converted mrkdwn (Slack/WhatsApp) to verified bot sessions.
     Returns True if at least one platform delivered successfully.
     """
     try:
@@ -240,6 +240,7 @@ def notify_bot_user(
     wanted = platforms or [
         BotSession.PLATFORM_TELEGRAM,
         BotSession.PLATFORM_SLACK,
+        BotSession.PLATFORM_WHATSAPP,
     ]
     sessions = (
         BotSession.objects.filter(

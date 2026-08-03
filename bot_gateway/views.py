@@ -1,4 +1,4 @@
-"""Telegram + Slack webhook endpoints."""
+"""Telegram + Slack + WhatsApp webhook endpoints."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-from bot_gateway.adapters import slack_api, telegram_api
+from bot_gateway.adapters import slack_api, telegram_api, whatsapp_api
 from bot_gateway.models import BotSession
 from bot_gateway.services import BotReply, BotService
 
@@ -57,6 +57,15 @@ def _send_telegram_reply(chat_id, reply: BotReply) -> None:
 def _send_slack_reply(chat_id, reply: BotReply) -> None:
     text = reply.rendered_text() if hasattr(reply, "rendered_text") else reply.text
     slack_api.send_message(
+        chat_id,
+        text,
+        reply_markup=reply.reply_markup,
+    )
+
+
+def _send_whatsapp_reply(chat_id, reply: BotReply) -> None:
+    text = reply.rendered_text() if hasattr(reply, "rendered_text") else reply.text
+    whatsapp_api.send_message(
         chat_id,
         text,
         reply_markup=reply.reply_markup,
@@ -399,3 +408,130 @@ class SlackWebhookView(View):
             return
 
         _send_slack_reply(channel, reply)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WhatsAppWebhookView(View):
+    """
+    GET/POST /api/bot/whatsapp/ — Meta Cloud API webhook.
+    GET: hub challenge verification. POST: inbound messages (ack fast, process in thread).
+    """
+
+    def get(self, request):
+        from django.conf import settings
+
+        mode = request.GET.get("hub.mode", "")
+        token = request.GET.get("hub.verify_token", "")
+        challenge = request.GET.get("hub.challenge", "")
+        expected = (getattr(settings, "WHATSAPP_VERIFY_TOKEN", "") or "").strip()
+
+        if mode == "subscribe" and expected and token == expected:
+            return HttpResponse(challenge, content_type="text/plain")
+
+        # Health / discovery when not a Meta verify ping
+        if not mode:
+            return JsonResponse(
+                {
+                    "service": "teamzen-whatsapp-bot",
+                    "configured": whatsapp_api.is_configured(),
+                    "status": "ok",
+                    "webhook": "/api/bot/whatsapp/",
+                }
+            )
+
+        return HttpResponse("Forbidden", status=403)
+
+    def post(self, request):
+        body = request.body or b""
+        signature = request.headers.get("X-Hub-Signature-256", "")
+
+        if not whatsapp_api.is_configured():
+            return JsonResponse({"ok": False, "error": "bot_not_configured"}, status=503)
+
+        if not whatsapp_api.verify_signature(body, signature):
+            return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except Exception:
+            return HttpResponse("ok")
+
+        def _run():
+            close_old_connections()
+            try:
+                self._dispatch(payload)
+            except Exception:
+                logger.exception("WhatsApp webhook dispatch failed")
+            finally:
+                close_old_connections()
+
+        threading.Thread(target=_run, daemon=True).start()
+        return HttpResponse("ok")
+
+    def _dispatch(self, payload: dict) -> None:
+        if payload.get("object") != "whatsapp_business_account":
+            return
+        for entry in payload.get("entry") or []:
+            for change in entry.get("changes") or []:
+                value = change.get("value") or {}
+                if change.get("field") and change.get("field") != "messages":
+                    continue
+                for message in value.get("messages") or []:
+                    self._handle_message(message)
+
+    def _handle_message(self, message: dict) -> None:
+        chat_id = whatsapp_api.normalize_chat_id(message.get("from") or "")
+        if not chat_id:
+            return
+
+        msg_type = message.get("type") or ""
+
+        if msg_type == "text":
+            text = ((message.get("text") or {}).get("body") or "").strip()
+            if not text:
+                return
+            reply = service.handle_text(
+                BotSession.PLATFORM_WHATSAPP, chat_id, text
+            )
+            _send_whatsapp_reply(chat_id, reply)
+            return
+
+        if msg_type == "location":
+            loc = message.get("location") or {}
+            lat = loc.get("latitude")
+            lng = loc.get("longitude")
+            if lat is None or lng is None:
+                return
+            reply = service.handle_location(
+                BotSession.PLATFORM_WHATSAPP,
+                chat_id,
+                float(lat),
+                float(lng),
+            )
+            _send_whatsapp_reply(chat_id, reply)
+            return
+
+        if msg_type == "interactive":
+            interactive = message.get("interactive") or {}
+            itype = interactive.get("type") or ""
+            data = ""
+            if itype == "button_reply":
+                data = (interactive.get("button_reply") or {}).get("id") or ""
+            elif itype == "list_reply":
+                data = (interactive.get("list_reply") or {}).get("id") or ""
+            if not data:
+                return
+            reply, _ok = service.handle_callback(
+                BotSession.PLATFORM_WHATSAPP,
+                chat_id,
+                data,
+            )
+            _send_whatsapp_reply(chat_id, reply)
+            return
+
+        whatsapp_api.send_message(
+            chat_id,
+            "I currently support text, location, and menu buttons. "
+            "Send *hi* or pick an option from the menu.",
+            reply_markup=whatsapp_api.quick_actions_inline(),
+        )

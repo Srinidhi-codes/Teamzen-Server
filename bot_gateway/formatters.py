@@ -39,7 +39,7 @@ def html_to_mrkdwn(text: str) -> str:
 
 def format_for_platform(text: str, platform: str) -> str:
     """Adapt HTML bot text for the target platform."""
-    if platform == BotSession.PLATFORM_SLACK:
+    if platform in (BotSession.PLATFORM_SLACK, BotSession.PLATFORM_WHATSAPP):
         return html_to_mrkdwn(text)
     return text
 

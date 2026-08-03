@@ -161,9 +161,65 @@ class UserMutation:
             if input.manager_id:
                 new_user.manager_id = input.manager_id
             if input.date_of_joining:
-                new_user.date_of_joining = input.date_of_joining
+                new_user.date_of_joining = input.date_of_joining or None
+            if input.date_of_exit:
+                new_user.date_of_exit = input.date_of_exit or None
+            if input.date_of_birth:
+                new_user.date_of_birth = input.date_of_birth or None
+            if input.phone_number:
+                new_user.phone_number = input.phone_number
+            if input.gender:
+                new_user.gender = input.gender
+            if input.bank_account_number:
+                new_user.bank_account_number = input.bank_account_number
+            if input.bank_ifsc_code:
+                new_user.bank_ifsc_code = input.bank_ifsc_code
+            if input.pan_number:
+                new_user.pan_number = input.pan_number
+            if input.aadhar_number:
+                new_user.aadhar_number = input.aadhar_number
+            if input.uan_number:
+                new_user.uan_number = input.uan_number
+            new_user.is_staff = bool(input.is_staff)
+            new_user.is_verified = bool(input.is_verified)
 
             new_user.save()
+
+            # Welcome email with temporary credentials (password not stored in notification row)
+            try:
+                from notifications.utils import notify_user
+
+                manager_name = ""
+                if new_user.manager_id:
+                    mgr = User.objects.filter(id=new_user.manager_id).first()
+                    if mgr:
+                        manager_name = f"{mgr.first_name} {mgr.last_name}".strip()
+
+                notify_user(
+                    recipient_id=new_user.id,
+                    verb="Welcome to Teamzen",
+                    message=(
+                        f"Your Teamzen account has been created. "
+                        f"Sign in with {new_user.email} and the temporary password "
+                        f"shared in this email."
+                    ),
+                    actor_id=user.id,
+                    target_type="Welcome",
+                    target_id=str(new_user.id),
+                    level="personal",
+                    notification_type="BOTH",
+                    extra_context={
+                        "temp_password": input.password,
+                        "manager_name": manager_name,
+                    },
+                )
+            except Exception:
+                # User creation must succeed even if email delivery fails
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Welcome email failed for user_id=%s", new_user.id
+                )
+
             return UserPayload(user=new_user, success=True)
         except Exception as e:
             return UserPayload(error=str(e))

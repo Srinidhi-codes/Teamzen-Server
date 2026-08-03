@@ -512,6 +512,15 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 
 # ---------------------------------------------------------------------------
+# WhatsApp Cloud API (Meta)
+# ---------------------------------------------------------------------------
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v21.0")
+
+# ---------------------------------------------------------------------------
 # Google Calendar (Sequence 6)
 # ---------------------------------------------------------------------------
 GOOGLE_CALENDAR_CLIENT_ID = os.getenv("GOOGLE_CALENDAR_CLIENT_ID", "")
