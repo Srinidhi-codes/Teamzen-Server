@@ -17,12 +17,16 @@ class CheckInInput:
     latitude: float
     longitude: float
     login_time: time
+    face_verified: Optional[bool] = None
+    face_match_score: Optional[float] = None
 
 @strawberry.input
 class CheckOutInput:
     latitude: float
     longitude: float
     logout_time: time
+    face_verified: Optional[bool] = None
+    face_match_score: Optional[float] = None
  
 @strawberry.input
 class AttendanceCorrectionInput:
@@ -58,6 +62,8 @@ class AttendanceMutation:
             latitude=input.latitude,
             longitude=input.longitude,
             time=input.login_time,
+            face_verified=input.face_verified,
+            face_match_score=input.face_match_score,
         )
 
         return attendance
@@ -78,6 +84,8 @@ class AttendanceMutation:
             latitude=input.latitude,
             longitude=input.longitude,
             time=input.logout_time,
+            face_verified=input.face_verified,
+            face_match_score=input.face_match_score,
         )
 
         return attendance

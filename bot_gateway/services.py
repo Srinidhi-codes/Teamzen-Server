@@ -422,7 +422,14 @@ class BotService:
     def _perform_attendance(
         self, user: CustomUser, action: str, latitude: float, longitude: float
     ) -> str:
-        from attendance.services import check_in_user, check_out_user
+        from attendance.services import check_in_user, check_out_user, org_requires_face
+
+        if org_requires_face(user):
+            return (
+                "🔒 <b>Face attendance required</b>\n"
+                "Your organization requires face verification. "
+                "Please punch from the Teamzen web or mobile app."
+            )
 
         try:
             now_time = timezone.localtime().time().strftime("%H:%M:%S")

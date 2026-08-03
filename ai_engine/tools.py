@@ -230,6 +230,14 @@ def mark_attendance(user_id: int, action: str, latitude: float = None, longitude
         if not user.office_location:
             return "Error: You don't have an assigned office location. Please contact HR."
 
+        from attendance.services import org_requires_face
+        if org_requires_face(user):
+            return (
+                "[ERROR_CARD] title: Face Attendance Required | message: "
+                "Your organization requires face verification for attendance. "
+                "Please check in or out from the Teamzen web app or mobile app. [/ERROR_CARD]"
+            )
+
         # Check if coordinates are provided
         if latitude is None or longitude is None:
             return "[ERROR_CARD] title: Location Permission Required | message: I need your exact geolocation to verify that you are within the office premises for check-in/out. Please allow location access in your browser and try again. [/ERROR_CARD]"

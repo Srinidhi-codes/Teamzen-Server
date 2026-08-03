@@ -15,6 +15,7 @@ class OrganizationInput:
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
     accent: Optional[str] = "teal"
+    face_attendance_enabled: Optional[bool] = None
     is_active: bool
     id: strawberry.ID
     
@@ -28,6 +29,7 @@ class CreateOrganizationInput:
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
     accent: Optional[str] = "teal"
+    face_attendance_enabled: Optional[bool] = False
     is_active: bool
     
 @strawberry.input
@@ -145,6 +147,8 @@ class OrganizationMutation:
             if input.accent not in valid:
                 raise GraphQLError("Invalid accent color")
             org.accent = input.accent
+        if input.face_attendance_enabled is not None:
+            org.face_attendance_enabled = input.face_attendance_enabled
         org.is_active = input.is_active
         org.save()
         return org

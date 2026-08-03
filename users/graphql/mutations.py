@@ -101,6 +101,18 @@ class ChangePasswordPayload:
     error: str | None = None
 
 @strawberry.type
+class EnrollFacePayload:
+    success: bool = False
+    error: str | None = None
+    user: UserType | None = None
+
+@strawberry.input
+class EnrollFaceInput:
+    descriptor: list[float]
+    # Optional base64 data URL or raw base64 JPEG/PNG (without data: prefix ok)
+    image_base64: str | None = None
+
+@strawberry.type
 class UserMutation:
     @strawberry.mutation
     def update_profile(self, info: Info, input: UpdateProfileInput) -> UpdateProfilePayload:
@@ -131,6 +143,68 @@ class UserMutation:
         user.set_password(new_password)
         user.save()
         return ChangePasswordPayload(success=True)
+
+    @strawberry.mutation
+    def enroll_face(self, info: Info, input: EnrollFaceInput) -> EnrollFacePayload:
+        """Store client-computed face descriptor (+ optional enrollment selfie) for the current user."""
+        import base64
+        import re
+        from django.core.files.base import ContentFile
+        from django.utils import timezone
+
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return EnrollFacePayload(error="Not authenticated")
+
+        if not input.descriptor or len(input.descriptor) < 32:
+            return EnrollFacePayload(error="Invalid face descriptor. Please retry enrollment.")
+
+        try:
+            user.face_descriptor = [float(x) for x in input.descriptor]
+            user.face_enrolled_at = timezone.now()
+
+            if input.image_base64:
+                raw = input.image_base64
+                match = re.match(r"^data:image/(png|jpeg|jpg|webp);base64,(.+)$", raw, re.I | re.S)
+                if match:
+                    ext = "jpg" if match.group(1).lower() in ("jpeg", "jpg") else match.group(1).lower()
+                    raw = match.group(2)
+                else:
+                    ext = "jpg"
+                data = base64.b64decode(raw)
+                filename = f"face_{user.id}.{ext}"
+                user.face_enrollment_image.save(filename, ContentFile(data), save=False)
+
+            user.save()
+            return EnrollFacePayload(success=True, user=user)
+        except Exception as e:
+            return EnrollFacePayload(error=str(e))
+
+    @strawberry.mutation
+    def clear_face_enrollment(self, info: Info, user_id: str | None = None) -> EnrollFacePayload:
+        """Clear own enrollment, or another user's if admin/HR."""
+        from django.utils import timezone
+
+        actor = info.context.request.user
+        if not actor.is_authenticated:
+            return EnrollFacePayload(error="Not authenticated")
+
+        target = actor
+        if user_id and str(user_id) != str(actor.id):
+            if actor.role not in ["superadmin", "admin", "hr"]:
+                return EnrollFacePayload(error="Not authorized")
+            try:
+                target = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return EnrollFacePayload(error="User not found")
+
+        target.face_descriptor = None
+        target.face_enrolled_at = None
+        if target.face_enrollment_image:
+            target.face_enrollment_image.delete(save=False)
+            target.face_enrollment_image = None
+        target.save()
+        return EnrollFacePayload(success=True, user=target)
 
     @strawberry.mutation
     def create_user(self, info: Info, input: CreateUserInput) -> UserPayload:
