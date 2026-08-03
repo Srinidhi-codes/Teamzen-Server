@@ -159,8 +159,12 @@ class UserMutation:
             return EnrollFacePayload(error="Not authenticated")
 
         if not input.descriptor or len(input.descriptor) != FACE_DESCRIPTOR_DIM:
+            got = len(input.descriptor) if input.descriptor is not None else 0
             return EnrollFacePayload(
-                error=f"Invalid face descriptor (expected {FACE_DESCRIPTOR_DIM} values). Please retry enrollment."
+                error=(
+                    f"Invalid face descriptor (got {got} values, expected {FACE_DESCRIPTOR_DIM}). "
+                    "Hard-refresh the browser, then re-enroll."
+                )
             )
         try:
             user.face_descriptor = [float(x) for x in input.descriptor]
