@@ -70,11 +70,6 @@ def check_in_user(
         assert_face_attendance_allowed(
             user, face_verified=face_verified, face_match_score=face_match_score
         )
-        if not is_within:
-            raise GraphQLError(
-                f"You are outside the office geofence ({int(distance)}m away; "
-                f"allowed {office.geo_radius_meters}m). Move closer to punch."
-            )
 
     attendance, _ = AttendanceRecord.objects.get_or_create(
         user=user,
@@ -127,11 +122,6 @@ def check_out_user(
         assert_face_attendance_allowed(
             user, face_verified=face_verified, face_match_score=face_match_score
         )
-        if distance > office.geo_radius_meters:
-            raise GraphQLError(
-                f"You are outside the office geofence ({int(distance)}m away; "
-                f"allowed {office.geo_radius_meters}m). Move closer to punch."
-            )
 
     logout_time = normalize_time(time)
     attendance.logout_time = logout_time

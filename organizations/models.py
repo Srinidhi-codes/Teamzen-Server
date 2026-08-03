@@ -49,7 +49,7 @@ class Organization(models.Model):
     )
     face_attendance_enabled = models.BooleanField(
         default=False,
-        help_text="When True, employees must verify face and be inside geofence to punch attendance",
+        help_text="When True, employees must verify face to punch attendance (geofence remains soft-flagged)",
     )
     accent = models.CharField(
         max_length=20,
