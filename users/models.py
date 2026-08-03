@@ -43,7 +43,12 @@ class CustomUser(AbstractUser):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
-    profile_picture = models.ImageField(upload_to='teamzen/user_profile/', null=True, blank=True)
+    profile_picture = models.ImageField(
+        upload_to='teamzen/user_profile/',
+        null=True,
+        blank=True,
+        max_length=1024,
+    )
 
     # Face attendance enrollment (client-side descriptors; shared across web/mobile)
     face_descriptor = models.JSONField(
@@ -55,6 +60,7 @@ class CustomUser(AbstractUser):
         upload_to='teamzen/face_enrollment/',
         null=True,
         blank=True,
+        max_length=1024,
     )
     face_enrolled_at = models.DateTimeField(null=True, blank=True)
     

@@ -38,11 +38,13 @@ class AttendanceRecord(models.Model):
         upload_to='teamzen/attendance_selfies/',
         null=True,
         blank=True,
+        max_length=1024,
     )
     check_out_selfie = models.ImageField(
         upload_to='teamzen/attendance_selfies/',
         null=True,
         blank=True,
+        max_length=1024,
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='absent')
     worked_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)

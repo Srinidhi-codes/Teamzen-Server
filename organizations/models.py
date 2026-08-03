@@ -17,7 +17,12 @@ class Organization(models.Model):
     ]
 
     name = models.CharField(max_length=255, unique=True)
-    logo = models.ImageField(upload_to='teamzen/organization/', null=True, blank=True)
+    logo = models.ImageField(
+        upload_to='teamzen/organization/',
+        null=True,
+        blank=True,
+        max_length=1024,
+    )
     gst_number = models.CharField(max_length=50, null=True, blank=True)
     pan_number = models.CharField(max_length=50, null=True, blank=True)
     registration_number = models.CharField(max_length=100, null=True, blank=True)

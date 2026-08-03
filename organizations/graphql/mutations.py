@@ -132,7 +132,14 @@ class OrganizationMutation:
 
         org = Organization.objects.get(id=input.id)
         org.name = input.name
-        org.logo = input.logo
+        # Clients often send logo.url (absolute Cloudinary URL) for display.
+        # Never write that into ImageField — only accept storage paths / empty clear.
+        if input.logo is not None:
+            logo_val = (input.logo or "").strip()
+            if not logo_val:
+                org.logo = None
+            elif not logo_val.startswith(("http://", "https://")):
+                org.logo = logo_val
         org.gst_number = input.gst_number
         org.pan_number = input.pan_number
         org.registration_number = input.registration_number
