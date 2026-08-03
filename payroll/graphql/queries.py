@@ -39,22 +39,46 @@ class PayrollQuery:
         return scoped_qs(PayrollRun.objects.filter(id=pk), user).first()
 
     @strawberry.field
-    def payroll_runs(self, info: Info) -> List[PayrollRunType]:
+    def payroll_runs(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[PayrollRunType]:
         user = info.context.request.user
         require_payroll_admin(user)
-        return scoped_qs(PayrollRun.objects.all(), user).order_by("-year", "-month")
+        return scoped_qs(
+            PayrollRun.objects.select_related("organization").all(),
+            user,
+            organization_id=organization_id,
+        ).order_by("-year", "-month")
 
     @strawberry.field
-    def salary_components(self, info: Info) -> List[SalaryComponentType]:
+    def salary_components(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[SalaryComponentType]:
         user = info.context.request.user
         require_payroll_admin(user)
-        return scoped_qs(SalaryComponent.objects.all(), user)
+        return scoped_qs(
+            SalaryComponent.objects.select_related("organization").all(),
+            user,
+            organization_id=organization_id,
+        )
 
     @strawberry.field
-    def salary_structures(self, info: Info) -> List[SalaryStructureType]:
+    def salary_structures(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[SalaryStructureType]:
         user = info.context.request.user
         require_payroll_admin(user)
-        return scoped_qs(SalaryStructure.objects.all(), user)
+        return scoped_qs(
+            SalaryStructure.objects.select_related("organization").all(),
+            user,
+            organization_id=organization_id,
+        )
 
     @strawberry.field
     def my_payslips(self, info: Info) -> List[PayslipType]:
@@ -82,11 +106,18 @@ class PayrollQuery:
 
     @strawberry.field
     def salary_advances(
-        self, info: Info, status: Optional[str] = None
+        self,
+        info: Info,
+        status: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
     ) -> List[SalaryAdvanceType]:
         user = info.context.request.user
         require_payroll_admin(user)
-        qs = scoped_qs(SalaryAdvance.objects.all(), user).select_related("user")
+        qs = scoped_qs(
+            SalaryAdvance.objects.all(),
+            user,
+            organization_id=organization_id,
+        ).select_related("user", "organization")
         if status:
             qs = qs.filter(status=status)
         return qs.order_by("-granted_on", "-id")
@@ -103,10 +134,14 @@ class PayrollQuery:
         )
 
     @strawberry.field
-    def payroll_settings(self, info: Info) -> PayrollSettingsType:
+    def payroll_settings(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> PayrollSettingsType:
         user = info.context.request.user
         require_payroll_admin(user)
-        org = require_org(user)
+        org = require_org(user, organization_id)
         return PayrollSettingsType(
             plan=org.plan,
             payroll_cycle_day=org.payroll_cycle_day,
@@ -115,10 +150,14 @@ class PayrollQuery:
         )
 
     @strawberry.field
-    def payroll_setup_checklist(self, info: Info) -> PayrollSetupChecklistType:
+    def payroll_setup_checklist(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> PayrollSetupChecklistType:
         user = info.context.request.user
         require_payroll_admin(user)
-        org = require_org(user)
+        org = require_org(user, organization_id)
         components = SalaryComponent.objects.filter(organization=org).count()
         structures = SalaryStructure.objects.filter(organization=org).count()
         assigned = (

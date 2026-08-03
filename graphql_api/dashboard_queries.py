@@ -47,7 +47,7 @@ class UpcomingEvent:
     id: str
     user: str
     profile_picture: Optional[str]
-    type: str # 'birthday' or 'anniversary'
+    type: str  # birthday | anniversary | holiday | optional_holiday
     date: str
     days_until: int
 
@@ -301,7 +301,7 @@ class DashboardQuery:
                 id=f"holiday-{h.id}",
                 user=h.name,
                 profile_picture=None,
-                type="holiday",
+                type="optional_holiday" if h.is_optional else "holiday",
                 date=h.holiday_date.isoformat(),
                 days_until=days_until
             ))
@@ -435,7 +435,7 @@ class DashboardQuery:
                 id=f"holiday-{h.id}",
                 user=h.name,
                 profile_picture=None,
-                type="holiday",
+                type="optional_holiday" if h.is_optional else "holiday",
                 date=h.holiday_date.isoformat(),
                 days_until=days_until
             ))

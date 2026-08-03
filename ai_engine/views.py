@@ -15,6 +15,35 @@ from .serializers import PolicyFileSerializer, AIConfigurationSerializer
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_llm_content(content) -> str:
+    """
+    Gemini (and some providers) return content as a list of parts, not a string.
+    Normalize to plain text for streaming, history, and string concat.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text") or part.get("content") or ""
+                if text:
+                    parts.append(str(text))
+            else:
+                text = getattr(part, "text", None)
+                if text:
+                    parts.append(str(text))
+                elif part is not None:
+                    parts.append(str(part))
+        return "".join(parts)
+    return str(content)
+
+
 class PolicyFileListCreateView(generics.ListCreateAPIView):
     """
     API endpoint that allows policy files to be viewed or edited.
@@ -229,7 +258,7 @@ class SmartAssistantChatView(APIView):
                 timestamp = msg.additional_kwargs.get('timestamp')
                 messages.append({
                     "role": role,
-                    "content": msg.content,
+                    "content": _normalize_llm_content(msg.content),
                     "timestamp": timestamp
                 })
 
@@ -350,7 +379,9 @@ class SmartAssistantChatView(APIView):
                                 logger.info(f"[StreamEvent] kind={kind} name={name!r} run_name={run_name!r}")
 
                             if kind == "on_chat_model_stream":
-                                content = event["data"]["chunk"].content
+                                content = _normalize_llm_content(
+                                    event["data"]["chunk"].content
+                                )
                                 if content:
                                     content_accumulated += content
                                     q.put({'token': content})
@@ -392,7 +423,7 @@ class SmartAssistantChatView(APIView):
                             timestamp = msg.additional_kwargs.get('timestamp')
                             formatted_history.append({
                                 "role": role,
-                                "content": msg.content,
+                                "content": _normalize_llm_content(msg.content),
                                 "timestamp": timestamp
                             })
                         q.put({'history': formatted_history})
@@ -439,6 +470,8 @@ class SmartAssistantChatView(APIView):
 class AIConfigurationView(generics.RetrieveUpdateAPIView):
     """
     API endpoint to manage AI Model settings for the organization.
+    Model selection is platform-controlled (superadmin only); company admins
+    may still tune temperature / prompt / tokens for their org.
     """
     serializer_class = AIConfigurationSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -462,9 +495,12 @@ class AIConfigurationView(generics.RetrieveUpdateAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         if not instance:
-            # Superadmins / users without an org still get usable defaults
+            # Superadmins / users without an org: show platform default model
+            platform = (
+                AIConfiguration.objects.order_by("-updated_at").first()
+            )
             return Response({
-                'model_name': 'gpt-4o-mini',
+                'model_name': platform.model_name if platform else "gpt-4o-mini",
                 'temperature': 0.7,
                 'max_tokens': 1024,
                 'system_prompt_override': '',
@@ -474,6 +510,59 @@ class AIConfigurationView(generics.RetrieveUpdateAPIView):
         return Response(serializer.data)
 
     def perform_update(self, serializer):
+        user = self.request.user
+        # Model is a SaaS-provided setting — only platform superadmin may change it.
+        if getattr(user, "role", None) != "superadmin":
+            serializer.validated_data.pop("model_name", None)
         serializer.save()
 
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        if getattr(user, "role", None) not in ["superadmin", "admin", "hr"]:
+            return Response({"detail": "Unauthorized"}, status=403)
+
+        # Superadmin without an org: apply model as platform-wide SaaS default
+        if getattr(user, "role", None) == "superadmin" and not user.organization_id:
+            model_name = request.data.get("model_name")
+            if not model_name:
+                return Response(
+                    {"detail": "model_name is required to set the platform AI model."},
+                    status=400,
+                )
+            valid_ids = {c[0] for c in AIConfiguration.MODEL_CHOICES}
+            if model_name not in valid_ids and model_name not in AIConfiguration.LEGACY_MODEL_MAP:
+                return Response({"detail": "Invalid model_name."}, status=400)
+            model_name = AIConfiguration.LEGACY_MODEL_MAP.get(model_name, model_name)
+
+            from organizations.models import Organization
+            updated = 0
+            for org in Organization.objects.all():
+                config, _ = AIConfiguration.objects.get_or_create(
+                    organization=org,
+                    defaults={
+                        "model_name": model_name,
+                        "temperature": 0.7,
+                        "max_tokens": 1024,
+                    },
+                )
+                if config.model_name != model_name:
+                    config.model_name = model_name
+                    config.save(update_fields=["model_name", "updated_at"])
+                updated += 1
+            return Response({
+                "model_name": model_name,
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "system_prompt_override": "",
+                "is_active": True,
+                "updated_organizations": updated,
+            })
+
+        instance = self.get_object()
+        if not instance:
+            return Response(
+                {"detail": "No organization assigned; cannot update AI config."},
+                status=400,
+            )
+        return super().update(request, *args, **kwargs)
 

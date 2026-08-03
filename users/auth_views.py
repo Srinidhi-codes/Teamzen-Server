@@ -20,9 +20,83 @@ from temp_email.otp_email import get_otp_email_html
 
 User = get_user_model()
 
+
+def _notify_login_activity(user, *, ip, location, user_agent):
+    """
+    Email login alerts based on email_login_alerts preference:
+    - Any user with the toggle on gets emailed about their own login.
+    - Admin/HR with the toggle on get org-wide login alerts.
+    - Superadmin with the toggle on get platform-wide login alerts.
+    Failures never block login.
+    """
+    try:
+        from django.utils import timezone
+        from notifications.utils import notify_user
+
+        actor_name = f"{user.first_name} {user.last_name}".strip() or user.email
+        org_name = user.organization.name if user.organization_id and user.organization else ""
+        login_time = timezone.localtime().strftime("%b %d, %Y %I:%M %p %Z")
+        device = (user_agent or "Unknown")[:180]
+        message = (
+            f"{actor_name} ({user.email}) signed in"
+            + (f" · {org_name}" if org_name else "")
+            + f" · {ip or 'unknown IP'} · {location or 'unknown location'}"
+        )
+        extra = {
+            "actor_name": actor_name,
+            "actor_email": user.email,
+            "login_time": login_time,
+            "ip_address": ip or "Unknown",
+            "location": location or "Unknown",
+            "device": device,
+            "organization_name": org_name,
+        }
+
+        recipient_ids = set()
+        if getattr(user, "email_login_alerts", False):
+            recipient_ids.add(user.id)
+
+        watchers = User.objects.filter(
+            email_login_alerts=True,
+            is_active=True,
+            role__in=["superadmin", "admin", "hr"],
+        ).exclude(id=user.id)
+
+        for watcher in watchers:
+            if watcher.role == "superadmin":
+                recipient_ids.add(watcher.id)
+            elif (
+                watcher.organization_id
+                and user.organization_id
+                and watcher.organization_id == user.organization_id
+            ):
+                recipient_ids.add(watcher.id)
+
+        for recipient_id in recipient_ids:
+            notify_user(
+                recipient_id=recipient_id,
+                verb="Login activity",
+                message=message,
+                actor_id=user.id,
+                target_type="Login Alert",
+                level="admin" if recipient_id != user.id else "personal",
+                notification_type="EMAIL",
+                extra_context={
+                    **extra,
+                    "is_own_login": recipient_id == user.id,
+                },
+            )
+    except Exception as e:
+        print(f"Error sending login alert emails: {e}")
+
+
 def login_user_and_set_cookies(user, request):
     """Generates simple JWT tokens and sets access/refresh cookies on response"""
     from users.utils import create_user_session
+
+    # Ensure org plan/accent are available for the session payload (no Free/teal flash).
+    if getattr(user, "organization_id", None):
+        user = User.objects.select_related("organization").get(pk=user.pk)
     
     refresh = RefreshToken.for_user(user)
     access_token = refresh.access_token
@@ -62,20 +136,29 @@ def login_user_and_set_cookies(user, request):
         latitude = request.data.get('latitude')
         longitude = request.data.get('longitude')
         ip = get_client_ip(request)
+        location = get_location_from_ip(ip, lat=latitude, lon=longitude)
+        user_agent = request.META.get('HTTP_USER_AGENT')
         
         # Log History
         UserLoginHistory.objects.create(
             user=user,
             ip_address=ip,
-            location=get_location_from_ip(ip, lat=latitude, lon=longitude),
+            location=location,
             latitude=latitude,
             longitude=longitude,
-            user_agent=request.META.get('HTTP_USER_AGENT'),
+            user_agent=user_agent,
             status='success'
         )
         
         # Create Active Device Session
         create_user_session(user, refresh, request)
+
+        _notify_login_activity(
+            user,
+            ip=ip,
+            location=location,
+            user_agent=user_agent,
+        )
     except Exception as e:
         print(f"Error logging login history or creating session: {e}")
         

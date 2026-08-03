@@ -16,9 +16,10 @@ class LeaveQuery:
         self,
         info,
         search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
     ) -> List[LeaveTypeType]:
         user = info.context.request.user
-        queryset = LeaveType.objects.all()
+        queryset = LeaveType.objects.select_related("organization").all()
 
         if not user.is_authenticated:
             return LeaveType.objects.none()
@@ -28,11 +29,14 @@ class LeaveQuery:
                 queryset = queryset.filter(organization_id=user.organization_id)
             else:
                 return LeaveType.objects.none()
+        elif organization_id:
+            queryset = queryset.filter(organization_id=organization_id)
 
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) | 
-                Q(code__icontains=search)
+                Q(code__icontains=search) |
+                Q(organization__name__icontains=search)
             )
 
         return queryset
@@ -43,10 +47,13 @@ class LeaveQuery:
         info,
         all_org: Optional[bool] = False,
         search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
     ) -> List[LeaveBalanceType]:
 
         user = info.context.request.user
-        queryset = LeaveBalance.objects.all()
+        queryset = LeaveBalance.objects.select_related(
+            "user", "user__organization", "leave_type"
+        ).all()
 
         if not user.is_authenticated:
             return LeaveBalance.objects.none()
@@ -67,6 +74,8 @@ class LeaveQuery:
             else:
                 # Default to only returning the current user's balance
                 queryset = queryset.filter(user=user)
+        elif organization_id:
+            queryset = queryset.filter(user__organization_id=organization_id)
 
         if search:
             queryset = queryset.filter(
@@ -124,9 +133,12 @@ class LeaveQuery:
         info,
         approvals_only: Optional[bool] = False,
         search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
     ) -> List[LeaveRequestType]:
         user = info.context.request.user
-        queryset = LeaveRequest.objects.all()
+        queryset = LeaveRequest.objects.select_related(
+            "user", "user__organization", "leave_type"
+        ).all()
 
         if not user.is_authenticated:
             return LeaveRequest.objects.none()
@@ -150,13 +162,16 @@ class LeaveQuery:
             else:
                 # Default: only return current user's leaves
                 queryset = queryset.filter(user=user)
+        elif organization_id:
+            queryset = queryset.filter(user__organization_id=organization_id)
 
         if search:
             queryset = queryset.filter(
                 Q(user__first_name__icontains=search) |
                 Q(user__last_name__icontains=search) |
                 Q(leave_type__name__icontains=search) |
-                Q(_status__icontains=search)
+                Q(_status__icontains=search) |
+                Q(user__organization__name__icontains=search)
             )
         
         return queryset
@@ -179,9 +194,14 @@ class LeaveQuery:
         ).exclude(user=user).order_by('from_date')
 
     @strawberry.field
-    def company_holidays(self, info, search: Optional[str] = None) -> List[CompanyHolidayType]:
+    def company_holidays(
+        self,
+        info,
+        search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[CompanyHolidayType]:
         user = info.context.request.user
-        queryset = CompanyHoliday.objects.all()
+        queryset = CompanyHoliday.objects.select_related("organization").all()
 
         if not user.is_authenticated:
             return []
@@ -190,11 +210,14 @@ class LeaveQuery:
             if not user.organization_id:
                 return []
             queryset = queryset.filter(organization_id=user.organization_id)
+        elif organization_id:
+            queryset = queryset.filter(organization_id=organization_id)
             
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) | 
-                Q(description__icontains=search)
+                Q(description__icontains=search) |
+                Q(organization__name__icontains=search)
             )
 
         return queryset

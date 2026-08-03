@@ -71,6 +71,13 @@ class CustomUser(AbstractUser):
     # Onboarding Flags
     has_seen_onboarding = models.BooleanField(default=False)
     has_seen_ai_onboarding = models.BooleanField(default=False)
+
+    # Security: email alerts on login activity (own login for all roles;
+    # admins/HR also get org logins; superadmins get platform-wide logins)
+    email_login_alerts = models.BooleanField(
+        default=False,
+        help_text="When enabled, receive email alerts for login activity.",
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

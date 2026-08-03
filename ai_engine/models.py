@@ -68,17 +68,19 @@ class AIConfiguration(models.Model):
     MODEL_CHOICES = [
         ('gpt-4o', 'GPT-4o (OpenAI Premium)'),
         ('gpt-4o-mini', 'GPT-4o Mini (OpenAI Fast)'),
-        ('gemini-2.5-flash', 'Gemini 2.5 Flash (Google Fast)'),
-        ('gemini-2.5-pro', 'Gemini 2.5 Pro (Google Premium)'),
+        ('gemini-3.5-flash', 'Gemini 3.5 Flash (Google Fast)'),
+        ('gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite (Google Efficient)'),
         ('llama-3.3-70b-versatile', 'Llama 3.3 70B (Groq Smart)'),
         ('llama-3.1-8b-instant', 'Llama 3.1 8B (Groq Fast)'),
     ]
 
     # Deprecated IDs remapped at runtime in get_llm()
     LEGACY_MODEL_MAP = {
-        'gemini-1.5-flash': 'gemini-2.5-flash',
-        'gemini-1.5-pro': 'gemini-2.5-pro',
-        'gemini-2.0-flash': 'gemini-2.5-flash',
+        'gemini-1.5-flash': 'gemini-3.5-flash-lite',
+        'gemini-1.5-pro': 'gemini-3.5-flash',
+        'gemini-2.0-flash': 'gemini-3.5-flash-lite',
+        'gemini-2.5-flash': 'gemini-3.5-flash',
+        'gemini-2.5-pro': 'gemini-3.5-flash',
         'mixtral-8x7b-32768': 'llama-3.3-70b-versatile',
         'llama-3-8b-8192': 'llama-3.1-8b-instant',
         'llama-3-70b-8192': 'llama-3.3-70b-versatile',

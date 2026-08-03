@@ -96,6 +96,8 @@ INSTALLED_APPS = [
     "bot_gateway.apps.BotGatewayConfig",
     "mcp_oauth.apps.McpOauthConfig",
     "integrations.apps.IntegrationsConfig",
+    "reports.apps.ReportsConfig",
+    "performance.apps.PerformanceConfig",
     "graphql",
     "notifications",
     "channels",

@@ -25,6 +25,7 @@ class AttendanceCorrectionSortInput:
 class AttendanceCorrectionFilterInput:
     search: Optional[str] = None
     status: Optional[str] = None
+    organization_id: Optional[strawberry.ID] = None
 
 # =====================================================
 # RESPONSE TYPES
@@ -240,6 +241,10 @@ class AttendanceQuery:
         if filters:
             if filters.status:
                 qs = qs.filter(_status=filters.status)
+            if filters.organization_id:
+                if user.role != "superadmin" and str(filters.organization_id) != str(user.organization_id):
+                    raise Exception("Unauthorized to filter by other organizations")
+                qs = qs.filter(requested_by__organization_id=filters.organization_id)
 
         if input:
             if input.start_date and input.end_date:

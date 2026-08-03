@@ -87,7 +87,9 @@ def run_agent_for_user(
             async for event in compiled_app.astream_events(initial_state, version="v2"):
                 kind = event.get("event", "")
                 if kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"].content
+                    from ai_engine.views import _normalize_llm_content
+
+                    chunk = _normalize_llm_content(event["data"]["chunk"].content)
                     if chunk:
                         content_accumulated += chunk
             return content_accumulated

@@ -1,6 +1,5 @@
 import strawberry
 from typing import List, Optional
-from datetime import date
 from organizations.models import Organization, OfficeLocation, Department, Designation
 from organizations.graphql.types import OrganizationType, OfficeLocationType, DepartmentType, DesignationType
 from django.db.models import Count, Q
@@ -8,7 +7,13 @@ from django.db.models import Count, Q
 @strawberry.type
 class OrganizationQuery:
     @strawberry.field
-    def organizations(self, info, search: Optional[str] = None) -> List[OrganizationType]:
+    def organizations(
+        self,
+        info,
+        search: Optional[str] = None,
+        plan: Optional[str] = None,
+        is_active: Optional[bool] = None,
+    ) -> List[OrganizationType]:
         user = info.context.request.user
 
         queryset = Organization.objects.annotate(
@@ -16,7 +21,19 @@ class OrganizationQuery:
         )
 
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(gst_number__icontains=search) |
+                Q(pan_number__icontains=search) |
+                Q(registration_number__icontains=search) |
+                Q(headquarters_address__icontains=search)
+            )
+
+        if plan:
+            queryset = queryset.filter(plan=plan.lower())
+
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
 
         if not user.is_authenticated:
             raise Exception("You do not have permission to view organizations")
@@ -28,21 +45,33 @@ class OrganizationQuery:
         raise Exception("You do not have permission to view organizations")   
     
     @strawberry.field
-    def office_locations(self, info, search: Optional[str] = None) -> List[OfficeLocationType]:
+    def office_locations(
+        self,
+        info,
+        search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
+        is_active: Optional[bool] = None,
+    ) -> List[OfficeLocationType]:
         user = info.context.request.user
-        queryset = OfficeLocation.objects.all()
+        queryset = OfficeLocation.objects.select_related("organization").all()
 
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) | 
                 Q(address__icontains=search) | 
-                Q(city__icontains=search)
+                Q(city__icontains=search) |
+                Q(organization__name__icontains=search)
             )
+
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
 
         if not user.is_authenticated:
             raise Exception("You do not have permission to view office locations")
 
         if user.role == "superadmin":
+            if organization_id:
+                queryset = queryset.filter(organization_id=organization_id)
             return queryset
         elif user.role in ["admin", "hr", "manager"]:
             return queryset.filter(organization_id=user.organization_id)
@@ -50,37 +79,65 @@ class OrganizationQuery:
             raise Exception("You do not have permission to view office locations")
 
     @strawberry.field
-    def departments(self, info, search: Optional[str] = None) -> List[DepartmentType]:
+    def departments(
+        self,
+        info,
+        search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
+        is_active: Optional[bool] = None,
+    ) -> List[DepartmentType]:
         user = info.context.request.user
-        queryset = Department.objects.all()
+        queryset = Department.objects.select_related("organization").all()
 
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(organization__name__icontains=search)
+            )
+
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
 
         if not user.is_authenticated:
             raise Exception("You do not have permission to view departments")
 
         if user.role == "superadmin":
+            if organization_id:
+                queryset = queryset.filter(organization_id=organization_id)
             return queryset
-        elif user.role in ["admin", "hr", "manager"]:         
+        elif user.role in ["admin", "hr", "manager", "employee"]:
             return queryset.filter(organization_id=user.organization_id)
         else:
             raise Exception("You do not have permission to view departments")
     
     @strawberry.field
-    def designations(self, info, search: Optional[str] = None) -> List[DesignationType]:
+    def designations(
+        self,
+        info,
+        search: Optional[str] = None,
+        organization_id: Optional[strawberry.ID] = None,
+        is_active: Optional[bool] = None,
+    ) -> List[DesignationType]:
         user = info.context.request.user
-        queryset = Designation.objects.all()
+        queryset = Designation.objects.select_related("organization").all()
 
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(organization__name__icontains=search)
+            )
+
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
 
         if not user.is_authenticated:
             raise Exception("You do not have permission to view designations")
 
         if user.role == "superadmin":
+            if organization_id:
+                queryset = queryset.filter(organization_id=organization_id)
             return queryset
-        elif user.role in ["admin", "hr", "manager"]:
+        elif user.role in ["admin", "hr", "manager", "employee"]:
             return queryset.filter(organization_id=user.organization_id)
         else:
             raise Exception("You do not have permission to view designations")

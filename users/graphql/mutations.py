@@ -21,6 +21,7 @@ class UpdateProfileInput:
     uan_number: str | None = None
     has_seen_onboarding: bool | None = None
     has_seen_ai_onboarding: bool | None = None
+    email_login_alerts: bool | None = None
 
 @strawberry.input
 class UserStatusInput:

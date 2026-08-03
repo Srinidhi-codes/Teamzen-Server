@@ -13,27 +13,32 @@ from graphql_api.dashboard_queries import DashboardQuery
 from payroll.graphql.queries import PayrollQuery
 from payroll.graphql.mutations import PayrollMutation
 from graphql_api.auth import Mutation as AuthMutation
+from reports.graphql.queries import ReportsQuery
+from performance.graphql.queries import PerformanceQuery
+from performance.graphql.mutations import PerformanceMutation
 
 @strawberry.type
-class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery, PayrollQuery):
+class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery, PayrollQuery, ReportsQuery, PerformanceQuery):
     """
     Root Query:
     - me
     - myAttendance
     - attendanceByUser
+    - reports + performance analytics
     """
 
 
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation, AuthMutation):
+class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation, AuthMutation, PerformanceMutation):
     """
     Root Mutation:
     - login (REST preferred)
     - checkIn
     - checkOut
     - requestAttendanceCorrection
+    - performance cycles / goals / reviews
     """
     pass
 

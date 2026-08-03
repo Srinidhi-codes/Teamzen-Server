@@ -53,6 +53,7 @@ class OfficeLocationType:
     longitude: auto
     geo_radius_meters: auto
     organization_id: auto
+    organization: OrganizationType
     is_active: auto
     created_at: auto
 

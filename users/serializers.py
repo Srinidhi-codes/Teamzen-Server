@@ -2,10 +2,38 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from users.models import CustomUser
 from organizations.serializers import OfficeLocationSerializer
+from organizations.models import Organization
+
+
+class OrganizationBriefSerializer(serializers.ModelSerializer):
+    """Nested org payload for auth/session responses (plan + theme without N+1)."""
+    logo = serializers.SerializerMethodField()
+    plan_expires_at = serializers.DateField(allow_null=True, required=False)
+
+    class Meta:
+        model = Organization
+        fields = [
+            "id",
+            "name",
+            "plan",
+            "plan_expires_at",
+            "accent",
+            "logo",
+        ]
+
+    def get_logo(self, obj):
+        if not obj.logo:
+            return None
+        try:
+            return {"url": obj.logo.url}
+        except Exception:
+            return None
+
 
 class UserSerializer(serializers.ModelSerializer):
     """User serializer"""
     organization_name = serializers.CharField(source='organization.name', read_only=True)
+    organization = OrganizationBriefSerializer(read_only=True)
 
     class Meta:
         model = CustomUser
@@ -24,6 +52,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_name = serializers.CharField(source='designation.name', read_only=True)
     organization_name = serializers.CharField(source='organization.name', read_only=True)
+    organization = OrganizationBriefSerializer(read_only=True)
     office_location_details = OfficeLocationSerializer(source='office_location', read_only=True)
     
     class Meta:
@@ -46,8 +75,6 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'email', 'username'
         ]
 
-
-from organizations.models import Organization
 
 class RegisterSerializer(serializers.ModelSerializer):
     """User registration serializer"""

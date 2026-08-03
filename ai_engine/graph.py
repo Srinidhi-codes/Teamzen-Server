@@ -175,6 +175,10 @@ def get_llm(organization_id: int):
     # Remap retired provider model IDs so older org configs keep working
     model_name = AIConfiguration.LEGACY_MODEL_MAP.get(model_name, model_name)
 
+    # Free-tier Groq 8B has a low TPM cap — keep completions small
+    if _is_token_constrained_model(model_name):
+        max_tokens = min(int(max_tokens or 1024), 512)
+
     if "gemini" in model_name:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -224,16 +228,122 @@ def get_llm(organization_id: int):
     )
 
 
+def resolve_model_name(organization_id: int) -> str:
+    """Return the effective model id for an org (after legacy remaps)."""
+    config = AIConfiguration.objects.filter(
+        organization_id=organization_id, is_active=True
+    ).first()
+    model_name = config.model_name if config else "gpt-4o-mini"
+    return AIConfiguration.LEGACY_MODEL_MAP.get(model_name, model_name)
+
+
+def _is_token_constrained_model(model_name: str) -> bool:
+    """Groq free-tier small models have low TPM (~6k) — full agent payloads fail."""
+    name = (model_name or "").lower()
+    return name in {
+        "llama-3.1-8b-instant",
+        "llama3-8b-8192",
+        "llama-3-8b-8192",
+    } or ("8b" in name and ("llama" in name or "groq" in name))
+
+
+# Essential tools only — keeps tool schemas under Groq 8B TPM limits
+_CORE_TOOL_NAMES = frozenset(
+    {
+        "get_leave_balances",
+        "get_leave_types",
+        "apply_for_leave",
+        "list_pending_leaves",
+        "cancel_leave",
+        "get_attendance_today",
+        "mark_attendance",
+        "search_policies",
+        "get_user_details",
+        "get_latest_payslip",
+        "get_payslip",
+        "explain_deduction",
+    }
+)
+
+
+def _tool_name(tool) -> str:
+    return (
+        getattr(tool, "name", None)
+        or getattr(getattr(tool, "metadata", None), "name", None)
+        or getattr(tool, "__name__", "")
+        or ""
+    )
+
+
+def _filter_tools_for_model(tools: list, model_name: str) -> list:
+    if not _is_token_constrained_model(model_name):
+        return tools
+    filtered = [t for t in tools if _tool_name(t) in _CORE_TOOL_NAMES]
+    if not filtered:
+        filtered = list(tools)[:8]
+    logger.info(
+        "[Graph] Constrained model %s — using %s/%s tools",
+        model_name,
+        len(filtered),
+        len(tools),
+    )
+    return filtered
+
+
+def _trim_messages_for_model(messages: Sequence[BaseMessage], model_name: str) -> list:
+    """Keep recent turns only for TPM-limited models; cap long tool payloads."""
+    msgs = list(messages or [])
+    if not _is_token_constrained_model(model_name):
+        return msgs
+
+    msgs = msgs[-6:]
+    trimmed = []
+    for m in msgs:
+        content = getattr(m, "content", None)
+        if not (isinstance(content, str) and len(content) > 1200):
+            trimmed.append(m)
+            continue
+        short = content[:1200] + "\n…[truncated]"
+        if isinstance(m, ToolMessage):
+            trimmed.append(
+                ToolMessage(content=short, tool_call_id=getattr(m, "tool_call_id", ""))
+            )
+        elif isinstance(m, HumanMessage):
+            trimmed.append(HumanMessage(content=short))
+        elif isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
+            trimmed.append(AIMessage(content=short))
+        else:
+            trimmed.append(m)
+    return trimmed
+
+
 # ---------------------------------------------------------------------------
 # System Prompt Builder
 # ---------------------------------------------------------------------------
-def _build_system_prompt(state: AgentState) -> str:
+def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
     user_id = state.get("user_id")
     org_id = state.get("organization_id")
     lat = state.get("latitude")
     lon = state.get("longitude")
 
     user_role = state.get("user_role") or "employee"
+
+    if compact:
+        prompt = (
+            "You are Teamzen HR assistant. Use tools for leave, attendance, payslips, and policies. "
+            f"user_id={user_id}, role={user_role}, organization_id={org_id}, "
+            f"lat={lat}, lon={lon}, today={date.today().isoformat()}. "
+            "Always pass user_id/organization_id to tools. "
+            "Do not invent payslip or policy facts — use tools. "
+            "For leave apply: collect type, dates, reason first. "
+            "Prefer card tags from tools ([BALANCE_CARD], [PAYROLL_CARD], [ATTENDANCE_CARD]). "
+            "Be brief."
+        )
+        payslip_ctx = state.get("payslip_context")
+        if payslip_ctx:
+            ctx = payslip_ctx if len(payslip_ctx) <= 800 else payslip_ctx[:800] + "…"
+            prompt += f"\nPayslip context:\n{ctx}"
+        return prompt
 
     prompt = (
         "You are an intelligent Workplace Assistant for an LMS & Payroll system. "
@@ -344,15 +454,19 @@ async def build_graph(
         tools = _get_legacy_tools()
         logger.info("[Graph] Using legacy LangChain tools.")
 
-    tool_node = ToolNode(tools)
     from asgiref.sync import sync_to_async
+    model_name = await sync_to_async(resolve_model_name)(organization_id)
+    tools = _filter_tools_for_model(tools, model_name)
+    compact = _is_token_constrained_model(model_name)
+
+    tool_node = ToolNode(tools)
     llm_base = await sync_to_async(get_llm)(organization_id)
     llm = llm_base.bind_tools(tools)
 
     def call_model(state: AgentState):
-        system_prompt = _build_system_prompt(state)
-        messages = state["messages"]
-        response = llm.invoke([SystemMessage(content=system_prompt)] + list(messages))
+        system_prompt = _build_system_prompt(state, compact=compact)
+        messages = _trim_messages_for_model(state["messages"], model_name)
+        response = llm.invoke([SystemMessage(content=system_prompt)] + messages)
         return {"messages": [response]}
 
     def should_continue(state: AgentState):
@@ -378,25 +492,18 @@ async def build_graph(
 # ---------------------------------------------------------------------------
 def _build_legacy_app():
     """Synchronously build the graph with legacy tools (used at import time)."""
-    tools = _get_legacy_tools()
-    tool_node = ToolNode(tools)
+    tools_all = _get_legacy_tools()
 
     def call_model(state: AgentState):
-        from .tools import (
-            get_leave_balances, apply_for_leave, get_attendance_today,
-            search_policies, get_leave_types, mark_attendance,
-            check_team_availability, get_user_details, get_team_stats, list_pending_leaves,
-            cancel_leave, suggest_leave_window, get_attendance_trends,
-            generate_monthly_summary, get_latest_payslip, get_payslip,
-            explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
-            get_team_pulse, list_pending_corrections, confirm_attendance_correction,
-            review_attendance_correction, check_payroll_anomalies, check_calendar_conflicts,
-        )
         org_id = state.get("organization_id", 0)
+        model_name = resolve_model_name(org_id)
+        tools = _filter_tools_for_model(tools_all, model_name)
         llm = get_llm(org_id).bind_tools(tools)
-        system_prompt = _build_system_prompt(state)
-        messages = state["messages"]
-        response = llm.invoke([SystemMessage(content=system_prompt)] + list(messages))
+        system_prompt = _build_system_prompt(
+            state, compact=_is_token_constrained_model(model_name)
+        )
+        messages = _trim_messages_for_model(state["messages"], model_name)
+        response = llm.invoke([SystemMessage(content=system_prompt)] + messages)
         return {"messages": [response]}
 
     def should_continue(state: AgentState):
@@ -407,7 +514,8 @@ def _build_legacy_app():
 
     workflow = StateGraph(AgentState)
     workflow.add_node("agent", call_model)
-    workflow.add_node("tools", tool_node)
+    # ToolNode needs a static list; use full set — agent only binds filtered tools per call
+    workflow.add_node("tools", ToolNode(tools_all))
     workflow.set_entry_point("agent")
     workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
     workflow.add_edge("tools", "agent")

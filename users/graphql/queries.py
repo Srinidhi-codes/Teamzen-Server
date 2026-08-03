@@ -112,15 +112,18 @@ class UserQuery:
             "manager",
         )
 
+        # Org owners / platform admins are not listed as workforce employees
+        qs = qs.exclude(role__in=["admin", "superadmin"])
+
         if user.role == "superadmin":
-            pass # full queryset
+            pass # full queryset (minus admin/superadmin above)
         elif user.role in ["admin", "hr"]:
             qs = qs.filter(organization=user.organization)
         elif user.role == "manager":
             qs = qs.filter(
-                Q(pk=user.pk) | Q(manager=user),
-                organization=user.organization
-            )
+                manager=user,
+                organization=user.organization,
+            ).exclude(pk=user.pk)
         else:
             raise Exception("Unauthorized")
 
@@ -207,12 +210,36 @@ class UserQuery:
         )
 
     @strawberry.field(name="globalLoginHistory")
-    def global_login_history(self, info: Info, page: int = 1, page_size: int = 20) -> PaginatedLoginHistoryResponse:
+    def global_login_history(
+        self,
+        info: Info,
+        page: int = 1,
+        page_size: int = 20,
+        organization_id: Optional[strawberry.ID] = None,
+        search: Optional[str] = None,
+    ) -> PaginatedLoginHistoryResponse:
         user = info.context.request.user
         if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
             raise Exception("Unauthorized")
-        
-        qs = UserLoginHistory.objects.select_related('user').filter(user__organization=user.organization).order_by('-login_time')
+
+        qs = UserLoginHistory.objects.select_related('user', 'user__organization').order_by('-login_time')
+
+        if user.role == "superadmin":
+            if organization_id:
+                qs = qs.filter(user__organization_id=organization_id)
+        else:
+            qs = qs.filter(user__organization_id=user.organization_id)
+
+        if search:
+            term = search.strip()
+            qs = qs.filter(
+                Q(user__first_name__icontains=term) |
+                Q(user__last_name__icontains=term) |
+                Q(user__email__icontains=term) |
+                Q(ip_address__icontains=term) |
+                Q(location__icontains=term)
+            )
+
         total = qs.count()
         
         start = (page - 1) * page_size

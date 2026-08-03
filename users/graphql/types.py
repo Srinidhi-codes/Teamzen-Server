@@ -137,6 +137,7 @@ class UserType:
 
     has_seen_onboarding: auto
     has_seen_ai_onboarding: auto
+    email_login_alerts: auto
 
     created_at: auto
     updated_at: auto

@@ -260,6 +260,30 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 payslip_url="https://teamzen-client.vercel.app/payslips",
             )
 
+        elif target_type == "Login Alert":
+            from temp_email.login_alert_email import get_login_alert_email_html
+            subject = "Security alert: Login activity"
+            security_base = getattr(settings, "ADMIN_URL", None) or getattr(
+                settings, "FRONTEND_ADMIN_URL", "https://teamzen-admin.vercel.app"
+            )
+            html_content = get_login_alert_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                actor_name=extra_context.get("actor_name", "Unknown user"),
+                actor_email=extra_context.get("actor_email", ""),
+                login_time=extra_context.get("login_time", "Just now"),
+                ip_address=extra_context.get("ip_address", "Unknown"),
+                location=extra_context.get("location", "Unknown"),
+                device=extra_context.get("device", "Unknown"),
+                organization_name=extra_context.get("organization_name", ""),
+                is_own_login=bool(extra_context.get("is_own_login", True)),
+                security_url=f"{str(security_base).rstrip('/')}/settings/security",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
+
         # 2. Build and send the email
         email = EmailMultiAlternatives(
             subject=subject,
