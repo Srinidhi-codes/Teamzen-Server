@@ -4,7 +4,11 @@ from django.shortcuts import get_object_or_404
 from graphql import GraphQLError
 
 from attendance.models import AttendanceRecord
-from attendance.face_constants import FACE_MATCH_THRESHOLD
+from attendance.face_constants import (
+    FACE_DESCRIPTOR_DIM,
+    FACE_DISTANCE_THRESHOLD,
+    FACE_MATCH_THRESHOLD,
+)
 from organizations.models import OfficeLocation
 
 
@@ -25,24 +29,70 @@ def org_requires_face(user) -> bool:
     return bool(org and getattr(org, "face_attendance_enabled", False))
 
 
-def assert_face_attendance_allowed(user, *, face_verified: bool | None, face_match_score: float | None):
-    """Raise when org requires face punch and client did not satisfy enrollment/match."""
-    if not org_requires_face(user):
-        return
+def _as_float_list(raw) -> list[float]:
+    if raw is None:
+        return []
+    try:
+        return [float(x) for x in raw]
+    except (TypeError, ValueError):
+        return []
 
-    if not user.face_enrolled_at or not user.face_descriptor:
+
+def euclidean_distance(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b) or not a:
+        return float("inf")
+    return sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+def assert_face_attendance_allowed(
+    user,
+    *,
+    face_descriptor: list[float] | None = None,
+    face_verified: bool | None = None,
+    face_match_score: float | None = None,
+) -> float:
+    """
+    Validate face punch. Returns server-computed similarity in [0, 1].
+    Always recomputes Euclidean distance vs enrolled descriptor — client flags alone are not enough.
+    """
+    if not org_requires_face(user):
+        return 0.0
+
+    enrolled = _as_float_list(user.face_descriptor)
+    if not user.face_enrolled_at or not enrolled:
         raise GraphQLError(
-            "Face enrollment required. Enroll your face in Attendance or Profile before punching."
+            "Face enrollment required. Enroll your face in Attendance before punching."
         )
 
-    if not face_verified:
+    if len(enrolled) != FACE_DESCRIPTOR_DIM:
+        raise GraphQLError(
+            "Your face enrollment is outdated. Please re-enroll your face, then try again."
+        )
+
+    live = _as_float_list(face_descriptor)
+    if len(live) != FACE_DESCRIPTOR_DIM:
+        raise GraphQLError(
+            "Face verification data missing or invalid. Update the app and retry with camera."
+        )
+
+    distance = euclidean_distance(enrolled, live)
+    if distance > FACE_DISTANCE_THRESHOLD:
+        raise GraphQLError(
+            f"Face did not match (distance {distance:.2f}; need ≤ {FACE_DISTANCE_THRESHOLD:.2f}). "
+            "Use the enrolled person's face and try again."
+        )
+
+    if face_verified is False:
         raise GraphQLError("Face verification failed. Please try again with a clear selfie.")
 
-    score = float(face_match_score) if face_match_score is not None else 0.0
-    if score < FACE_MATCH_THRESHOLD:
+    similarity = max(0.0, 1.0 - distance)
+    if similarity < FACE_MATCH_THRESHOLD:
         raise GraphQLError(
-            f"Face match score too low ({score:.2f}). Required ≥ {FACE_MATCH_THRESHOLD:.2f}."
+            f"Face match score too low ({similarity:.2f}). Required ≥ {FACE_MATCH_THRESHOLD:.2f}."
         )
+
+    _ = face_match_score  # client score is advisory only
+    return similarity
 
 
 def check_in_user(
@@ -54,6 +104,7 @@ def check_in_user(
     *,
     face_verified: bool | None = None,
     face_match_score: float | None = None,
+    face_descriptor: list[float] | None = None,
 ):
     office = get_object_or_404(OfficeLocation, id=office_id)
 
@@ -65,10 +116,14 @@ def check_in_user(
     )
     is_within = distance <= office.geo_radius_meters
     face_mode = org_requires_face(user)
+    server_face_score = None
 
     if face_mode:
-        assert_face_attendance_allowed(
-            user, face_verified=face_verified, face_match_score=face_match_score
+        server_face_score = assert_face_attendance_allowed(
+            user,
+            face_descriptor=face_descriptor,
+            face_verified=face_verified,
+            face_match_score=face_match_score,
         )
 
     attendance, _ = AttendanceRecord.objects.get_or_create(
@@ -76,7 +131,6 @@ def check_in_user(
         attendance_date=date.today(),
         defaults={"office_location": office},
     )
-    # Keep office in sync if record already existed without office change
     if attendance.office_location_id != office.id:
         attendance.office_location = office
 
@@ -88,7 +142,7 @@ def check_in_user(
     attendance.is_within_geofence = is_within
     if face_mode:
         attendance.face_verified = True
-        attendance.face_match_score = float(face_match_score) if face_match_score is not None else None
+        attendance.face_match_score = server_face_score
     attendance.save()
 
     return attendance, distance
@@ -102,6 +156,7 @@ def check_out_user(
     *,
     face_verified: bool | None = None,
     face_match_score: float | None = None,
+    face_descriptor: list[float] | None = None,
 ):
     attendance = get_object_or_404(
         AttendanceRecord,
@@ -117,10 +172,14 @@ def check_out_user(
         latitude, longitude, office.latitude, office.longitude
     )
     face_mode = org_requires_face(user)
+    server_face_score = None
 
     if face_mode:
-        assert_face_attendance_allowed(
-            user, face_verified=face_verified, face_match_score=face_match_score
+        server_face_score = assert_face_attendance_allowed(
+            user,
+            face_descriptor=face_descriptor,
+            face_verified=face_verified,
+            face_match_score=face_match_score,
         )
 
     logout_time = normalize_time(time)
@@ -130,13 +189,12 @@ def check_out_user(
     attendance.logout_longitude = longitude
     attendance.logout_distance = int(distance)
 
-    # Maintain geofence integrity: if either check-in or check-out is outside, flag is False
     if distance > office.geo_radius_meters:
         attendance.is_within_geofence = False
 
     if face_mode:
         attendance.face_verified = True
-        attendance.face_match_score = float(face_match_score) if face_match_score is not None else None
+        attendance.face_match_score = server_face_score
 
     attendance.save()
     return attendance, distance

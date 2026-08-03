@@ -152,13 +152,16 @@ class UserMutation:
         from django.core.files.base import ContentFile
         from django.utils import timezone
 
+        from attendance.face_constants import FACE_DESCRIPTOR_DIM
+
         user = info.context.request.user
         if not user.is_authenticated:
             return EnrollFacePayload(error="Not authenticated")
 
-        if not input.descriptor or len(input.descriptor) < 32:
-            return EnrollFacePayload(error="Invalid face descriptor. Please retry enrollment.")
-
+        if not input.descriptor or len(input.descriptor) != FACE_DESCRIPTOR_DIM:
+            return EnrollFacePayload(
+                error=f"Invalid face descriptor (expected {FACE_DESCRIPTOR_DIM} values). Please retry enrollment."
+            )
         try:
             user.face_descriptor = [float(x) for x in input.descriptor]
             user.face_enrolled_at = timezone.now()

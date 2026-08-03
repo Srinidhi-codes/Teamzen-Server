@@ -19,6 +19,7 @@ class CheckInInput:
     login_time: time
     face_verified: Optional[bool] = None
     face_match_score: Optional[float] = None
+    face_descriptor: Optional[list[float]] = None
 
 @strawberry.input
 class CheckOutInput:
@@ -27,6 +28,7 @@ class CheckOutInput:
     logout_time: time
     face_verified: Optional[bool] = None
     face_match_score: Optional[float] = None
+    face_descriptor: Optional[list[float]] = None
  
 @strawberry.input
 class AttendanceCorrectionInput:
@@ -64,6 +66,7 @@ class AttendanceMutation:
             time=input.login_time,
             face_verified=input.face_verified,
             face_match_score=input.face_match_score,
+            face_descriptor=input.face_descriptor,
         )
 
         return attendance
@@ -86,6 +89,7 @@ class AttendanceMutation:
             time=input.logout_time,
             face_verified=input.face_verified,
             face_match_score=input.face_match_score,
+            face_descriptor=input.face_descriptor,
         )
 
         return attendance
