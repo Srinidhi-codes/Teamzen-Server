@@ -31,6 +31,19 @@ class AttendanceRecord(models.Model):
     is_within_geofence = models.BooleanField(default=False)
     login_distance = models.IntegerField(null=True, blank=True)
     logout_distance = models.IntegerField(null=True, blank=True)
+    # Face attendance audit (populated when org.face_attendance_enabled)
+    face_verified = models.BooleanField(default=False)
+    face_match_score = models.FloatField(null=True, blank=True)
+    check_in_selfie = models.ImageField(
+        upload_to='teamzen/attendance_selfies/',
+        null=True,
+        blank=True,
+    )
+    check_out_selfie = models.ImageField(
+        upload_to='teamzen/attendance_selfies/',
+        null=True,
+        blank=True,
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='absent')
     worked_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     remarks = models.TextField(blank=True)

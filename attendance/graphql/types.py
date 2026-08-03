@@ -24,6 +24,8 @@ class AttendanceRecordType:
     logout_distance: auto
 
     is_within_geofence: auto
+    face_verified: auto
+    face_match_score: auto
     status: auto
     worked_hours: auto
     remarks: auto
@@ -34,6 +36,18 @@ class AttendanceRecordType:
 
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def check_in_selfie_url(self) -> Optional[str]:
+        if self.check_in_selfie:
+            return self.check_in_selfie.url
+        return None
+
+    @strawberry.field
+    def check_out_selfie_url(self) -> Optional[str]:
+        if self.check_out_selfie:
+            return self.check_out_selfie.url
+        return None
 
     @strawberry.field
     def correction_reason(self) -> Optional[str]:

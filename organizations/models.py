@@ -42,6 +42,10 @@ class Organization(models.Model):
         default=False,
         help_text="When True and plan is pro/elite, Celery auto-runs payroll on cycle day",
     )
+    face_attendance_enabled = models.BooleanField(
+        default=False,
+        help_text="When True, employees must verify face and be inside geofence to punch attendance",
+    )
     accent = models.CharField(
         max_length=20,
         choices=ACCENT_CHOICES,

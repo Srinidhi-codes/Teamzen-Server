@@ -44,6 +44,19 @@ class CustomUser(AbstractUser):
     gender = models.CharField(max_length=20, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
     profile_picture = models.ImageField(upload_to='teamzen/user_profile/', null=True, blank=True)
+
+    # Face attendance enrollment (client-side descriptors; shared across web/mobile)
+    face_descriptor = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Normalized face descriptor vector produced by the client face pipeline",
+    )
+    face_enrollment_image = models.ImageField(
+        upload_to='teamzen/face_enrollment/',
+        null=True,
+        blank=True,
+    )
+    face_enrolled_at = models.DateTimeField(null=True, blank=True)
     
     # Employment Details
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES, default='full_time')

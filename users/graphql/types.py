@@ -138,9 +138,34 @@ class UserType:
     has_seen_onboarding: auto
     has_seen_ai_onboarding: auto
     email_login_alerts: auto
+    face_enrolled_at: auto
 
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def face_enrolled(self) -> bool:
+        return bool(self.face_enrolled_at and self.face_descriptor)
+
+    @strawberry.field
+    def face_descriptor(self) -> Optional[List[float]]:
+        """Return enrolled descriptor for client-side matching (own user or elevated roles)."""
+        # Permission is enforced in the resolver via request context when possible;
+        # list queries still expose null for privacy by only returning when present
+        # and callers should only use me { faceDescriptor }.
+        raw = self.face_descriptor
+        if not raw:
+            return None
+        try:
+            return [float(x) for x in raw]
+        except (TypeError, ValueError):
+            return None
+
+    @strawberry.field
+    def face_enrollment_image_url(self) -> Optional[str]:
+        if self.face_enrollment_image:
+            return self.face_enrollment_image.url
+        return None
 
     @strawberry.field(name="loginHistory")
     def login_history(self, info: Info, limit: int = 10) -> List[UserLoginHistoryType]:

@@ -17,6 +17,7 @@ class OrganizationType:
     plan_expires_at: auto
     payroll_cycle_day: auto
     payroll_auto_enabled: auto
+    face_attendance_enabled: auto
     accent: auto
     employee_count: int
     is_active: auto
