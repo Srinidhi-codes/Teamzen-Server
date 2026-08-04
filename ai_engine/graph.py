@@ -82,6 +82,7 @@ class AgentState(TypedDict):
     latitude: Optional[float]
     longitude: Optional[float]
     payslip_context: Optional[str]
+    page_path: Optional[str]
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +100,9 @@ def _get_legacy_tools():
         get_team_pulse, list_pending_corrections, confirm_attendance_correction,
         review_attendance_correction,
         check_payroll_anomalies, check_calendar_conflicts,
+        get_my_onboarding_status, list_pending_onboarding_tasks,
+        explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
+        suggest_onboarding_checklist, polish_offer_letter_draft,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
@@ -109,6 +113,9 @@ def _get_legacy_tools():
         explain_deduction, salary_forecast, compare_payslips, get_payroll_history,
         get_team_pulse, list_pending_corrections, confirm_attendance_correction,
         review_attendance_correction, check_payroll_anomalies, check_calendar_conflicts,
+        get_my_onboarding_status, list_pending_onboarding_tasks,
+        explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
+        suggest_onboarding_checklist, polish_offer_letter_draft,
     ]
 
 
@@ -262,6 +269,9 @@ _CORE_TOOL_NAMES = frozenset(
         "get_latest_payslip",
         "get_payslip",
         "explain_deduction",
+        "get_my_onboarding_status",
+        "list_pending_onboarding_tasks",
+        "get_required_documents",
     }
 )
 
@@ -343,6 +353,12 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
         if payslip_ctx:
             ctx = payslip_ctx if len(payslip_ctx) <= 800 else payslip_ctx[:800] + "…"
             prompt += f"\nPayslip context:\n{ctx}"
+        page_path = state.get("page_path") or ""
+        if page_path and ("/onboarding" in page_path or "/preboarding" in page_path):
+            prompt += (
+                "\nUser is on an onboarding page — prefer get_my_onboarding_status "
+                "and list_pending_onboarding_tasks."
+            )
         return prompt
 
     prompt = (
@@ -397,6 +413,11 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
         "To confirm a draft, call 'confirm_attendance_correction' (optional logout_time HH:MM). "
         "Managers approving/rejecting use 'review_attendance_correction' with decision approved|rejected.\n"
         "11. Payroll Anomalies: Admins can ask 'check payroll anomalies'. Use 'check_payroll_anomalies' with organization_id, month, year to scan for LOP spikes, net pay swings, double deductions, zero net, missing salary structures, and new-joiner pro-rata issues.\n"
+        "12. Onboarding: For new-hire checklist questions use 'get_my_onboarding_status', 'list_pending_onboarding_tasks', "
+        "'explain_onboarding_task', and 'get_required_documents'. "
+        "To mark a task done use 'complete_onboarding_task_tool'. "
+        "For handbook/policy questions during onboarding (including 'acknowledge handbook' tasks), use 'search_policies'. "
+        "HR/Admin can use 'suggest_onboarding_checklist' to draft templates and 'polish_offer_letter_draft' for offer wording.\n"
 
         "Formatting Instructions:\n"
         "1. CRITICAL: When explaining or summarizing a payslip, you MUST produce a [PAYROLL_CARD] as your FIRST action. DO NOT use plain text for the breakdown.\n"
@@ -421,6 +442,18 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
             f"\n\n--- PAYSLIP CONTEXT ---\n"
             f"The user is currently viewing the following payslip. Answer any questions about their salary, "
             f"deductions, or LOP based ONLY on this data:\n{payslip_ctx}"
+        )
+
+    page_path = state.get("page_path") or ""
+    if page_path and (
+        "/onboarding" in page_path or "/preboarding" in page_path
+    ):
+        prompt += (
+            "\n\n--- PAGE CONTEXT ---\n"
+            f"The user is on route '{page_path}'. Prioritize onboarding tools "
+            "(get_my_onboarding_status, list_pending_onboarding_tasks, get_required_documents, "
+            "explain_onboarding_task) and policy search for handbook questions. "
+            "Help them complete the next pending checklist item."
         )
 
     return prompt

@@ -346,6 +346,9 @@ class SmartAssistantChatView(APIView):
                     "latitude": request.data.get('latitude', 0),
                     "longitude": request.data.get('longitude', 0),
                     "payslip_context": payslip_context,
+                    "page_path": request.data.get("page_path")
+                    or request.data.get("payload", {}).get("page_path")
+                    or "",
                 }
             except Exception as e:
                 print(f"[ERR] State Initialization Error: {str(e)}")

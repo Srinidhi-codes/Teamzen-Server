@@ -1288,3 +1288,307 @@ def check_payroll_anomalies(organization_id: int, month: int, year: int):
         f"type: {card_type} | topic: Payroll [/INSIGHT_CARD]"
     )
 
+
+
+@tool
+def get_my_onboarding_status(user_id: int):
+    """
+    Returns the current onboarding status for the user: status, progress percent,
+    join date, pending task count, and next recommended task.
+    Use when a new hire asks what is left in onboarding or their onboarding progress.
+    """
+    from onboarding.models import EmployeeOnboarding
+
+    ob = (
+        EmployeeOnboarding.objects.filter(user_id=user_id)
+        .exclude(status="cancelled")
+        .prefetch_related("tasks")
+        .first()
+    )
+    if not ob:
+        return (
+            "[INSIGHT_CARD] title: No Onboarding | "
+            "message: No active onboarding record found for this user. | "
+            "type: info | topic: Onboarding [/INSIGHT_CARD]"
+        )
+
+    pending = [t for t in ob.tasks.all() if t.status in ("pending", "in_progress")]
+    pending_sorted = sorted(pending, key=lambda t: (t.sort_order, t.id))
+    nxt = pending_sorted[0] if pending_sorted else None
+    if nxt:
+        due = nxt.due_at or "n/a"
+        next_line = f"Next: {nxt.title} ({nxt.phase}, due {due})"
+    else:
+        next_line = "All required tasks are done."
+    return (
+        f"[INSIGHT_CARD] title: Onboarding Progress | "
+        f"message: Status {ob.status}, {ob.progress_pct}% complete. "
+        f"{len(pending_sorted)} pending task(s). {next_line} | "
+        f"type: info | topic: Onboarding | "
+        f"stats: Status:{ob.status}, Progress:{ob.progress_pct}%, Pending:{len(pending_sorted)} "
+        f"[/INSIGHT_CARD]"
+    )
+
+
+@tool
+def list_pending_onboarding_tasks(user_id: int, for_assignee_only: bool = False):
+    """
+    Lists pending onboarding tasks for the user (as the hire) or assigned to them
+    (manager/IT/HR). Set for_assignee_only=True to only show tasks assigned to this user.
+    """
+    from onboarding.models import OnboardingTaskInstance
+
+    if for_assignee_only:
+        qs = OnboardingTaskInstance.objects.filter(
+            assignee_id=user_id, status__in=["pending", "in_progress"]
+        )
+    else:
+        qs = OnboardingTaskInstance.objects.filter(
+            onboarding__user_id=user_id, status__in=["pending", "in_progress"]
+        )
+    qs = qs.select_related("onboarding", "onboarding__user").order_by("sort_order", "id")[:20]
+    if not qs.exists():
+        return (
+            "[INSIGHT_CARD] title: Onboarding Tasks | "
+            "message: No pending onboarding tasks. | "
+            "type: info | topic: Onboarding [/INSIGHT_CARD]"
+        )
+
+    lines_out = []
+    for t in qs:
+        hire = t.onboarding.user
+        hire_name = f"{hire.first_name} {hire.last_name}".strip() or hire.email
+        due = t.due_at or "n/a"
+        lines_out.append(
+            f"- {t.title} [{t.phase}/{t.assignee_role}] status={t.status} "
+            f"due={due} hire={hire_name}"
+        )
+    body = " | ".join(lines_out)
+    return (
+        f"[INSIGHT_CARD] title: Pending Onboarding Tasks | "
+        f"message: {body} | type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def explain_onboarding_task(user_id: int, task_id: int = None, task_title: str = None):
+    """
+    Explains a specific onboarding task for the user by task_id or title search.
+    """
+    from onboarding.models import OnboardingTaskInstance
+
+    task = None
+    if task_id:
+        task = OnboardingTaskInstance.objects.filter(
+            id=task_id, onboarding__user_id=user_id
+        ).first()
+    elif task_title:
+        task = (
+            OnboardingTaskInstance.objects.filter(
+                onboarding__user_id=user_id, title__icontains=task_title
+            )
+            .order_by("sort_order")
+            .first()
+        )
+    if not task:
+        return (
+            "[ERROR_CARD] title: Task not found | "
+            "message: Could not find that onboarding task. List pending tasks first. "
+            "[/ERROR_CARD]"
+        )
+
+    doc_hint = (
+        f" Requires document category: {task.requires_document_category}."
+        if task.requires_document_category
+        else ""
+    )
+    due = task.due_at or "n/a"
+    desc = task.description or "No extra instructions."
+    return (
+        f"[INSIGHT_CARD] title: {task.title} | "
+        f"message: Phase {task.phase}. Assigned to {task.assignee_role}. "
+        f"Status {task.status}. Due {due}. {desc}{doc_hint} | "
+        f"type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def get_required_documents(user_id: int):
+    """
+    Lists required onboarding document categories and their verification status for the hire.
+    """
+    from onboarding.models import EmployeeOnboarding
+
+    ob = (
+        EmployeeOnboarding.objects.filter(user_id=user_id)
+        .exclude(status="cancelled")
+        .prefetch_related("tasks", "documents")
+        .first()
+    )
+    if not ob:
+        return (
+            "[INSIGHT_CARD] title: Required Documents | "
+            "message: No onboarding record found. | type: info | topic: Onboarding [/INSIGHT_CARD]"
+        )
+
+    needed = sorted(
+        {
+            t.requires_document_category
+            for t in ob.tasks.all()
+            if t.requires_document_category
+        }
+    )
+    docs = {d.category: d.verification_status for d in ob.documents.all()}
+    parts = []
+    for cat in needed:
+        parts.append(f"{cat}: {docs.get(cat, 'missing')}")
+    for cat, status in docs.items():
+        if cat not in needed:
+            parts.append(f"{cat}: {status}")
+    msg = ", ".join(parts) if parts else "No document requirements configured."
+    return (
+        f"[INSIGHT_CARD] title: Required Documents | "
+        f"message: {msg} | type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def complete_onboarding_task_tool(user_id: int, task_id: int, notes: str = ""):
+    """
+    Marks an onboarding task complete for the authenticated user when they are the assignee
+    or the hire. Managers/HR completing tasks for others should pass their own user_id
+    (must be the assignee).
+    """
+    from django.contrib.auth import get_user_model
+
+    from onboarding.models import OnboardingTaskInstance
+    from onboarding.services import complete_task
+
+    User = get_user_model()
+    task = OnboardingTaskInstance.objects.select_related("onboarding").filter(id=task_id).first()
+    if not task:
+        return "[ERROR_CARD] title: Task not found | message: Invalid task_id. [/ERROR_CARD]"
+
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return "[ERROR_CARD] title: User not found | message: Invalid user_id. [/ERROR_CARD]"
+
+    allowed = (
+        task.assignee_id == user_id
+        or task.onboarding.user_id == user_id
+        or getattr(user, "role", None) in ("admin", "hr", "superadmin")
+    )
+    if not allowed:
+        return (
+            "[ERROR_CARD] title: Not allowed | "
+            "message: You cannot complete this onboarding task. [/ERROR_CARD]"
+        )
+
+    complete_task(task, completed_by=user, notes=notes or "")
+    return (
+        f"[INSIGHT_CARD] title: Task Completed | "
+        f"message: Marked '{task.title}' as completed. "
+        f"Onboarding progress is now {task.onboarding.progress_pct}%. | "
+        f"type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def suggest_onboarding_checklist(
+    user_id: int,
+    organization_id: int,
+    prompt: str,
+    employment_type: str = "",
+    department: str = "",
+):
+    """
+    HR/Admin: AI template copilot. Propose an onboarding checklist for a hiring scenario.
+    Returns a preview of suggested tasks (does not save). Tell HR to review in Templates UI.
+    """
+    from django.contrib.auth import get_user_model
+    from onboarding.ai_services import suggest_onboarding_tasks
+
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user or getattr(user, "role", None) not in ("admin", "hr", "superadmin"):
+        return (
+            "[ERROR_CARD] title: Not allowed | "
+            "message: Only HR/Admin can generate onboarding checklists. [/ERROR_CARD]"
+        )
+    if not prompt or len(prompt.strip()) < 5:
+        return (
+            "[ERROR_CARD] title: Prompt required | "
+            "message: Describe the role (e.g. remote engineering intern). [/ERROR_CARD]"
+        )
+
+    try:
+        tasks = suggest_onboarding_tasks(
+            organization_id,
+            prompt,
+            employment_type=employment_type or "",
+            department=department or "",
+        )
+    except Exception as e:
+        return (
+            f"[ERROR_CARD] title: Suggestion failed | message: {e} [/ERROR_CARD]"
+        )
+
+    if not tasks:
+        return (
+            "[INSIGHT_CARD] title: Onboarding Copilot | "
+            "message: No tasks generated. Try a clearer scenario. | "
+            "type: warning | topic: Onboarding [/INSIGHT_CARD]"
+        )
+
+    lines = [
+        f"{i + 1}. {t['title']} [{t['phase']}/{t['assignee_role']}]"
+        for i, t in enumerate(tasks[:14])
+    ]
+    body = " | ".join(lines)
+    return (
+        f"[INSIGHT_CARD] title: Suggested Checklist ({len(tasks)} tasks) | "
+        f"message: {body}. Open Admin → Onboarding → Templates to apply with AI Copilot. | "
+        f"type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )
+
+
+@tool
+def polish_offer_letter_draft(
+    user_id: int,
+    organization_id: int,
+    body_html: str,
+    tone: str = "professional",
+):
+    """
+    HR/Admin: Polish an offer letter HTML draft while preserving {{merge_fields}}.
+    Returns rewritten HTML for the user to review before saving.
+    """
+    from django.contrib.auth import get_user_model
+    from onboarding.ai_services import polish_offer_letter
+
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user or getattr(user, "role", None) not in ("admin", "hr", "superadmin"):
+        return (
+            "[ERROR_CARD] title: Not allowed | "
+            "message: Only HR/Admin can polish offer letters. [/ERROR_CARD]"
+        )
+    if not body_html or len(body_html.strip()) < 20:
+        return (
+            "[ERROR_CARD] title: Body required | "
+            "message: Provide offer letter HTML to polish. [/ERROR_CARD]"
+        )
+
+    try:
+        polished = polish_offer_letter(
+            organization_id, body_html, tone=tone or "professional"
+        )
+    except Exception as e:
+        return f"[ERROR_CARD] title: Polish failed | message: {e} [/ERROR_CARD]"
+
+    preview = polished[:1200] + ("…" if len(polished) > 1200 else "")
+    return (
+        f"[INSIGHT_CARD] title: Offer Letter Draft | "
+        f"message: Polished draft ready. Preview: {preview} | "
+        f"type: info | topic: Onboarding [/INSIGHT_CARD]"
+    )

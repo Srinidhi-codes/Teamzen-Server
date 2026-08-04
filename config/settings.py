@@ -98,6 +98,8 @@ INSTALLED_APPS = [
     "integrations.apps.IntegrationsConfig",
     "reports.apps.ReportsConfig",
     "performance.apps.PerformanceConfig",
+    "feedback.apps.FeedbackConfig",
+    "onboarding.apps.OnboardingConfig",
     "graphql",
     "notifications",
     "channels",
@@ -463,6 +465,10 @@ CELERY_BEAT_SCHEDULE = {
     'auto-run-payroll-for-due-orgs': {
         'task': 'payroll.tasks.auto_run_payroll_for_due_orgs',
         'schedule': crontab(hour=1, minute=0),  # Daily 01:00; respects org payroll_cycle_day
+    },
+    'nudge-overdue-onboarding-tasks': {
+        'task': 'onboarding.tasks.nudge_overdue_onboarding_tasks',
+        'schedule': crontab(hour=9, minute=30),
     },
 }
 
