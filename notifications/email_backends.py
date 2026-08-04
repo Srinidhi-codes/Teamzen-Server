@@ -1,3 +1,4 @@
+import base64
 import json
 import urllib.request
 from urllib.error import HTTPError, URLError
@@ -22,6 +23,7 @@ class BrevoHTTPBackend(BaseEmailBackend):
         for email in email_messages:
             html_content = None
             text_content = email.body if email.content_subtype != 'html' else None
+            attachments = []
 
             # Handle basic EmailMessage
             if getattr(email, 'content_subtype', '') == 'html':
@@ -33,6 +35,21 @@ class BrevoHTTPBackend(BaseEmailBackend):
                     if alt_mimetype == 'text/html':
                         html_content = alt_content
 
+            if hasattr(email, "attachments"):
+                for attachment in email.attachments:
+                    if isinstance(attachment, tuple) and len(attachment) >= 2:
+                        filename, content = attachment[0], attachment[1]
+                        if content is None:
+                            continue
+                        if isinstance(content, str):
+                            content = content.encode("utf-8")
+                        attachments.append(
+                            {
+                                "name": filename or "attachment",
+                                "content": base64.b64encode(content).decode("ascii"),
+                            }
+                        )
+
             payload = {
                 "sender": {"email": email.from_email},
                 "to": [{"email": to} for to in email.to],
@@ -43,6 +60,9 @@ class BrevoHTTPBackend(BaseEmailBackend):
                 payload["htmlContent"] = html_content
             else:
                 payload["textContent"] = text_content or getattr(email, 'body', '')
+
+            if attachments:
+                payload["attachment"] = attachments
 
             req = urllib.request.Request(
                 self.api_url, 
