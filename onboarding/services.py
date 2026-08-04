@@ -355,6 +355,8 @@ def start_preboarding(
     template_id=None,
     generate_offer: bool = True,
     letter_template_id=None,
+    include_ctc_annexure: bool = False,
+    annual_ctc=None,
 ) -> tuple[EmployeeOnboarding, str | None]:
     """
     Create pending inactive user + onboarding + preboarding tasks.
@@ -413,6 +415,8 @@ def start_preboarding(
             onboarding,
             actor=actor,
             letter_template_id=letter_template_id,
+            include_ctc_annexure=include_ctc_annexure,
+            annual_ctc=annual_ctc,
         )
 
     raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor)
