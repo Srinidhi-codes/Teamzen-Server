@@ -106,7 +106,7 @@ def _doc_type(d: EmployeeDocument) -> EmployeeDocumentType:
     )
 
 
-def _offer_type(o) -> Optional[OfferLetterType]:
+def _offer_type(o, onboarding=None) -> Optional[OfferLetterType]:
     if not o:
         return None
     annual = None
@@ -115,10 +115,20 @@ def _offer_type(o) -> Optional[OfferLetterType]:
             annual = float(o.annual_ctc)
         except Exception:
             annual = None
+
+    subject = o.subject or ""
+    body_html = o.body_html or ""
+    # Safety: if stored letter still has tokens, merge now for display
+    if ("{{" in subject or "{{" in body_html) and onboarding is not None:
+        from onboarding.services import merge_letter_fields
+
+        subject = merge_letter_fields(onboarding, subject)
+        body_html = merge_letter_fields(onboarding, body_html)
+
     return OfferLetterType(
         id=strawberry.ID(str(o.id)),
-        subject=o.subject or "",
-        body_html=o.body_html or "",
+        subject=subject,
+        body_html=body_html,
         pdf_url=o.pdf_url or "",
         signed_pdf_url=getattr(o, "signed_pdf_url", None) or "",
         signed_uploaded_at=getattr(o, "signed_uploaded_at", None),
@@ -141,7 +151,7 @@ def _onboarding_type(
     if include_details:
         tasks = [_task_type(t) for t in ob.tasks.select_related("assignee").all()]
         docs = [_doc_type(d) for d in ob.documents.all()]
-        offer = _offer_type(getattr(ob, "offer_letter", None))
+        offer = _offer_type(getattr(ob, "offer_letter", None), onboarding=ob)
 
     return EmployeeOnboardingType(
         id=strawberry.ID(str(ob.id)),

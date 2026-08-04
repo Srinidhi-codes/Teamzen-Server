@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import secrets
 from datetime import date, timedelta
 from typing import Optional
@@ -493,6 +494,7 @@ def preboarding_portal_url(raw_token: str) -> str:
 
 
 def merge_letter_fields(onboarding: EmployeeOnboarding, text: str) -> str:
+    """Replace {{merge_fields}} in letter subject/body with hire values."""
     user = onboarding.user
     org = onboarding.organization
     join = onboarding.join_date or user.date_of_joining
@@ -515,9 +517,21 @@ def merge_letter_fields(onboarding: EmployeeOnboarding, text: str) -> str:
             else ""
         ),
     }
+    # Aliases HR sometimes types
+    mapping["employee"] = mapping["employee_name"]
+    mapping["name"] = mapping["employee_name"]
+    mapping["role"] = mapping["designation"]
+    mapping["company"] = mapping["company_name"]
+    mapping["joining_date"] = mapping["join_date"]
+
     result = text or ""
     for key, value in mapping.items():
-        result = result.replace("{{" + key + "}}", str(value))
+        # Exact and whitespace-tolerant, case-insensitive: {{employee_name}} / {{ Employee_Name }}
+        pattern = re.compile(
+            r"\{\{\s*" + re.escape(key) + r"\s*\}\}",
+            flags=re.IGNORECASE,
+        )
+        result = pattern.sub(str(value), result)
     return result
 
 
@@ -530,6 +544,16 @@ def generate_offer_letter(
     annual_ctc=None,
     ctc_components: list | None = None,
 ) -> OfferLetter:
+    onboarding = (
+        EmployeeOnboarding.objects.select_related(
+            "user",
+            "user__designation",
+            "user__department",
+            "user__manager",
+            "organization",
+        ).get(pk=onboarding.pk)
+    )
+
     tpl = None
     if letter_template_id:
         tpl = DocumentLetterTemplate.objects.filter(
