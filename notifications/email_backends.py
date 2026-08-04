@@ -130,15 +130,16 @@ class BrevoHTTPBackend(BaseEmailBackend):
                     continue
             except HTTPError as e:
                 error_body = e.read().decode(errors="replace")
-                # Attachment can fail (size / fetch / format) — still deliver the email
+                print(f"Brevo HTTP {e.code}: {error_body[:500]}")
+                # Only strip attachments as last resort so the invite still arrives
                 if payload and payload.get("attachment"):
                     try:
                         payload_no_att = self._build_payload(email, include_attachments=False)
                         code = self._post(payload_no_att, timeout=15)
                         if code in (200, 201):
                             print(
-                                f"Brevo: sent without attachment after attach error "
-                                f"({e.code}): {error_body[:300]}"
+                                "WARNING: Brevo accepted email WITHOUT attachment. "
+                                f"Original error ({e.code}): {error_body[:300]}"
                             )
                             num_sent += 1
                             continue

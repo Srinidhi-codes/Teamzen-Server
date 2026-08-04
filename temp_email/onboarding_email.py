@@ -10,6 +10,7 @@ def get_preboarding_invite_email_html(
     logo_url: str = "",
     company_url: str = "#",
     has_offer_attachment: bool = False,
+    offer_pdf_url: str = "",
 ) -> str:
     details = ""
     if designation:
@@ -18,13 +19,22 @@ def get_preboarding_invite_email_html(
         details += info_row_html("Joining Date", join_date, "📅")
 
     offer_note = ""
-    if has_offer_attachment:
+    if has_offer_attachment or offer_pdf_url:
         offer_note = """
                         <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">
-                            Your <strong>offer letter PDF</strong> is attached to this email.
+                            Your <strong>offer letter PDF</strong> is attached to this email
+                            (and linked below if your client hides attachments).
                             Please review it, then open the portal to accept.
                         </p>
         """
+
+    pdf_button = ""
+    if offer_pdf_url and offer_pdf_url.startswith("http"):
+        pdf_button = (
+            f'<div style="margin: 0 0 16px 0;">'
+            f'{button_html("Download offer letter PDF", offer_pdf_url, "#047857")}'
+            f"</div>"
+        )
 
     # Raw URL fallback — many mobile clients break button links
     safe_url = invite_url or "#"
@@ -54,6 +64,7 @@ def get_preboarding_invite_email_html(
                             and accept your offer letter.
                         </p>
                         {offer_note}
+                        {pdf_button}
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
                             {details}
                         </table>
