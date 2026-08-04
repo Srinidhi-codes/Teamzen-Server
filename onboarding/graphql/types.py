@@ -90,6 +90,7 @@ class OfferLetterType:
     annual_ctc: Optional[float]
     accepted_name: str
     accepted_at: Optional[datetime]
+    updated_at: Optional[datetime] = None
 
 
 @strawberry.input
