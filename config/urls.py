@@ -32,6 +32,8 @@ urlpatterns = [
     path("api/", include("organizations.urls")),
     path("api/", include("payroll.urls")),
     path("api/", include("attendance.urls")),
+    path("api/", include("feedback.urls")),
+    path("api/", include("onboarding.urls")),
     path("mcp/", include("mcp_oauth.urls")),
 ]
 

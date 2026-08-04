@@ -282,6 +282,75 @@ def register_hr_tools(mcp) -> None:
             required_scope="hr:read",
         )
 
+    @mcp.tool()
+    def get_onboarding_status(user_id: int) -> str:
+        """Get onboarding progress, status, and next task for a user."""
+        from ai_engine.tools import get_my_onboarding_status as _tool
+        return invoke_tool(_tool, {"user_id": user_id}, required_scope="hr:read")
+
+    @mcp.tool()
+    def list_pending_onboarding_tasks(
+        user_id: int, for_assignee_only: bool = False
+    ) -> str:
+        """List pending onboarding tasks for a hire or assignee."""
+        from ai_engine.tools import list_pending_onboarding_tasks as _tool
+        return invoke_tool(
+            _tool,
+            {"user_id": user_id, "for_assignee_only": for_assignee_only},
+            required_scope="hr:read",
+        )
+
+    @mcp.tool()
+    def explain_onboarding_task(
+        user_id: int, task_id: int = None, task_title: str = None
+    ) -> str:
+        """Explain a specific onboarding checklist task."""
+        from ai_engine.tools import explain_onboarding_task as _tool
+        payload = {"user_id": user_id}
+        if task_id is not None:
+            payload["task_id"] = task_id
+        if task_title:
+            payload["task_title"] = task_title
+        return invoke_tool(_tool, payload, required_scope="hr:read")
+
+    @mcp.tool()
+    def get_required_documents(user_id: int) -> str:
+        """List required onboarding documents and verification status."""
+        from ai_engine.tools import get_required_documents as _tool
+        return invoke_tool(_tool, {"user_id": user_id}, required_scope="hr:read")
+
+    @mcp.tool()
+    def complete_onboarding_task(user_id: int, task_id: int, notes: str = "") -> str:
+        """Complete an onboarding task when the user is assignee/hire/HR."""
+        from ai_engine.tools import complete_onboarding_task_tool as _tool
+        return invoke_tool(
+            _tool,
+            {"user_id": user_id, "task_id": task_id, "notes": notes or ""},
+            required_scope="hr:read",
+        )
+
+    @mcp.tool()
+    def suggest_onboarding_checklist(
+        user_id: int,
+        organization_id: int,
+        prompt: str,
+        employment_type: str = "",
+        department: str = "",
+    ) -> str:
+        """HR: AI-propose an onboarding checklist for a hiring scenario."""
+        from ai_engine.tools import suggest_onboarding_checklist as _tool
+        return invoke_tool(
+            _tool,
+            {
+                "user_id": user_id,
+                "organization_id": organization_id,
+                "prompt": prompt,
+                "employment_type": employment_type or "",
+                "department": department or "",
+            },
+            required_scope="hr:read",
+        )
+
 
 def register_payroll_tools(mcp) -> None:
     @mcp.tool()

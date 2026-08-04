@@ -16,30 +16,42 @@ from graphql_api.auth import Mutation as AuthMutation
 from reports.graphql.queries import ReportsQuery
 from performance.graphql.queries import PerformanceQuery
 from performance.graphql.mutations import PerformanceMutation
+from feedback.graphql.queries import FeedbackQuery
+from feedback.graphql.mutations import FeedbackMutation
+from onboarding.graphql.queries import OnboardingQuery
+from onboarding.graphql.mutations import OnboardingMutation
 
 @strawberry.type
-class Query(UserQuery, AttendanceQuery, LeaveQuery, OrganizationQuery, NotificationQuery, DashboardQuery, PayrollQuery, ReportsQuery, PerformanceQuery):
-    """
-    Root Query:
-    - me
-    - myAttendance
-    - attendanceByUser
-    - reports + performance analytics
-    """
-
-
+class Query(
+    UserQuery,
+    AttendanceQuery,
+    LeaveQuery,
+    OrganizationQuery,
+    NotificationQuery,
+    DashboardQuery,
+    PayrollQuery,
+    ReportsQuery,
+    PerformanceQuery,
+    FeedbackQuery,
+    OnboardingQuery,
+):
+    """Root Query including onboarding."""
 
 
 @strawberry.type
-class Mutation(UserMutation, AttendanceMutation, LeaveMutation, OrganizationMutation, NotificationMutation, PayrollMutation, AuthMutation, PerformanceMutation):
-    """
-    Root Mutation:
-    - login (REST preferred)
-    - checkIn
-    - checkOut
-    - requestAttendanceCorrection
-    - performance cycles / goals / reviews
-    """
+class Mutation(
+    UserMutation,
+    AttendanceMutation,
+    LeaveMutation,
+    OrganizationMutation,
+    NotificationMutation,
+    PayrollMutation,
+    AuthMutation,
+    PerformanceMutation,
+    FeedbackMutation,
+    OnboardingMutation,
+):
+    """Root Mutation including onboarding."""
     pass
 
 
@@ -47,4 +59,3 @@ schema = strawberry.Schema(
     query=Query,
     mutation=Mutation
 )
- 

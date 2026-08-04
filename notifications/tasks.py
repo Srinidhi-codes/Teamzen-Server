@@ -243,6 +243,46 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                     else "Teamzen"
                 ),
             )
+
+        elif target_type == "PreboardingInvite":
+            from temp_email.onboarding_email import get_preboarding_invite_email_html
+
+            join_date = ""
+            if recipient.date_of_joining:
+                join_date = recipient.date_of_joining.strftime("%b %d, %Y")
+            designation = ""
+            if recipient.designation_id and recipient.designation:
+                designation = recipient.designation.name
+            html_content = get_preboarding_invite_email_html(
+                employee_name=f"{recipient.first_name} {recipient.last_name}".strip()
+                or recipient.email,
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+                join_date=join_date,
+                invite_url=extra_context.get("invite_url", "#"),
+                designation=designation,
+            )
+
+        elif target_type == "EmployeeDocument":
+            from temp_email.onboarding_email import get_document_rejected_email_html
+            from django.conf import settings as dj_settings
+
+            portal = getattr(dj_settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+            html_content = get_document_rejected_email_html(
+                employee_name=f"{recipient.first_name} {recipient.last_name}".strip()
+                or recipient.email,
+                category=extra_context.get("category", "document"),
+                reason=extra_context.get("rejection_reason", ""),
+                action_url=f"{portal}/onboarding",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
             
         elif target_type == "Password Reset":
             from temp_email.password_reset_email import get_password_reset_email_html
