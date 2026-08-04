@@ -91,7 +91,7 @@ def _fmt_money(amount) -> str:
     try:
         val = float(amount)
     except (TypeError, ValueError):
-        return "—"
+        return "-"
     return f"INR {val:,.2f}"
 
 
