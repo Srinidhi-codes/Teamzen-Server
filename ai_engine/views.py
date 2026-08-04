@@ -349,6 +349,7 @@ class SmartAssistantChatView(APIView):
                     "page_path": request.data.get("page_path")
                     or request.data.get("payload", {}).get("page_path")
                     or "",
+                    "app_context": context if context in ("admin", "user") else "user",
                 }
             except Exception as e:
                 print(f"[ERR] State Initialization Error: {str(e)}")

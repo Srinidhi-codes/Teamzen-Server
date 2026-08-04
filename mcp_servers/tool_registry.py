@@ -351,6 +351,32 @@ def register_hr_tools(mcp) -> None:
             required_scope="hr:read",
         )
 
+    @mcp.tool()
+    def suggest_route(
+        user_id: int,
+        path: str,
+        label: str = "",
+        reason: str = "",
+        context: str = "user",
+    ) -> str:
+        """
+        Suggest an allowlisted in-app route as a [ROUTE_CARD] button (no auto-redirect).
+        Use when the user needs a page/form (leave apply UI, attendance punch, docs, policies).
+        context: 'user' for employee app, 'admin' for admin app.
+        """
+        from ai_engine.tools import suggest_route as _tool
+        return invoke_tool(
+            _tool,
+            {
+                "user_id": user_id,
+                "path": path,
+                "label": label or "",
+                "reason": reason or "",
+                "context": context or "user",
+            },
+            required_scope="hr:read",
+        )
+
 
 def register_payroll_tools(mcp) -> None:
     @mcp.tool()

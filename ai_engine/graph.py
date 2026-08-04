@@ -83,6 +83,7 @@ class AgentState(TypedDict):
     longitude: Optional[float]
     payslip_context: Optional[str]
     page_path: Optional[str]
+    app_context: Optional[str]  # 'user' | 'admin' — which frontend host is chatting
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +103,7 @@ def _get_legacy_tools():
         check_payroll_anomalies, check_calendar_conflicts,
         get_my_onboarding_status, list_pending_onboarding_tasks,
         explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
-        suggest_onboarding_checklist, polish_offer_letter_draft,
+        suggest_onboarding_checklist, polish_offer_letter_draft, suggest_route,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
@@ -115,7 +116,7 @@ def _get_legacy_tools():
         review_attendance_correction, check_payroll_anomalies, check_calendar_conflicts,
         get_my_onboarding_status, list_pending_onboarding_tasks,
         explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
-        suggest_onboarding_checklist, polish_offer_letter_draft,
+        suggest_onboarding_checklist, polish_offer_letter_draft, suggest_route,
     ]
 
 
@@ -272,6 +273,7 @@ _CORE_TOOL_NAMES = frozenset(
         "get_my_onboarding_status",
         "list_pending_onboarding_tasks",
         "get_required_documents",
+        "suggest_route",
     }
 )
 
@@ -337,17 +339,21 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
     lon = state.get("longitude")
 
     user_role = state.get("user_role") or "employee"
+    app_context = (state.get("app_context") or "user").lower()
+    if app_context not in ("admin", "user"):
+        app_context = "user"
 
     if compact:
         prompt = (
             "You are Teamzen HR assistant. Use tools for leave, attendance, payslips, and policies. "
             f"user_id={user_id}, role={user_role}, organization_id={org_id}, "
-            f"lat={lat}, lon={lon}, today={date.today().isoformat()}. "
+            f"app={app_context}, lat={lat}, lon={lon}, today={date.today().isoformat()}. "
             "Always pass user_id/organization_id to tools. "
             "Do not invent payslip or policy facts — use tools. "
             "For leave apply: collect type, dates, reason first. "
-            "Prefer card tags from tools ([BALANCE_CARD], [PAYROLL_CARD], [ATTENDANCE_CARD]). "
-            "Be brief."
+            "Prefer card tags from tools ([BALANCE_CARD], [PAYROLL_CARD], [ATTENDANCE_CARD], [ROUTE_CARD]). "
+            f"When calling suggest_route, pass context='{app_context}'. "
+            "When the user needs a page/form, call suggest_route (never invent URLs). Be brief."
         )
         payslip_ctx = state.get("payslip_context")
         if payslip_ctx:
@@ -359,6 +365,8 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
                 "\nUser is on an onboarding page — prefer get_my_onboarding_status "
                 "and list_pending_onboarding_tasks."
             )
+        elif page_path:
+            prompt += f"\nUser is on route '{page_path}'."
         return prompt
 
     prompt = (
@@ -366,6 +374,7 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
         "You have access to tools for checking leave balances, applying for leaves, checking attendance, "
         "searching company policies, checking team availability, getting organization stats, and viewing payslips. "
         f"The current user has ID: {user_id}, Role: {user_role}, and belongs to Organization ID: {org_id}. "
+        f"Chat app context: {app_context} (pass context='{app_context}' to suggest_route). "
         f"User's current Geolocation: Lat {lat}, Lon {lon}. "
         f"Today's Date: {date.today().strftime('%B %d, %Y')}. "
         "When calling tools, always use this user ID, Organization ID, and Geolocation if available. "
@@ -418,6 +427,16 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
         "To mark a task done use 'complete_onboarding_task_tool'. "
         "For handbook/policy questions during onboarding (including 'acknowledge handbook' tasks), use 'search_policies'. "
         "HR/Admin can use 'suggest_onboarding_checklist' to draft templates and 'polish_offer_letter_draft' for offer wording.\n"
+        "13. In-app navigation: When the user needs a screen or form (apply leave UI, punch/geofence, upload docs, "
+        "view full payslip page, open policies PDF list, HR hire board, etc.), call 'suggest_route' AFTER answering. "
+        "Prefer finishing with in-chat tools when possible; use suggest_route when camera, file upload, maps, or a full form is required. "
+        "Never invent URLs — only allowlisted paths via the tool. "
+        "Employee paths: /leaves?action=apply, /leaves, /leaves/approvals, /attendance, "
+        "/attendance/attendance-correction, /payroll, /onboarding, /policies, /dashboard, /team, /profile. "
+        "Admin paths: /onboarding, /onboarding/templates, /onboarding/letters, /leaves?tab=requests, "
+        "/employees, /attendance, /payroll, /policies, /settings, /dashboard. "
+        "Pass context='admin' when the chat context is admin; otherwise context='user'. "
+        "Output the [ROUTE_CARD] from the tool exactly.\n"
 
         "Formatting Instructions:\n"
         "1. CRITICAL: When explaining or summarizing a payslip, you MUST produce a [PAYROLL_CARD] as your FIRST action. DO NOT use plain text for the breakdown.\n"
@@ -434,6 +453,8 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
         "   [ERROR_CARD] title: {Title} | message: {The helpful error message} [/ERROR_CARD]\n"
         "6. Never claim a policy rule, leave rule, payroll rule, or attendance rule unless it came from a tool result or explicit application context. If unsure, say so clearly.\n"
         "7. When listing pending attendance corrections, output the [CORRECTION_CARD] tags returned by the tool exactly (do not convert them to plain text).\n"
+        "8. When suggesting navigation, output the [ROUTE_CARD] from 'suggest_route' exactly:\n"
+        "   [ROUTE_CARD] path: /leaves?action=apply | label: Request leave | reason: Open the leave form to submit [/ROUTE_CARD]\n"
     )
 
     payslip_ctx = state.get("payslip_context")
@@ -453,7 +474,30 @@ def _build_system_prompt(state: AgentState, *, compact: bool = False) -> str:
             f"The user is on route '{page_path}'. Prioritize onboarding tools "
             "(get_my_onboarding_status, list_pending_onboarding_tasks, get_required_documents, "
             "explain_onboarding_task) and policy search for handbook questions. "
-            "Help them complete the next pending checklist item."
+            "Help them complete the next pending checklist item. "
+            "If they need the checklist UI, suggest_route to /onboarding."
+        )
+    elif page_path and "/leaves" in page_path:
+        prompt += (
+            "\n\n--- PAGE CONTEXT ---\n"
+            f"The user is on '{page_path}'. Prefer leave tools (balances, apply, pending, cancel). "
+            "If they need the request form UI, suggest_route to /leaves?action=apply."
+        )
+    elif page_path and "/attendance" in page_path:
+        prompt += (
+            "\n\n--- PAGE CONTEXT ---\n"
+            f"The user is on '{page_path}'. Prefer attendance tools. "
+            "For missing checkout UI use suggest_route to /attendance/attendance-correction."
+        )
+    elif page_path and "/payroll" in page_path:
+        prompt += (
+            "\n\n--- PAGE CONTEXT ---\n"
+            f"The user is on '{page_path}'. Prefer payslip tools (get_latest_payslip, explain_deduction)."
+        )
+    elif page_path:
+        prompt += (
+            "\n\n--- PAGE CONTEXT ---\n"
+            f"The user is on route '{page_path}'. Bias tools to that page's domain when relevant."
         )
 
     return prompt
