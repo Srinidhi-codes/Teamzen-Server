@@ -26,6 +26,14 @@ def get_preboarding_invite_email_html(
                         </p>
         """
 
+    # Raw URL fallback — many mobile clients break button links
+    safe_url = invite_url or "#"
+    link_note = f"""
+                        <p style="margin: 16px 0 0 0; font-size: 12px; color: #64748b; line-height: 1.5; word-break: break-all;">
+                            If the button doesn't work, open this link:<br/>
+                            <a href="{safe_url}" style="color: #059669;">{safe_url}</a>
+                        </p>
+    """
 
     body = f"""
                 <tr>
