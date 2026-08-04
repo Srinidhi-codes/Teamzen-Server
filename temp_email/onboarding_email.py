@@ -26,6 +26,13 @@ def get_preboarding_invite_email_html(
                         </p>
         """
 
+    link_note = f"""
+                        <p style="margin: 16px 0 0 0; font-size: 13px; color: #475569; line-height: 1.6; word-break: break-word;">
+                            If the button does not open on your mobile device, use this link:<br/>
+                            <a href="{invite_url}" style="color: #047857; text-decoration: underline;">{invite_url}</a>
+                        </p>
+    """
+
     body = f"""
                 <tr>
                     <td style="padding: 48px 40px 24px 40px; text-align: center; background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 50%, #A7F3D0 100%);">
@@ -49,6 +56,7 @@ def get_preboarding_invite_email_html(
                             {details}
                         </table>
                         {button_html("Open preboarding portal", invite_url, "#059669")}
+                        {link_note}
                     </td>
                 </tr>
     """

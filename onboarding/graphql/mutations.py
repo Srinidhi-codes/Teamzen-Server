@@ -162,6 +162,8 @@ class OnboardingMutation:
                 template_id=input.template_id,
                 generate_offer=input.generate_offer,
                 letter_template_id=input.letter_template_id,
+                include_ctc_annexure=input.include_ctc_annexure,
+                annual_ctc=input.annual_ctc,
             )
             if input.send_invite and raw_token:
                 try:

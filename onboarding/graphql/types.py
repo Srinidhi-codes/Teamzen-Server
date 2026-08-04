@@ -172,6 +172,8 @@ class StartPreboardingInput:
     template_id: Optional[strawberry.ID] = None
     letter_template_id: Optional[strawberry.ID] = None
     generate_offer: bool = True
+    include_ctc_annexure: bool = False
+    annual_ctc: Optional[float] = None
     send_invite: bool = True
 
 
