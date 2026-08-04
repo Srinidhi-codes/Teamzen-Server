@@ -13,6 +13,32 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Helvetica core fonts are latin-1 only — map common Unicode punctuation.
+_PDF_CHAR_MAP = str.maketrans(
+    {
+        "\u2014": "-",  # em dash
+        "\u2013": "-",  # en dash
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2022": "-",
+        "\u00a0": " ",
+        "\u2026": "...",
+        "\u20b9": "Rs.",  # Indian rupee
+        "\u20ac": "EUR",
+        "\u00a3": "GBP",
+    }
+)
+
+
+def _pdf_safe(text: str | None) -> str:
+    """Normalize text so FPDF Helvetica can encode it."""
+    if not text:
+        return ""
+    s = str(text).translate(_PDF_CHAR_MAP)
+    return s.encode("latin-1", errors="replace").decode("latin-1")
+
 
 def _strip_html(html: str) -> str:
     text = re.sub(r"<br\s*/?>", "\n", html or "", flags=re.I)
@@ -20,7 +46,7 @@ def _strip_html(html: str) -> str:
     text = re.sub(r"</(div|li|h[1-6])>", "\n", text, flags=re.I)
     text = re.sub(r"<li[^>]*>", "• ", text, flags=re.I)
     text = re.sub(r"<[^>]+>", "", text)
-    return unescape(text).strip()
+    return _pdf_safe(unescape(text).strip())
 
 
 def _download_image_to_temp(url: str, suffix: str = ".png") -> str | None:
@@ -237,7 +263,7 @@ def render_offer_pdf_url(
                 pdf.set_font("helvetica", "", 9)
                 pdf.set_text_color(71, 85, 105)
             pdf.set_x(text_x)
-            pdf.multi_cell(0, 5, line[:140])
+            pdf.multi_cell(0, 5, _pdf_safe(line)[:140])
 
         pdf.set_draw_color(16, 185, 129)
         pdf.set_line_width(0.6)
@@ -246,16 +272,16 @@ def render_offer_pdf_url(
         pdf.set_y(42)
         pdf.set_font("helvetica", "B", 13)
         pdf.set_text_color(15, 23, 42)
-        pdf.multi_cell(0, 7, (subject or "Offer of Employment")[:160])
+        pdf.multi_cell(0, 7, _pdf_safe(subject or "Offer of Employment")[:160])
 
         pdf.ln(2)
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(100, 116, 139)
         candidate = f"{user.first_name} {user.last_name}".strip() or user.email
-        meta = f"Candidate: {candidate}  ·  {user.email}"
+        meta = f"Candidate: {candidate}  |  {user.email}"
         if onboarding.join_date:
-            meta += f"  ·  Join: {onboarding.join_date.strftime('%d %b %Y')}"
-        pdf.multi_cell(0, 5, meta)
+            meta += f"  |  Join: {onboarding.join_date.strftime('%d %b %Y')}"
+        pdf.multi_cell(0, 5, _pdf_safe(meta))
 
         pdf.ln(6)
         pdf.set_font("helvetica", "", 11)
@@ -265,21 +291,21 @@ def render_offer_pdf_url(
             if not line:
                 pdf.ln(3)
                 continue
-            pdf.multi_cell(0, 6, line)
+            pdf.multi_cell(0, 6, _pdf_safe(line))
             pdf.ln(1)
 
         pdf.ln(10)
         pdf.set_font("helvetica", "I", 9)
         pdf.set_text_color(100, 116, 139)
         company = org.name if org else "Company"
-        pdf.multi_cell(0, 5, f"For {company}  ·  Authorized HR / People Team")
+        pdf.multi_cell(0, 5, _pdf_safe(f"For {company}  |  Authorized HR / People Team"))
 
         # CTC annexure
         if ctc_snapshot and ctc_snapshot.get("annual_ctc") is not None:
             pdf.add_page()
             pdf.set_font("helvetica", "B", 14)
             pdf.set_text_color(15, 23, 42)
-            pdf.multi_cell(0, 8, "Annexure A — Compensation (CTC)")
+            pdf.multi_cell(0, 8, _pdf_safe("Annexure A - Compensation (CTC)"))
             pdf.ln(2)
             pdf.set_draw_color(16, 185, 129)
             pdf.line(18, pdf.get_y(), 192, pdf.get_y())
@@ -290,12 +316,12 @@ def render_offer_pdf_url(
             pdf.multi_cell(
                 0,
                 6,
-                f"Annual CTC: {_fmt_money(ctc_snapshot.get('annual_ctc'))}",
+                _pdf_safe(f"Annual CTC: {_fmt_money(ctc_snapshot.get('annual_ctc'))}"),
             )
             pdf.multi_cell(
                 0,
                 6,
-                f"Monthly CTC: {_fmt_money(ctc_snapshot.get('monthly_ctc'))}",
+                _pdf_safe(f"Monthly CTC: {_fmt_money(ctc_snapshot.get('monthly_ctc'))}"),
             )
             pdf.ln(4)
 
@@ -309,15 +335,21 @@ def render_offer_pdf_url(
 
             pdf.set_font("helvetica", "", 10)
             for row in ctc_snapshot.get("components") or []:
-                pdf.cell(90, 8, str(row.get("name", ""))[:42], border=1)
+                pdf.cell(90, 8, _pdf_safe(str(row.get("name", "")))[:42], border=1)
                 pdf.cell(
                     40,
                     8,
-                    str(row.get("frequency", "monthly")).title()[:16],
+                    _pdf_safe(str(row.get("frequency", "monthly")).title())[:16],
                     border=1,
                     align="C",
                 )
-                pdf.cell(44, 8, _fmt_money(row.get("amount")), border=1, align="R")
+                pdf.cell(
+                    44,
+                    8,
+                    _pdf_safe(_fmt_money(row.get("amount"))),
+                    border=1,
+                    align="R",
+                )
                 pdf.ln()
 
             pdf.ln(6)
@@ -325,7 +357,7 @@ def render_offer_pdf_url(
             pdf.set_text_color(100, 116, 139)
             note = ctc_snapshot.get("note") or ""
             if note:
-                pdf.multi_cell(0, 5, note)
+                pdf.multi_cell(0, 5, _pdf_safe(note))
 
         pdf.ln(8)
         pdf.set_font("helvetica", "I", 8)
@@ -333,7 +365,7 @@ def render_offer_pdf_url(
         pdf.multi_cell(
             0,
             4,
-            f"Generated for {user.email} · Teamzen Onboarding",
+            _pdf_safe(f"Generated for {user.email} | Teamzen Onboarding"),
         )
 
         buf = BytesIO(pdf.output())
