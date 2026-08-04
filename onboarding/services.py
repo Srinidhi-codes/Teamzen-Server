@@ -167,12 +167,19 @@ DEFAULT_TASKS = [
 
 DEFAULT_OFFER_BODY = """
 <p>Dear {{employee_name}},</p>
-<p>We are pleased to offer you the position of <strong>{{designation}}</strong>
-at <strong>{{company_name}}</strong>.</p>
-<p>Your proposed joining date is <strong>{{join_date}}</strong>.
-Department: <strong>{{department}}</strong>.</p>
-<p>Please review this offer and accept it through the preboarding portal.</p>
-<p>Welcome aboard!<br/>{{company_name}} HR</p>
+<p>We are pleased to offer you the role of <strong>{{designation}}</strong>
+in the <strong>{{department}}</strong> department with
+<strong>{{company_name}}</strong>, as per the terms and conditions of this
+offer letter and its accompanying annexures. You shall be employed as a
+full-time member of {{company_name}}. We welcome you on board!</p>
+<p><strong>Role:</strong> {{designation}}<br/>
+<strong>Department:</strong> {{department}}<br/>
+<strong>Date of Joining:</strong> {{join_date}}</p>
+<p>Please review this offer carefully, complete your preboarding formalities
+in the portal, and accept the offer to confirm your joining.</p>
+<p>Looking forward to working together with you.<br/>
+For {{company_name}}<br/>
+HR / People Team</p>
 """
 
 
@@ -205,12 +212,33 @@ def ensure_default_template(organization, created_by=None) -> OnboardingTemplate
                 organization=organization,
                 name="Standard Offer Letter",
                 letter_type="offer",
-                subject="Offer of Employment — {{company_name}}",
+                subject="Offer of Employment - {{company_name}}",
                 body_html=DEFAULT_OFFER_BODY.strip(),
                 is_default=True,
                 created_by=created_by,
             )
     return template
+
+
+def refresh_default_offer_letter_template(organization, created_by=None):
+    """Upgrade the org default offer letter HTML to the latest standard body."""
+    tpl = DocumentLetterTemplate.objects.filter(
+        organization=organization, letter_type="offer", is_default=True
+    ).first()
+    if not tpl:
+        return DocumentLetterTemplate.objects.create(
+            organization=organization,
+            name="Standard Offer Letter",
+            letter_type="offer",
+            subject="Offer of Employment - {{company_name}}",
+            body_html=DEFAULT_OFFER_BODY.strip(),
+            is_default=True,
+            created_by=created_by,
+        )
+    tpl.subject = "Offer of Employment - {{company_name}}"
+    tpl.body_html = DEFAULT_OFFER_BODY.strip()
+    tpl.save(update_fields=["subject", "body_html", "updated_at"])
+    return tpl
 
 
 def resolve_template(
@@ -518,11 +546,16 @@ def generate_offer_letter(
             organization=onboarding.organization,
             name="Standard Offer Letter",
             letter_type="offer",
-            subject="Offer of Employment — {{company_name}}",
+            subject="Offer of Employment - {{company_name}}",
             body_html=DEFAULT_OFFER_BODY.strip(),
             is_default=True,
             created_by=actor,
         )
+    elif tpl.is_default and len((tpl.body_html or "").strip()) < 400:
+        # Auto-upgrade short legacy default templates to the richer letter body
+        tpl.subject = "Offer of Employment - {{company_name}}"
+        tpl.body_html = DEFAULT_OFFER_BODY.strip()
+        tpl.save(update_fields=["subject", "body_html", "updated_at"])
 
     subject = merge_letter_fields(onboarding, tpl.subject)
     body = merge_letter_fields(onboarding, tpl.body_html)
@@ -591,7 +624,7 @@ def attach_uploaded_offer_letter(
     final_subject = (
         subject.strip()
         or (existing.subject if existing else "")
-        or f"Offer of Employment — {onboarding.organization.name}"
+        or f"Offer of Employment - {onboarding.organization.name}"
     )
 
     offer, _created = OfferLetter.objects.update_or_create(
@@ -627,7 +660,7 @@ def attach_signed_offer_letter(
     if not offer:
         offer = OfferLetter.objects.create(
             onboarding=onboarding,
-            subject=f"Offer of Employment — {onboarding.organization.name}",
+            subject=f"Offer of Employment - {onboarding.organization.name}",
             body_html="<p>Signed offer letter uploaded.</p>",
             status="sent",
             created_by=actor,
