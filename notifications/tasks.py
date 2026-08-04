@@ -253,6 +253,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             designation = ""
             if recipient.designation_id and recipient.designation:
                 designation = recipient.designation.name
+            offer_pdf_url_ctx = (extra_context.get("offer_pdf_url") or "").strip()
             html_content = get_preboarding_invite_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}".strip()
                 or recipient.email,
@@ -264,7 +265,8 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 join_date=join_date,
                 invite_url=extra_context.get("invite_url", "#"),
                 designation=designation,
-                has_offer_attachment=bool(extra_context.get("offer_pdf_url")),
+                has_offer_attachment=bool(offer_pdf_url_ctx),
+                offer_pdf_url=offer_pdf_url_ctx,
             )
 
         elif target_type == "EmployeeDocument":
@@ -337,35 +339,43 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         if html_content:
             email.attach_alternative(html_content, "text/html")
 
-        # Attach offer letter PDF when provided (prefer Brevo URL fetch over base64)
-        offer_pdf_url = (extra_context or {}).get("offer_pdf_url") or ""
+        # Attach offer letter PDF as base64 content.
+        # Brevo URL-fetch often fails on Cloudinary raw files and silently dropped
+        # the attachment when we previously retried without it.
+        offer_pdf_url = ((extra_context or {}).get("offer_pdf_url") or "").strip()
+        attached_pdf = False
         if offer_pdf_url:
             filename = "Offer_Letter.pdf"
-            subject_hint = (extra_context or {}).get("offer_subject") or ""
-            if subject_hint:
-                safe = re.sub(r"[^A-Za-z0-9._-]+", "_", subject_hint)[:60]
-                filename = f"{safe or 'Offer_Letter'}.pdf"
+            try:
+                from onboarding.offer_pdf import download_pdf_bytes
 
-            if offer_pdf_url.startswith("http"):
-                # Brevo downloads the file — more reliable than embedding large PDFs
+                pdf_bytes = download_pdf_bytes(offer_pdf_url)
+                if pdf_bytes:
+                    email.attach(filename, pdf_bytes, "application/pdf")
+                    attached_pdf = True
+                    print(
+                        f"Offer PDF attached ({len(pdf_bytes)} bytes) for {recipient.email}"
+                    )
+                else:
+                    print(f"Offer PDF download returned empty for {offer_pdf_url}")
+            except Exception:
+                import traceback
+
+                print(traceback.format_exc())
+
+            # Last-resort: ask Brevo to fetch the public URL itself
+            if not attached_pdf and offer_pdf_url.startswith("http"):
                 email.brevo_attachment_urls = [
                     {"url": offer_pdf_url, "name": filename}
                 ]
-            else:
-                try:
-                    from onboarding.offer_pdf import download_pdf_bytes
-
-                    pdf_bytes = download_pdf_bytes(offer_pdf_url)
-                    if pdf_bytes:
-                        email.attach(filename, pdf_bytes, "application/pdf")
-                except Exception:
-                    import traceback
-
-                    print(traceback.format_exc())
+                print(f"Falling back to Brevo URL attachment: {offer_pdf_url}")
 
         socket.setdefaulttimeout(45)
         email.send(fail_silently=False)
-        return f"Email sent successfully via Brevo HTTP to {recipient.email}"
+        return (
+            f"Email sent successfully via Brevo HTTP to {recipient.email}"
+            f" (pdf_attached={attached_pdf})"
+        )
 
     except socket.timeout:
         return f"CRITICAL: Email to {recipient.email} FAILED. {settings.EMAIL_HOST}:{settings.EMAIL_PORT} blocked the Render IP (Connection Timeout)."

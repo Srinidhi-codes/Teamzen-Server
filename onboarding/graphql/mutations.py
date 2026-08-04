@@ -68,13 +68,23 @@ def _notify_preboarding_invite(onboarding, raw_token: str, actor=None):
     from notifications.utils import notify_user
 
     url = preboarding_portal_url(raw_token)
-    offer = getattr(onboarding, "offer_letter", None)
+    offer = None
+    try:
+        offer = onboarding.offer_letter
+    except Exception:
+        offer = None
     if offer is None:
-        try:
-            offer = onboarding.offer_letter
-        except Exception:
-            offer = None
-    pdf_url = (offer.pdf_url if offer else "") or ""
+        from onboarding.models import OfferLetter
+
+        offer = OfferLetter.objects.filter(onboarding_id=onboarding.id).first()
+
+    pdf_url = (getattr(offer, "pdf_url", None) or "").strip()
+    if not pdf_url:
+        print(
+            f"WARNING: preboarding invite for onboarding={onboarding.id} "
+            "has no offer pdf_url — email will go without PDF attachment"
+        )
+
     notify_user(
         recipient_id=onboarding.user_id,
         verb="Complete your preboarding",
@@ -172,7 +182,10 @@ class OnboardingMutation:
                     ).get(id=onboarding.id)
                     _notify_preboarding_invite(onboarding, raw_token, actor=user)
                 except Exception:
-                    pass
+                    import traceback
+
+                    print("Failed to send preboarding invite email:")
+                    print(traceback.format_exc())
             return OnboardingPayload(
                 success=True,
                 invite_token=raw_token,

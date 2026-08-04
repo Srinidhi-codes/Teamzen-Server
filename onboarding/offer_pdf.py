@@ -377,11 +377,28 @@ def upload_offer_pdf_bytes(
 
 
 def download_pdf_bytes(url: str) -> bytes | None:
+    """Download offer PDF bytes for email attachment. Returns None on failure."""
     if not url:
         return None
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            return resp.read()
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "TeamzenOfferMailer/1.0",
+                "Accept": "application/pdf,application/octet-stream,*/*",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = resp.read()
+        if not data:
+            logger.warning("Empty response downloading offer PDF from %s", url)
+            return None
+        # Soft check — Cloudinary raw may not set content-type to pdf
+        if len(data) < 20:
+            logger.warning("Suspiciously small offer PDF (%s bytes) from %s", len(data), url)
+            return None
+        return data
     except Exception:
         logger.exception("Failed to download offer PDF from %s", url)
         return None
