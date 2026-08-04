@@ -305,8 +305,26 @@ def _draw_header(pdf, org, logo_path: str | None):
     pdf.set_y(y + 4)
 
 
-def _draw_footer_signature(pdf):
-    pdf.set_y(-18)
+def _draw_acceptance_line(pdf):
+    """
+    Place acceptance cue under current content on the SAME page.
+    Do not use set_y(-bottom) — that often forces a blank extra page.
+    """
+    # Keep enough room for one line without auto page-break
+    remaining = pdf.h - pdf.b_margin - pdf.get_y()
+    if remaining < 12:
+        # Squeeze onto current page rather than opening a new blank one
+        pdf.set_auto_page_break(auto=False)
+        try:
+            pdf.ln(max(2, min(6, remaining - 6)))
+            pdf.set_font("helvetica", "I", 8)
+            pdf.set_text_color(148, 163, 184)
+            pdf.cell(0, 4, "- Acceptance Signature -", align="C")
+        finally:
+            pdf.set_auto_page_break(auto=True, margin=22)
+        return
+
+    pdf.ln(8)
     pdf.set_font("helvetica", "I", 8)
     pdf.set_text_color(148, 163, 184)
     pdf.cell(0, 4, "- Acceptance Signature -", align="C")
@@ -486,7 +504,7 @@ def render_offer_pdf_url(
         pdf.set_font("helvetica", "", 9)
         pdf.set_text_color(71, 85, 105)
         pdf.cell(0, 5, "HR / People Team", ln=1)
-        _draw_footer_signature(pdf)
+        _draw_acceptance_line(pdf)
 
         # ---------- PAGE 2: Terms ----------
         pdf.add_page()
@@ -542,7 +560,7 @@ def render_offer_pdf_url(
         for block in terms:
             pdf.multi_cell(0, 5, _pdf_safe(block))
             pdf.ln(3)
-        _draw_footer_signature(pdf)
+        _draw_acceptance_line(pdf)
 
         # ---------- Annexure A: CTC (when provided) ----------
         if ctc_snapshot and ctc_snapshot.get("annual_ctc") is not None:
@@ -623,7 +641,7 @@ def render_offer_pdf_url(
                     "applicable performance and eligibility criteria."
                 ),
             )
-            _draw_footer_signature(pdf)
+            _draw_acceptance_line(pdf)
 
         # ---------- Annexure B: Documents + acceptance ----------
         pdf.add_page()
@@ -689,7 +707,7 @@ def render_offer_pdf_url(
                 f"Generated via Teamzen Onboarding for {company}."
             ),
         )
-        _draw_footer_signature(pdf)
+        _draw_acceptance_line(pdf)
 
         buf = BytesIO(pdf.output())
         buf.seek(0)
