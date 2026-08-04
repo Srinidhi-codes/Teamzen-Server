@@ -82,9 +82,31 @@ class OfferLetterType:
     subject: str
     body_html: str
     pdf_url: str
+    signed_pdf_url: str
+    signed_uploaded_at: Optional[datetime]
     status: str
+    source: str
+    include_ctc_annexure: bool
+    annual_ctc: Optional[float]
     accepted_name: str
     accepted_at: Optional[datetime]
+
+
+@strawberry.input
+class CtcComponentInput:
+    name: str
+    amount: float
+    frequency: str = "monthly"
+
+
+@strawberry.input
+class GenerateOfferInput:
+    onboarding_id: strawberry.ID
+    letter_template_id: Optional[strawberry.ID] = None
+    include_ctc_annexure: bool = False
+    annual_ctc: Optional[float] = None
+    ctc_components: Optional[List[CtcComponentInput]] = None
+    send_email: bool = False
 
 
 @strawberry.type

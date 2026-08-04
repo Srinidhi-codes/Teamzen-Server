@@ -336,6 +336,10 @@ class OfferLetter(models.Model):
         ("accepted", "Accepted"),
         ("declined", "Declined"),
     ]
+    SOURCE_CHOICES = [
+        ("generated", "System generated"),
+        ("uploaded", "HR uploaded"),
+    ]
 
     onboarding = models.OneToOneField(
         EmployeeOnboarding,
@@ -352,6 +356,27 @@ class OfferLetter(models.Model):
     subject = models.CharField(max_length=255, blank=True, default="")
     body_html = models.TextField(blank=True, default="")
     pdf_url = models.URLField(max_length=1024, blank=True, default="")
+    signed_pdf_url = models.URLField(max_length=1024, blank=True, default="")
+    signed_uploaded_at = models.DateTimeField(null=True, blank=True)
+    signed_uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_signed_offer_letters",
+    )
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default="generated"
+    )
+    include_ctc_annexure = models.BooleanField(default=False)
+    annual_ctc = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True
+    )
+    ctc_snapshot = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Frozen CTC annexure payload used when generating the PDF",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
     accepted_name = models.CharField(max_length=255, blank=True, default="")
     accepted_at = models.DateTimeField(null=True, blank=True)
