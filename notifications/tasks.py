@@ -337,27 +337,33 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         if html_content:
             email.attach_alternative(html_content, "text/html")
 
-        # Attach offer letter PDF when provided
+        # Attach offer letter PDF when provided (prefer Brevo URL fetch over base64)
         offer_pdf_url = (extra_context or {}).get("offer_pdf_url") or ""
         if offer_pdf_url:
-            try:
-                from onboarding.offer_pdf import download_pdf_bytes
+            filename = "Offer_Letter.pdf"
+            subject_hint = (extra_context or {}).get("offer_subject") or ""
+            if subject_hint:
+                safe = re.sub(r"[^A-Za-z0-9._-]+", "_", subject_hint)[:60]
+                filename = f"{safe or 'Offer_Letter'}.pdf"
 
-                pdf_bytes = download_pdf_bytes(offer_pdf_url)
-                if pdf_bytes:
-                    filename = "Offer_Letter.pdf"
-                    subject_hint = (extra_context or {}).get("offer_subject") or ""
-                    if subject_hint:
-                        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", subject_hint)[:60]
-                        filename = f"{safe or 'Offer_Letter'}.pdf"
-                    email.attach(filename, pdf_bytes, "application/pdf")
-            except Exception:
-                import traceback
+            if offer_pdf_url.startswith("http"):
+                # Brevo downloads the file — more reliable than embedding large PDFs
+                email.brevo_attachment_urls = [
+                    {"url": offer_pdf_url, "name": filename}
+                ]
+            else:
+                try:
+                    from onboarding.offer_pdf import download_pdf_bytes
 
-                print(traceback.format_exc())
-        
-        # Setting a 15-second timeout on the standard socket module just in case
-        socket.setdefaulttimeout(15)
+                    pdf_bytes = download_pdf_bytes(offer_pdf_url)
+                    if pdf_bytes:
+                        email.attach(filename, pdf_bytes, "application/pdf")
+                except Exception:
+                    import traceback
+
+                    print(traceback.format_exc())
+
+        socket.setdefaulttimeout(45)
         email.send(fail_silently=False)
         return f"Email sent successfully via Brevo HTTP to {recipient.email}"
 
