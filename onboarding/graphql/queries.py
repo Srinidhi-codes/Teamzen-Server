@@ -138,6 +138,7 @@ def _offer_type(o, onboarding=None) -> Optional[OfferLetterType]:
         annual_ctc=annual,
         accepted_name=o.accepted_name or "",
         accepted_at=o.accepted_at,
+        updated_at=getattr(o, "updated_at", None),
     )
 
 

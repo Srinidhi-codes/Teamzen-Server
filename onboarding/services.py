@@ -637,32 +637,54 @@ def attach_uploaded_offer_letter(
     subject: str = "",
     actor=None,
 ) -> OfferLetter:
+    """
+    Store an HR-uploaded offer PDF and make it the official letter for the
+    hire's preboarding portal (pdf_url is what the portal renders).
+    """
+    import time
+
     from onboarding.offer_pdf import upload_offer_pdf_bytes
 
-    pdf_url = upload_offer_pdf_bytes(onboarding, file_bytes, filename=filename)
+    # Unique public_id so CDN/browser don't keep serving a previous generated PDF
+    pdf_url = upload_offer_pdf_bytes(
+        onboarding,
+        file_bytes,
+        filename=filename,
+        public_id=f"offer_hr_{onboarding.id}_{int(time.time())}",
+    )
     if not pdf_url:
         raise ValueError("Failed to upload offer PDF")
 
-    existing = getattr(onboarding, "offer_letter", None)
-    body_html = existing.body_html if existing else ""
+    try:
+        existing = onboarding.offer_letter
+    except OfferLetter.DoesNotExist:
+        existing = None
+
     final_subject = (
         subject.strip()
         or (existing.subject if existing else "")
         or f"Offer of Employment - {onboarding.organization.name}"
+    )
+    body_html = (
+        "<p>Your official offer letter PDF has been uploaded by HR.</p>"
+        "<p>Please open or download the PDF above, review it carefully, "
+        "then accept the offer in this portal.</p>"
     )
 
     offer, _created = OfferLetter.objects.update_or_create(
         onboarding=onboarding,
         defaults={
             "subject": final_subject,
-            "body_html": body_html
-            or "<p>Offer letter uploaded by HR. Please download the PDF.</p>",
+            "body_html": body_html,
             "pdf_url": pdf_url,
             "source": "uploaded",
             "status": "sent",
+            "include_ctc_annexure": False,
             "created_by": actor,
         },
     )
+    # Keep reverse relation in sync for callers that still hold `onboarding`
+    onboarding.offer_letter = offer
     return offer
 
 

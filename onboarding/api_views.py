@@ -191,19 +191,22 @@ class OfferLetterUploadView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Always re-load so email + response use the fresh pdf_url
+        offer.refresh_from_db()
+        onboarding = EmployeeOnboarding.objects.select_related(
+            "user", "organization", "offer_letter"
+        ).get(id=onboarding.id)
+
         if send_email:
             try:
                 from onboarding.graphql.mutations import _notify_offer_letter
 
-                onboarding = EmployeeOnboarding.objects.select_related(
-                    "user", "organization", "offer_letter"
-                ).get(id=onboarding.id)
                 _notify_offer_letter(onboarding, actor=user)
             except Exception as e:
                 return Response(
                     {
                         "success": True,
-                        "warning": f"PDF saved but email failed: {e}",
+                        "warning": f"PDF saved (portal updated) but email failed: {e}",
                         "id": str(offer.id),
                         "pdf_url": offer.pdf_url,
                         "subject": offer.subject,
@@ -220,6 +223,7 @@ class OfferLetterUploadView(APIView):
                 "subject": offer.subject,
                 "source": offer.source,
                 "status": offer.status,
+                "portal_ready": bool(offer.pdf_url),
             }
         )
 
