@@ -472,6 +472,9 @@ def merge_letter_fields(onboarding: EmployeeOnboarding, text: str) -> str:
         "designation": getattr(user.designation, "name", None) or "",
         "department": getattr(user.department, "name", None) or "",
         "company_name": org.name if org else "Company",
+        "company_address": (org.headquarters_address if org else "") or "",
+        "company_gst": (org.gst_number if org else "") or "",
+        "company_pan": (org.pan_number if org else "") or "",
         "join_date": join.strftime("%d %b %Y") if join else "",
         "employment_type": user.employment_type or "",
         "manager_name": (
@@ -491,6 +494,9 @@ def generate_offer_letter(
     *,
     actor=None,
     letter_template_id=None,
+    include_ctc_annexure: bool = False,
+    annual_ctc=None,
+    ctc_components: list | None = None,
 ) -> OfferLetter:
     tpl = None
     if letter_template_id:
@@ -516,11 +522,29 @@ def generate_offer_letter(
 
     subject = merge_letter_fields(onboarding, tpl.subject)
     body = merge_letter_fields(onboarding, tpl.body_html)
+
+    from onboarding.offer_pdf import resolve_ctc_snapshot, render_offer_pdf_url
+
+    ctc_snapshot = resolve_ctc_snapshot(
+        onboarding,
+        include_ctc_annexure=include_ctc_annexure,
+        annual_ctc=annual_ctc,
+        ctc_components=ctc_components,
+    )
+    if include_ctc_annexure and not ctc_snapshot:
+        raise ValueError(
+            "CTC annexure requested but no annual CTC found. "
+            "Enter annual CTC or assign a salary structure first."
+        )
+
     pdf_url = ""
     try:
-        from onboarding.offer_pdf import render_offer_pdf_url
-
-        pdf_url = render_offer_pdf_url(onboarding, subject, body) or ""
+        pdf_url = (
+            render_offer_pdf_url(
+                onboarding, subject, body, ctc_snapshot=ctc_snapshot
+            )
+            or ""
+        )
     except Exception:
         logger.exception("Offer PDF generation failed for onboarding=%s", onboarding.id)
 
@@ -531,10 +555,129 @@ def generate_offer_letter(
             "subject": subject,
             "body_html": body,
             "pdf_url": pdf_url,
+            "source": "generated",
+            "include_ctc_annexure": bool(ctc_snapshot),
+            "annual_ctc": (
+                ctc_snapshot.get("annual_ctc") if ctc_snapshot else None
+            ),
+            "ctc_snapshot": ctc_snapshot,
             "status": "sent",
             "created_by": actor,
         },
     )
+    return offer
+
+
+def attach_uploaded_offer_letter(
+    onboarding: EmployeeOnboarding,
+    *,
+    file_bytes: bytes,
+    filename: str = "offer.pdf",
+    subject: str = "",
+    actor=None,
+) -> OfferLetter:
+    from onboarding.offer_pdf import upload_offer_pdf_bytes
+
+    pdf_url = upload_offer_pdf_bytes(onboarding, file_bytes, filename=filename)
+    if not pdf_url:
+        raise ValueError("Failed to upload offer PDF")
+
+    existing = getattr(onboarding, "offer_letter", None)
+    body_html = existing.body_html if existing else ""
+    final_subject = (
+        subject.strip()
+        or (existing.subject if existing else "")
+        or f"Offer of Employment — {onboarding.organization.name}"
+    )
+
+    offer, _created = OfferLetter.objects.update_or_create(
+        onboarding=onboarding,
+        defaults={
+            "subject": final_subject,
+            "body_html": body_html
+            or "<p>Offer letter uploaded by HR. Please download the PDF.</p>",
+            "pdf_url": pdf_url,
+            "source": "uploaded",
+            "status": "sent",
+            "created_by": actor,
+        },
+    )
+    return offer
+
+
+def attach_signed_offer_letter(
+    onboarding: EmployeeOnboarding,
+    *,
+    file_bytes: bytes,
+    filename: str = "signed_offer.pdf",
+    actor=None,
+    mark_accepted: bool = True,
+    accepted_name: str = "",
+    ip: str | None = None,
+    ua: str = "",
+) -> OfferLetter:
+    """Store a scanned/signed offer PDF returned by the hire or uploaded by HR."""
+    from onboarding.offer_pdf import upload_offer_pdf_bytes
+
+    offer = getattr(onboarding, "offer_letter", None)
+    if not offer:
+        offer = OfferLetter.objects.create(
+            onboarding=onboarding,
+            subject=f"Offer of Employment — {onboarding.organization.name}",
+            body_html="<p>Signed offer letter uploaded.</p>",
+            status="sent",
+            created_by=actor,
+        )
+
+    signed_url = upload_offer_pdf_bytes(
+        onboarding,
+        file_bytes,
+        filename=filename,
+        public_id=f"offer_signed_{onboarding.id}",
+    )
+    if not signed_url:
+        raise ValueError("Failed to upload signed offer PDF")
+
+    offer.signed_pdf_url = signed_url
+    offer.signed_uploaded_at = timezone.now()
+    offer.signed_uploaded_by = actor
+    update_fields = [
+        "signed_pdf_url",
+        "signed_uploaded_at",
+        "signed_uploaded_by",
+        "updated_at",
+    ]
+
+    if mark_accepted and offer.status != "accepted":
+        offer.status = "accepted"
+        offer.accepted_name = (
+            accepted_name.strip()
+            or (
+                f"{onboarding.user.first_name} {onboarding.user.last_name}".strip()
+                if onboarding.user_id
+                else ""
+            )
+            or onboarding.user.email
+        )
+        offer.accepted_at = timezone.now()
+        offer.accepted_ip = ip
+        offer.accepted_ua = (ua or "")[:2000]
+        update_fields.extend(
+            ["status", "accepted_name", "accepted_at", "accepted_ip", "accepted_ua"]
+        )
+
+    offer.save(update_fields=update_fields)
+
+    if offer.status == "accepted":
+        task = onboarding.tasks.filter(
+            title__icontains="accept offer", status="pending"
+        ).first()
+        if task:
+            complete_task(
+                task,
+                completed_by=actor or onboarding.user,
+                notes="Signed offer letter uploaded",
+            )
     return offer
 
 

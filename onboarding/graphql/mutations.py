@@ -18,6 +18,7 @@ from onboarding.graphql.types import (
     AcceptOfferInput,
     CreateOnboardingTemplateInput,
     EmployeeOnboardingType,
+    GenerateOfferInput,
     LetterTemplateInput,
     LetterTemplateType,
     OnboardingPayload,
@@ -67,6 +68,13 @@ def _notify_preboarding_invite(onboarding, raw_token: str, actor=None):
     from notifications.utils import notify_user
 
     url = preboarding_portal_url(raw_token)
+    offer = getattr(onboarding, "offer_letter", None)
+    if offer is None:
+        try:
+            offer = onboarding.offer_letter
+        except Exception:
+            offer = None
+    pdf_url = (offer.pdf_url if offer else "") or ""
     notify_user(
         recipient_id=onboarding.user_id,
         verb="Complete your preboarding",
@@ -79,7 +87,51 @@ def _notify_preboarding_invite(onboarding, raw_token: str, actor=None):
         target_id=str(onboarding.id),
         level="personal",
         notification_type="BOTH",
-        extra_context={"invite_url": url, "invite_token": raw_token},
+        extra_context={
+            "invite_url": url,
+            "invite_token": raw_token,
+            "offer_pdf_url": pdf_url,
+            "offer_subject": (offer.subject if offer else "") or "Offer Letter",
+        },
+    )
+
+
+def _notify_offer_letter(onboarding, actor=None):
+    """Send / resend offer PDF by email (with invite link when possible)."""
+    from notifications.utils import notify_user
+
+    offer = getattr(onboarding, "offer_letter", None)
+    if not offer or not offer.pdf_url:
+        raise ValueError("Generate or upload an offer PDF before emailing.")
+
+    invite_url = ""
+    try:
+        raw, _invite = create_preboarding_invite(onboarding, created_by=actor)
+        invite_url = preboarding_portal_url(raw)
+    except Exception:
+        invite_url = getattr(
+            __import__("django.conf", fromlist=["settings"]).settings,
+            "FRONTEND_URL",
+            "http://localhost:3000",
+        )
+
+    notify_user(
+        recipient_id=onboarding.user_id,
+        verb="Your offer letter is ready",
+        message=(
+            f"Your offer letter is attached. Review and accept it in the preboarding portal: "
+            f"{invite_url}"
+        ),
+        actor_id=getattr(actor, "id", None),
+        target_type="PreboardingInvite",
+        target_id=str(onboarding.id),
+        level="personal",
+        notification_type="BOTH",
+        extra_context={
+            "invite_url": invite_url or "#",
+            "offer_pdf_url": offer.pdf_url,
+            "offer_subject": offer.subject or "Offer Letter",
+        },
     )
 
 
@@ -113,6 +165,9 @@ class OnboardingMutation:
             )
             if input.send_invite and raw_token:
                 try:
+                    onboarding = EmployeeOnboarding.objects.select_related(
+                        "user", "offer_letter", "organization"
+                    ).get(id=onboarding.id)
                     _notify_preboarding_invite(onboarding, raw_token, actor=user)
                 except Exception:
                     pass
@@ -131,7 +186,9 @@ class OnboardingMutation:
         user = info.context.request.user
         require_hr(user)
         try:
-            ob = EmployeeOnboarding.objects.select_related("user").get(id=onboarding_id)
+            ob = EmployeeOnboarding.objects.select_related(
+                "user", "offer_letter"
+            ).get(id=onboarding_id)
             if user.role != "superadmin" and ob.organization_id != user.organization_id:
                 return OnboardingPayload(error="Unauthorized")
             raw, _invite = create_preboarding_invite(ob, created_by=user)
@@ -284,30 +341,79 @@ class OnboardingMutation:
     def generate_offer_for_onboarding(
         self,
         info: Info,
-        onboarding_id: strawberry.ID,
+        onboarding_id: Optional[strawberry.ID] = None,
         letter_template_id: Optional[strawberry.ID] = None,
+        input: Optional[GenerateOfferInput] = None,
     ) -> EmployeeOnboardingType:
         user = info.context.request.user
         require_hr(user)
+
+        include_ctc = False
+        annual_ctc = None
+        ctc_components = None
+        send_email = False
+        if input:
+            onboarding_id = input.onboarding_id
+            letter_template_id = input.letter_template_id or letter_template_id
+            include_ctc = bool(input.include_ctc_annexure)
+            annual_ctc = input.annual_ctc
+            send_email = bool(input.send_email)
+            if input.ctc_components:
+                ctc_components = [
+                    {
+                        "name": c.name,
+                        "amount": c.amount,
+                        "frequency": c.frequency or "monthly",
+                    }
+                    for c in input.ctc_components
+                ]
+
+        if not onboarding_id:
+            raise Exception("onboardingId is required")
+
         ob = EmployeeOnboarding.objects.select_related("user", "organization").get(
             id=onboarding_id
         )
         if user.role != "superadmin" and ob.organization_id != user.organization_id:
             raise Exception("Unauthorized")
         generate_offer_letter(
-            ob, actor=user, letter_template_id=letter_template_id
+            ob,
+            actor=user,
+            letter_template_id=letter_template_id,
+            include_ctc_annexure=include_ctc,
+            annual_ctc=annual_ctc,
+            ctc_components=ctc_components,
         )
-        return _onboarding_type(
-            EmployeeOnboarding.objects.select_related(
-                "user",
-                "user__department",
-                "user__designation",
-                "template",
-                "offer_letter",
-            )
-            .prefetch_related("tasks__assignee", "documents")
-            .get(id=ob.id)
-        )
+        ob = EmployeeOnboarding.objects.select_related(
+            "user",
+            "user__department",
+            "user__designation",
+            "template",
+            "offer_letter",
+        ).prefetch_related("tasks__assignee", "documents").get(id=ob.id)
+        if send_email:
+            try:
+                _notify_offer_letter(ob, actor=user)
+            except Exception:
+                pass
+        return _onboarding_type(ob)
+
+    @strawberry.mutation
+    def send_offer_letter_email(
+        self, info: Info, onboarding_id: strawberry.ID
+    ) -> OnboardingPayload:
+        user = info.context.request.user
+        require_hr(user)
+        try:
+            ob = EmployeeOnboarding.objects.select_related(
+                "user", "organization", "offer_letter"
+            ).get(id=onboarding_id)
+            if user.role != "superadmin" and ob.organization_id != user.organization_id:
+                return OnboardingPayload(error="Unauthorized")
+            _notify_offer_letter(ob, actor=user)
+            return OnboardingPayload(success=True)
+        except Exception as e:
+            return OnboardingPayload(error=str(e))
 
     @strawberry.mutation
     def accept_offer_letter(

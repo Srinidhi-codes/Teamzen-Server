@@ -109,12 +109,23 @@ def _doc_type(d: EmployeeDocument) -> EmployeeDocumentType:
 def _offer_type(o) -> Optional[OfferLetterType]:
     if not o:
         return None
+    annual = None
+    if o.annual_ctc is not None:
+        try:
+            annual = float(o.annual_ctc)
+        except Exception:
+            annual = None
     return OfferLetterType(
         id=strawberry.ID(str(o.id)),
         subject=o.subject or "",
         body_html=o.body_html or "",
         pdf_url=o.pdf_url or "",
+        signed_pdf_url=getattr(o, "signed_pdf_url", None) or "",
+        signed_uploaded_at=getattr(o, "signed_uploaded_at", None),
         status=o.status,
+        source=getattr(o, "source", None) or "generated",
+        include_ctc_annexure=bool(getattr(o, "include_ctc_annexure", False)),
+        annual_ctc=annual,
         accepted_name=o.accepted_name or "",
         accepted_at=o.accepted_at,
     )

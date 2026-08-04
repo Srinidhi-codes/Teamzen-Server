@@ -9,12 +9,22 @@ def get_preboarding_invite_email_html(
     designation: str = "",
     logo_url: str = "",
     company_url: str = "#",
+    has_offer_attachment: bool = False,
 ) -> str:
     details = ""
     if designation:
         details += info_row_html("Role", designation, "💼")
     if join_date:
         details += info_row_html("Joining Date", join_date, "📅")
+
+    offer_note = ""
+    if has_offer_attachment:
+        offer_note = """
+                        <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+                            Your <strong>offer letter PDF</strong> is attached to this email.
+                            Please review it, then open the portal to accept.
+                        </p>
+        """
 
     body = f"""
                 <tr>
@@ -34,10 +44,11 @@ def get_preboarding_invite_email_html(
                             Before your first day, please upload required documents, fill bank/tax details,
                             and accept your offer letter.
                         </p>
+                        {offer_note}
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
                             {details}
                         </table>
-                        {button_html(invite_url, "Open preboarding portal")}
+                        {button_html("Open preboarding portal", invite_url, "#059669")}
                     </td>
                 </tr>
     """
@@ -78,7 +89,7 @@ def get_document_rejected_email_html(
                         </p>
                         {reason_row}
                         <div style="margin-top: 20px;">
-                            {button_html(action_url, "Re-upload document")}
+                            {button_html("Re-upload document", action_url, "#DC2626")}
                         </div>
                     </td>
                 </tr>
