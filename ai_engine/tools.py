@@ -854,11 +854,14 @@ def suggest_leave_window(user_id: int, month: int = None):
         # 4. Find the "Best Window"
         best_window = None
         window_score = -100
+        from organizations.workweek import get_weekend_days
+
+        weekend = get_weekend_days(user.organization)
         
         for d in range(1, last_day + 1):
             curr_date = date(target_year, target_month, d)
-            # Skip if it's a weekend (Sat=5, Sun=6)
-            if curr_date.weekday() >= 5:
+            # Skip organization weekend days
+            if curr_date.weekday() in weekend:
                 continue
             # Skip if it's already a holiday
             if curr_date in holiday_dates:
@@ -875,8 +878,8 @@ def suggest_leave_window(user_id: int, month: int = None):
             if prev_day in holiday_dates or next_day in holiday_dates:
                 score += 15
             
-            # Higher score if next to a weekend
-            if curr_date.weekday() == 0 or curr_date.weekday() == 4: # Mon or Fri
+            # Higher score if next to a weekend / weekly off
+            if prev_day.weekday() in weekend or next_day.weekday() in weekend:
                 score += 10
             
             # Lower score if team absence is high

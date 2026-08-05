@@ -5,8 +5,10 @@ from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, Com
 
 def get_working_days(start_date, end_date, organization):
     """
-    Calculate duration excluding weekends and organization holidays.
+    Calculate duration excluding organization weekend days and holidays.
     """
+    from organizations.workweek import is_org_weekend
+
     holidays = CompanyHoliday.objects.filter(
         organization=organization,
         holiday_date__range=[start_date, end_date]
@@ -15,7 +17,7 @@ def get_working_days(start_date, end_date, organization):
     working_days = 0
     curr = start_date
     while curr <= end_date:
-        if curr.weekday() < 6 and curr not in holidays:
+        if not is_org_weekend(curr, organization) and curr not in holidays:
             working_days += 1
         curr += timedelta(days=1)
     return working_days

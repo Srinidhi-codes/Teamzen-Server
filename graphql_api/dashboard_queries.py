@@ -16,6 +16,9 @@ class AIInsight:
     message: str
     type: str  # 'info', 'warning', 'stats', 'anomaly'
     query: str  # Pre-filled query for "Ask AI"
+    path: Optional[str] = None  # Optional in-app deep-link
+    label: Optional[str] = None  # CTA label for path
+
 
 @strawberry.type
 class MonthlyStat:
@@ -520,7 +523,8 @@ class DashboardQuery:
             
             # 1. Base status
             status = 'absent'
-            if d.weekday() == 6: # Sunday only
+            from organizations.workweek import is_org_weekend
+            if is_org_weekend(d, user.organization):
                 status = 'weekend'
             
             # 2. Check Record

@@ -1,5 +1,5 @@
 import strawberry
-from typing import Optional
+from typing import List, Optional
 from datetime import date, time
 from organizations.models import Organization, OfficeLocation, Department, Designation
 from organizations.graphql.types import OrganizationType, OfficeLocationType, DepartmentType, DesignationType
@@ -16,6 +16,7 @@ class OrganizationInput:
     llm_api_key: Optional[str] = None
     accent: Optional[str] = "teal"
     face_attendance_enabled: Optional[bool] = None
+    weekend_days: Optional[List[int]] = None
     is_active: bool
     id: strawberry.ID
     
@@ -30,6 +31,7 @@ class CreateOrganizationInput:
     llm_api_key: Optional[str] = None
     accent: Optional[str] = "teal"
     face_attendance_enabled: Optional[bool] = False
+    weekend_days: Optional[List[int]] = None
     is_active: bool
     
 @strawberry.input
@@ -117,6 +119,15 @@ class OrganizationMutation:
             raise GraphQLError("Invalid accent color")
         payload["accent"] = accent
 
+        from organizations.workweek import validate_weekend_days_input
+
+        try:
+            payload["weekend_days"] = validate_weekend_days_input(
+                payload.pop("weekend_days", None)
+            )
+        except ValueError as e:
+            raise GraphQLError(str(e))
+
         org = Organization.objects.create(**payload)
         return org
 
@@ -156,6 +167,13 @@ class OrganizationMutation:
             org.accent = input.accent
         if input.face_attendance_enabled is not None:
             org.face_attendance_enabled = input.face_attendance_enabled
+        if input.weekend_days is not None:
+            from organizations.workweek import validate_weekend_days_input
+
+            try:
+                org.weekend_days = validate_weekend_days_input(input.weekend_days)
+            except ValueError as e:
+                raise GraphQLError(str(e))
         org.is_active = input.is_active
         org.save()
         return org
