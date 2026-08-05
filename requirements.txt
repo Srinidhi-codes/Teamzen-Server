@@ -105,6 +105,8 @@ django_celery_beat
 langchain-groq
 langchain-google-genai
 fpdf2
+pymupdf>=1.24.0,<2
+openpyxl>=3.1.0,<4
 razorpay
 pyotp==2.9.0
 mcp[cli]>=1.3.0,<2

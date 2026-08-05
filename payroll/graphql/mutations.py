@@ -1,6 +1,7 @@
 import strawberry
 from typing import Optional, List
 from strawberry.types import Info
+from strawberry.scalars import JSON
 from decimal import Decimal
 from datetime import date
 from .types import (
@@ -12,6 +13,10 @@ from .types import (
     PayrollAdjustmentType,
     SalaryAdvanceType,
     PayrollSettingsType,
+    DataImportJobType,
+    PayslipTemplateType,
+    FounderPayrollSetupType,
+    PayrollSetupChecklistType,
 )
 from ..models import (
     EmployeeComponentOverride,
@@ -23,9 +28,11 @@ from ..models import (
     PayrollAdjustment,
     SalaryAdvance,
     Payslip,
+    DataImportJob,
+    PayslipTemplate,
 )
 from ..services import PayrollService
-from .auth import require_payroll_admin, require_org
+from .auth import require_payroll_admin, require_org, scoped_qs
 
 
 def _get_run_for_user(user, payroll_run_id):
@@ -395,3 +402,287 @@ class PayrollMutation:
             )
             created.append(obj)
         return created
+
+    @strawberry.mutation
+    def update_import_mapping(
+        self,
+        info: Info,
+        job_id: strawberry.ID,
+        column_mapping: JSON,
+        use_ai: bool = False,
+    ) -> DataImportJobType:
+        from ..import_services import (
+            TARGET_KEYS,
+            ai_refine_column_mapping,
+            heuristic_column_mapping,
+        )
+
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        job = scoped_qs(DataImportJob.objects.filter(id=job_id), user).first()
+        if not job:
+            raise Exception("Import job not found")
+
+        mapping = dict(column_mapping or {})
+        cleaned = {}
+        used = set()
+        for h in job.headers or []:
+            t = str(mapping.get(h, "") or "").strip()
+            if t not in TARGET_KEYS:
+                t = ""
+            if t and t in used:
+                t = ""
+            if t:
+                used.add(t)
+            cleaned[h] = t
+
+        confidence = {h: (0.9 if cleaned.get(h) else 0.0) for h in (job.headers or [])}
+
+        if use_ai:
+            cleaned, confidence = ai_refine_column_mapping(
+                job.organization_id,
+                job.headers or [],
+                job.sample_rows or [],
+                current_mapping=cleaned,
+            )
+        elif not any(cleaned.values()):
+            cleaned, confidence = heuristic_column_mapping(job.headers or [])
+
+        job.column_mapping = cleaned
+        job.mapping_confidence = confidence
+        job.status = "mapped"
+        job.save(
+            update_fields=[
+                "column_mapping",
+                "mapping_confidence",
+                "status",
+                "updated_at",
+            ]
+        )
+        return DataImportJobType.from_model(job)
+
+    @strawberry.mutation
+    def preview_data_import(
+        self, info: Info, job_id: strawberry.ID
+    ) -> DataImportJobType:
+        from ..import_services import build_preview
+
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        job = scoped_qs(DataImportJob.objects.filter(id=job_id), user).first()
+        if not job:
+            raise Exception("Import job not found")
+        if not job.column_mapping or "email" not in (job.column_mapping or {}).values():
+            raise Exception("Map an email column before previewing.")
+
+        preview = build_preview(
+            job.organization, job.all_rows or [], job.column_mapping or {}
+        )
+        job.preview_result = preview
+        job.status = "previewed"
+        job.save(update_fields=["preview_result", "status", "updated_at"])
+        return DataImportJobType.from_model(job)
+
+    @strawberry.mutation
+    def commit_data_import(
+        self,
+        info: Info,
+        job_id: strawberry.ID,
+        update_existing: bool = True,
+        assign_ctc: bool = True,
+        send_welcome: bool = False,
+    ) -> DataImportJobType:
+        from ..import_services import commit_import
+
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        job = scoped_qs(DataImportJob.objects.filter(id=job_id), user).first()
+        if not job:
+            raise Exception("Import job not found")
+        if job.status == "committed":
+            raise Exception("This import was already committed.")
+        if not job.column_mapping or "email" not in (job.column_mapping or {}).values():
+            raise Exception("Map an email column before committing.")
+
+        try:
+            result = commit_import(
+                job.organization,
+                job.all_rows or [],
+                job.column_mapping or {},
+                update_existing=update_existing,
+                assign_ctc=assign_ctc,
+                send_welcome=send_welcome,
+                actor=user,
+            )
+            job.commit_result = result
+            job.status = "committed"
+            job.error_message = ""
+            job.save(
+                update_fields=[
+                    "commit_result",
+                    "status",
+                    "error_message",
+                    "updated_at",
+                ]
+            )
+        except Exception as e:
+            job.status = "failed"
+            job.error_message = str(e)
+            job.save(update_fields=["status", "error_message", "updated_at"])
+            raise
+        return DataImportJobType.from_model(job)
+
+    @strawberry.mutation
+    def set_default_payslip_template(
+        self,
+        info: Info,
+        template_id: strawberry.ID,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> PayslipTemplateType:
+        from ..template_services import set_org_default_template
+
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        org = require_org(user, organization_id)
+        tpl = PayslipTemplate.objects.filter(id=template_id).first()
+        if not tpl:
+            raise Exception("Template not found")
+        if tpl.organization_id and tpl.organization_id != org.id:
+            raise Exception("Unauthorized")
+        result = set_org_default_template(org, tpl)
+        return PayslipTemplateType.from_model(result)
+
+    @strawberry.mutation
+    def update_payslip_template(
+        self,
+        info: Info,
+        template_id: strawberry.ID,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        layout_key: Optional[str] = None,
+        theme: Optional[JSON] = None,
+        is_active: Optional[bool] = None,
+    ) -> PayslipTemplateType:
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        tpl = PayslipTemplate.objects.filter(id=template_id).first()
+        if not tpl:
+            raise Exception("Template not found")
+        if tpl.organization_id is None:
+            raise Exception("System gallery templates cannot be edited. Set as default to clone.")
+        if user.role != "superadmin" or user.organization_id:
+            if tpl.organization_id != require_org(user).id:
+                raise Exception("Unauthorized")
+        if name is not None:
+            tpl.name = name.strip()[:120]
+        if description is not None:
+            tpl.description = description
+        if layout_key is not None:
+            if layout_key not in (
+                "classic",
+                "modern",
+                "compact",
+                "minimal",
+                "uploaded",
+                "networth",
+            ):
+                raise Exception("Invalid layout_key")
+            tpl.layout_key = layout_key
+        if theme is not None:
+            tpl.theme = dict(theme)
+        if is_active is not None:
+            tpl.is_active = is_active
+        tpl.save()
+        return PayslipTemplateType.from_model(tpl)
+
+    @strawberry.mutation
+    def create_payslip_template(
+        self,
+        info: Info,
+        name: str,
+        layout_key: str = "classic",
+        description: str = "",
+        theme: Optional[JSON] = None,
+        organization_id: Optional[strawberry.ID] = None,
+        set_as_default: bool = False,
+    ) -> PayslipTemplateType:
+        from ..template_services import DEFAULT_THEME, set_org_default_template
+
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        org = require_org(user, organization_id)
+        if layout_key not in (
+            "classic",
+            "modern",
+            "compact",
+            "minimal",
+            "uploaded",
+            "networth",
+        ):
+            raise Exception("Invalid layout_key")
+        tpl = PayslipTemplate.objects.create(
+            organization=org,
+            name=name.strip()[:120],
+            description=description or "",
+            layout_key=layout_key,
+            theme=dict(theme or DEFAULT_THEME),
+            source="custom",
+            is_default=False,
+            is_active=True,
+            created_by=user,
+        )
+        if set_as_default:
+            tpl = set_org_default_template(org, tpl)
+        return PayslipTemplateType.from_model(tpl)
+
+    @strawberry.mutation
+    def delete_payslip_template(
+        self,
+        info: Info,
+        template_id: strawberry.ID,
+    ) -> bool:
+        """Delete an org-owned payslip template. System gallery templates cannot be deleted."""
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        tpl = PayslipTemplate.objects.filter(id=template_id).first()
+        if not tpl:
+            raise Exception("Template not found")
+        if tpl.organization_id is None:
+            raise Exception("System gallery templates cannot be deleted.")
+        org = require_org(user)
+        if user.role != "superadmin" or user.organization_id:
+            if tpl.organization_id != org.id:
+                raise Exception("Unauthorized")
+        elif user.role == "superadmin" and not user.organization_id:
+            # Superadmin without org may delete any org template
+            pass
+        was_default = tpl.is_default
+        org_id = tpl.organization_id
+        tpl.delete()
+        # If default was removed, leave org without default (falls back to system classic)
+        if was_default and org_id:
+            pass
+        return True
+
+    @strawberry.mutation
+    def ensure_founder_payroll_setup(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> FounderPayrollSetupType:
+        """Ensure default salary structure exists; return Founder checklist + structure id."""
+        user = info.context.request.user
+        require_payroll_admin(user)
+        org = require_org(user, organization_id)
+        from payroll.setup_services import (
+            ensure_default_salary_structure,
+            build_payroll_setup_checklist,
+        )
+
+        structure = ensure_default_salary_structure(org)
+        data = build_payroll_setup_checklist(org)
+        return FounderPayrollSetupType(
+            checklist=PayrollSetupChecklistType(**data),
+            default_structure_id=strawberry.ID(str(structure.id)),
+            default_structure_name=structure.name or "Standard CTC",
+        )

@@ -197,3 +197,128 @@ class SalaryAdvance(models.Model):
 
     def __str__(self):
         return f"Advance {self.user.email} ₹{self.amount} ({self.status})"
+
+
+class DataImportJob(models.Model):
+    """Startup migration: Excel/CSV upload → map columns → preview → commit."""
+
+    STATUS_CHOICES = [
+        ("uploaded", "Uploaded"),
+        ("mapped", "Mapped"),
+        ("previewed", "Previewed"),
+        ("committed", "Committed"),
+        ("failed", "Failed"),
+    ]
+    SOURCE_CHOICES = [
+        ("csv", "CSV"),
+        ("xlsx", "Excel"),
+        ("xls", "Excel legacy"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="data_import_jobs"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="data_import_jobs",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="uploaded")
+    source_type = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="csv")
+    file_name = models.CharField(max_length=255, blank=True, default="")
+    file = models.FileField(
+        upload_to="imports/",
+        null=True,
+        blank=True,
+        storage=RawMediaCloudinaryStorage(),
+    )
+    headers = models.JSONField(default=list, blank=True)
+    sample_rows = models.JSONField(default=list, blank=True)
+    all_rows = models.JSONField(default=list, blank=True)
+    column_mapping = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Maps source header → target field key (or empty to skip)",
+    )
+    mapping_confidence = models.JSONField(default=dict, blank=True)
+    preview_result = models.JSONField(default=dict, blank=True)
+    commit_result = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Import {self.id} ({self.status}) — {self.file_name}"
+
+
+class PayslipTemplate(models.Model):
+    """Payslip visual template: gallery presets + org customs (incl. clone-from-upload)."""
+
+    SOURCE_CHOICES = [
+        ("system", "System gallery"),
+        ("custom", "Custom"),
+        ("cloned", "Cloned from upload"),
+    ]
+    LAYOUT_CHOICES = [
+        ("classic", "Classic"),
+        ("modern", "Modern"),
+        ("compact", "Compact"),
+        ("minimal", "Minimal"),
+        ("uploaded", "Uploaded PDF"),
+        ("networth", "Networth-style replica"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="payslip_templates",
+        help_text="Null = system gallery template available to all orgs",
+    )
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=80, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    layout_key = models.CharField(
+        max_length=20, choices=LAYOUT_CHOICES, default="classic"
+    )
+    theme = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Colors and display flags used by PDF renderer",
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="custom")
+    source_file = models.FileField(
+        upload_to="payslip_templates/",
+        null=True,
+        blank=True,
+        storage=RawMediaCloudinaryStorage(),
+    )
+    preview_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="AI notes from clone-from-upload analysis",
+    )
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_payslip_templates",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+
+    def __str__(self):
+        scope = self.organization_id or "system"
+        return f"{self.name} ({scope})"

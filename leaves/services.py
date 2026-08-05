@@ -3,6 +3,16 @@ from datetime import date, timedelta
 from django.db.models import F
 from leaves.models import LeaveBalance, LeaveType, CustomUser, LeaveRequest, CompanyHoliday, LeaveAuditLog
 
+
+def round_to_half_day(value) -> decimal.Decimal:
+    """
+    Round leave days to the nearest 0.5 so balances stay usable
+    (full day / half day). Avoids stranded scraps like 0.3.
+    """
+    d = decimal.Decimal(str(value or 0))
+    return (d * 2).quantize(decimal.Decimal("1"), rounding=decimal.ROUND_HALF_UP) / 2
+
+
 def get_working_days(start_date, end_date, organization):
     """
     Calculate duration excluding organization weekend days and holidays.
@@ -67,23 +77,23 @@ def calculate_initial_entitlement(user, leave_type: LeaveType, year: int):
     join_date = user.date_joined.date()
 
     if not leave_type.prorate_on_join:
-        return full
+        return round_to_half_day(full)
 
     if leave_type.proration_basis == "daily":
         days_in_year = (date(year,12,31) - date(year,1,1)).days + 1
         remaining = (date(year,12,31) - join_date).days + 1
-        return round(full * (remaining / days_in_year), 2)
+        return round_to_half_day(full * (remaining / days_in_year))
 
     if leave_type.proration_basis == "monthly":
         months_remaining = 12 - join_date.month + 1
-        return round(full * (months_remaining / 12), 2)
+        return round_to_half_day(full * (months_remaining / 12))
 
     if leave_type.proration_basis == "quarterly":
         quarter = (join_date.month - 1) // 3 + 1
         quarters_remaining = 4 - quarter + 1
-        return round(full * (quarters_remaining / 4), 2)
+        return round_to_half_day(full * (quarters_remaining / 4))
 
-    return full
+    return round_to_half_day(full)
 
 
 def initialize_user_leave_balances(user):
@@ -121,6 +131,7 @@ def perform_accrual(balance: LeaveBalance):
     else:
         return
 
+    amount = round_to_half_day(amount)
     balance.total_entitled += amount
     balance.accrued += amount
     balance.last_accrued_date = date.today()
@@ -245,8 +256,7 @@ def carry_forward(balance):
 
     remaining = balance.get_available_balance()
     cf = min(remaining, lt.carry_forward_max_days)
-
-    return cf
+    return round_to_half_day(cf)
 
 def cancel_leave_request(request):
     if request._status == 'cancelled':
@@ -340,26 +350,29 @@ def get_balance(user, leave_type: LeaveType, year=None):
     ).first()
 
 def add_accrual(balance: LeaveBalance, days):
-    balance.accrued += days
-    balance.total_entitled += days
+    amount = round_to_half_day(days)
+    balance.accrued += amount
+    balance.total_entitled += amount
     balance.save(update_fields=["accrued", "total_entitled"])
 
 def prorate_entitlement(user, leave_type: LeaveType, year):
     join = user.date_joined.date()
     if join.year != year:
-        return leave_type.max_days_per_year
+        return round_to_half_day(leave_type.max_days_per_year)
     
     total_days = 365
     days_served = (date(year, 12, 31) - join).days + 1
     
     prorated = (leave_type.max_days_per_year * days_served) / total_days
-    return round(prorated, 2)
+    return round_to_half_day(prorated)
 
 def allocate_entitlement(user, leave_type, year):
     entitlement = leave_type.max_days_per_year
 
     if leave_type.prorate_on_join:
         entitlement = prorate_entitlement(user, leave_type, year)
+    else:
+        entitlement = round_to_half_day(entitlement)
 
     balance = get_or_create_balance(user, leave_type, year)
     balance.total_entitled = entitlement
@@ -403,6 +416,7 @@ def run_carry_forward():
         if lt.carry_forward_max_days:
             cf = min(cf, lt.carry_forward_max_days)
 
+        cf = round_to_half_day(cf)
         new = get_or_create_balance(bal.user, lt, today.year)
         new.carried_forward = cf
         new.save(update_fields=["carried_forward"])

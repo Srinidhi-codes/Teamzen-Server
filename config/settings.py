@@ -146,6 +146,13 @@ CORS_ALLOW_HEADERS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_EXPOSE_HEADERS = [
+    "Content-Disposition",
+    "X-Skipped-Count",
+    "X-Included-Count",
+    "X-Total-Amount",
+]
+
 if DEBUG:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False

@@ -2,6 +2,7 @@ from typing import Optional, List
 from decimal import Decimal
 import strawberry
 from strawberry import auto
+from strawberry.scalars import JSON
 import strawberry.django
 from ..models import (
     EmployeeComponentOverride,
@@ -73,6 +74,16 @@ class PayrollSetupChecklistType:
     employees_with_ctc: int
     active_advances: int
     ready: bool
+    active_employees: int = 0
+    employees_missing_ctc: int = 0
+    employees_missing_bank: int = 0
+
+
+@strawberry.type
+class FounderPayrollSetupType:
+    checklist: PayrollSetupChecklistType
+    default_structure_id: Optional[strawberry.ID]
+    default_structure_name: str
 
 
 @strawberry.django.type(SalaryComponent)
@@ -205,3 +216,98 @@ class PayslipComponentType:
     component_code: auto
     component_type: auto
     amount: auto
+
+
+@strawberry.type
+class ImportTargetFieldType:
+    key: str
+    label: str
+    required: bool
+
+
+@strawberry.type
+class DataImportJobType:
+    id: strawberry.ID
+    status: str
+    source_type: str
+    file_name: str
+    headers: List[str]
+    sample_rows: JSON
+    column_mapping: JSON
+    mapping_confidence: JSON
+    preview_result: JSON
+    commit_result: JSON
+    error_message: str
+    row_count: int
+    created_at: str
+
+    @classmethod
+    def from_model(cls, job) -> "DataImportJobType":
+        return cls(
+            id=strawberry.ID(str(job.id)),
+            status=job.status,
+            source_type=job.source_type,
+            file_name=job.file_name or "",
+            headers=job.headers or [],
+            sample_rows=job.sample_rows or [],
+            column_mapping=job.column_mapping or {},
+            mapping_confidence=job.mapping_confidence or {},
+            preview_result=job.preview_result or {},
+            commit_result=job.commit_result or {},
+            error_message=job.error_message or "",
+            row_count=len(job.all_rows or []),
+            created_at=job.created_at.isoformat() if job.created_at else "",
+        )
+
+
+@strawberry.type
+class PayslipTemplateType:
+    id: strawberry.ID
+    name: str
+    slug: str
+    description: str
+    layout_key: str
+    theme: JSON
+    source: str
+    preview_notes: str
+    is_default: bool
+    is_active: bool
+    is_system: bool
+    organization_id: Optional[strawberry.ID]
+    source_file_url: Optional[str] = None
+
+    @classmethod
+    def from_model(cls, tpl) -> "PayslipTemplateType":
+        source_url = None
+        try:
+            if tpl.source_file:
+                source_url = tpl.source_file.url
+        except Exception:
+            source_url = None
+        return cls(
+            id=strawberry.ID(str(tpl.id)),
+            name=tpl.name,
+            slug=tpl.slug or "",
+            description=tpl.description or "",
+            layout_key=tpl.layout_key,
+            theme=tpl.theme or {},
+            source=tpl.source,
+            preview_notes=tpl.preview_notes or "",
+            is_default=bool(tpl.is_default),
+            is_active=bool(tpl.is_active),
+            is_system=tpl.organization_id is None,
+            organization_id=strawberry.ID(str(tpl.organization_id))
+            if tpl.organization_id
+            else None,
+            source_file_url=source_url,
+        )
+
+
+@strawberry.type
+class DataImportCommitResultType:
+    created: int
+    updated: int
+    ctc_assigned: int
+    failed_count: int
+    failed: JSON
+    preview_summary: JSON

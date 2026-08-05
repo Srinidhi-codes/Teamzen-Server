@@ -12,6 +12,8 @@ def create_leave_balances_for_user(sender, instance, created, **kwargs):
 
     current_year = timezone.now().year
     leave_types = LeaveType.objects.filter(is_active=True)
+    if instance.organization_id:
+        leave_types = leave_types.filter(organization_id=instance.organization_id)
 
     for lt in leave_types:
         entitlement = calculate_initial_entitlement(instance, lt, current_year)
