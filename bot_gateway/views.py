@@ -46,12 +46,23 @@ def _send_telegram_reply(chat_id, reply: BotReply) -> None:
         reply_markup=reply.reply_markup,
     )
     if not result.get("ok"):
-        telegram_api.send_message(
+        logger.warning(
+            "Telegram HTML send failed chat_id=%s desc=%s — retrying plain",
+            chat_id,
+            result.get("description"),
+        )
+        plain = telegram_api.send_message(
             chat_id,
             _strip_html(text),
             parse_mode="",
             reply_markup=reply.reply_markup,
         )
+        if not plain.get("ok"):
+            logger.error(
+                "Telegram plain send also failed chat_id=%s desc=%s",
+                chat_id,
+                plain.get("description"),
+            )
 
 
 def _send_slack_reply(chat_id, reply: BotReply) -> None:
@@ -114,10 +125,17 @@ class TelegramWebhookView(View):
         except Exception:
             return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
 
-        try:
-            self._dispatch(update)
-        except Exception:
-            logger.exception("Telegram webhook dispatch failed")
+        # Ack Telegram immediately — agent/LLM work can exceed webhook timeouts
+        # (same pattern as Slack/WhatsApp). Sync handling caused silent no-replies
+        # on Render when the request was killed mid-agent.
+        def _run():
+            close_old_connections()
+            try:
+                self._dispatch(update)
+            except Exception:
+                logger.exception("Telegram webhook dispatch failed")
+
+        threading.Thread(target=_run, daemon=True).start()
         return HttpResponse("ok")
 
     def _dispatch(self, update: dict) -> None:
