@@ -52,7 +52,11 @@ class LeaveQuery:
 
         user = info.context.request.user
         queryset = LeaveBalance.objects.select_related(
-            "user", "user__organization", "leave_type"
+            "user",
+            "user__organization",
+            "user__department",
+            "user__manager",
+            "leave_type",
         ).all()
 
         if not user.is_authenticated:
@@ -77,6 +81,9 @@ class LeaveQuery:
         elif organization_id:
             queryset = queryset.filter(user__organization_id=organization_id)
 
+        # Current year balances for the admin portfolio (avoid stale years cluttering UI)
+        queryset = queryset.filter(year=date.today().year, is_active=True)
+
         if search:
             queryset = queryset.filter(
                 Q(user__first_name__icontains=search) |
@@ -84,8 +91,8 @@ class LeaveQuery:
                 Q(user__department__name__icontains=search) |
                 Q(user__organization__name__icontains=search)
             )
-        
-        return queryset
+
+        return queryset.order_by("user__first_name", "user__last_name", "leave_type__name")
 
     @strawberry.field
     def leave_requests(

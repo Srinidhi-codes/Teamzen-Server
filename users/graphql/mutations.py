@@ -234,6 +234,8 @@ class UserMutation:
             
             if input.organization_id:
                 new_user.organization_id = input.organization_id
+            elif user.organization_id:
+                new_user.organization_id = user.organization_id
             if input.department_id:
                 new_user.department_id = input.department_id
             if input.designation_id:

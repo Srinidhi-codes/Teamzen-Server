@@ -12,6 +12,9 @@ from .types import (
     PayrollSettingsType,
     AdvanceRecoveryPreviewType,
     PayrollSetupChecklistType,
+    DataImportJobType,
+    ImportTargetFieldType,
+    PayslipTemplateType,
 )
 from .auth import require_payroll_admin, require_org, scoped_qs
 from ..models import (
@@ -22,8 +25,12 @@ from ..models import (
     PayrollAdjustment,
     SalaryAdvance,
     EmployeeSalaryStructure,
+    DataImportJob,
+    PayslipTemplate,
 )
 from ..services import PayrollService
+from ..import_services import IMPORT_TARGET_FIELDS
+from ..template_services import ensure_system_templates
 
 
 @strawberry.type
@@ -158,26 +165,10 @@ class PayrollQuery:
         user = info.context.request.user
         require_payroll_admin(user)
         org = require_org(user, organization_id)
-        components = SalaryComponent.objects.filter(organization=org).count()
-        structures = SalaryStructure.objects.filter(organization=org).count()
-        assigned = (
-            EmployeeSalaryStructure.objects.filter(
-                user__organization=org, is_active=True
-            )
-            .values("user_id")
-            .distinct()
-            .count()
-        )
-        advances = SalaryAdvance.objects.filter(
-            organization=org, status="active"
-        ).count()
-        return PayrollSetupChecklistType(
-            components=components,
-            structures=structures,
-            employees_with_ctc=assigned,
-            active_advances=advances,
-            ready=components > 0 and structures > 0 and assigned > 0,
-        )
+        from payroll.setup_services import build_payroll_setup_checklist
+
+        data = build_payroll_setup_checklist(org)
+        return PayrollSetupChecklistType(**data)
 
     @strawberry.field
     def advance_recovery_preview(
@@ -196,3 +187,58 @@ class PayrollQuery:
             )
             for r in rows
         ]
+
+    @strawberry.field
+    def import_target_fields(self, info: Info) -> List[ImportTargetFieldType]:
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        return [
+            ImportTargetFieldType(
+                key=f["key"],
+                label=f["label"],
+                required=f.get("required") == "true",
+            )
+            for f in IMPORT_TARGET_FIELDS
+        ]
+
+    @strawberry.field
+    def data_import_job(
+        self, info: Info, id: strawberry.ID
+    ) -> Optional[DataImportJobType]:
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        job = scoped_qs(DataImportJob.objects.filter(id=id), user).first()
+        return DataImportJobType.from_model(job) if job else None
+
+    @strawberry.field
+    def data_import_jobs(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[DataImportJobType]:
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        qs = scoped_qs(
+            DataImportJob.objects.all(),
+            user,
+            organization_id=organization_id,
+        ).order_by("-created_at")[:20]
+        return [DataImportJobType.from_model(j) for j in qs]
+
+    @strawberry.field
+    def payslip_templates(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+    ) -> List[PayslipTemplateType]:
+        user = info.context.request.user
+        require_payroll_admin(user, allow_hr=True)
+        ensure_system_templates()
+        org = require_org(user, organization_id)
+        system = list(
+            PayslipTemplate.objects.filter(organization=None, is_active=True)
+        )
+        org_tpls = list(
+            PayslipTemplate.objects.filter(organization=org, is_active=True)
+        )
+        return [PayslipTemplateType.from_model(t) for t in system + org_tpls]
