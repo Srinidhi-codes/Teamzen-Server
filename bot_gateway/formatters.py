@@ -129,6 +129,18 @@ def format_for_bot(ai_response: str) -> str:
             f"Reply: confirm correction {corr_id}"
         ).strip()
 
+    def replace_route(match: re.Match) -> str:
+        f = _parse_fields(match.group(1))
+        label = _escape(f.get("label", "Open in Teamzen"))
+        reason = _escape(f.get("reason", f.get("message", "")))
+        path = _escape(f.get("path", f.get("href", "")))
+        lines = [f"🔗 <b>{label}</b>"]
+        if reason:
+            lines.append(reason)
+        if path:
+            lines.append(f"Open in the Teamzen app: <code>{path}</code>")
+        return "\n".join(lines)
+
     replacements = [
         (r"\[PAYROLL_CARD\](.*?)\[/PAYROLL_CARD\]", replace_payroll),
         (r"\[BALANCE_CARD\](.*?)\[/BALANCE_CARD\]", replace_balance),
@@ -137,6 +149,7 @@ def format_for_bot(ai_response: str) -> str:
         (r"\[ERROR_CARD\](.*?)\[/ERROR_CARD\]", replace_error),
         (r"\[PENDING_LEAVE_CARD\](.*?)\[/PENDING_LEAVE_CARD\]", replace_pending_leave),
         (r"\[CORRECTION_CARD\](.*?)\[/CORRECTION_CARD\]", replace_correction),
+        (r"\[ROUTE_CARD\](.*?)\[/ROUTE_CARD\]", replace_route),
     ]
 
     for pattern, replacer in replacements:

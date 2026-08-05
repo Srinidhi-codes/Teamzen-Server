@@ -1592,3 +1592,127 @@ def polish_offer_letter_draft(
         f"message: Polished draft ready. Preview: {preview} | "
         f"type: info | topic: Onboarding [/INSIGHT_CARD]"
     )
+
+
+# ---------------------------------------------------------------------------
+# In-app navigation (ROUTE_CARD)
+# ---------------------------------------------------------------------------
+_EMPLOYEE_ROUTES = {
+    "/dashboard": "Dashboard",
+    "/leaves": "Leaves",
+    "/leaves/approvals": "Leave Approvals",
+    "/attendance": "Attendance",
+    "/attendance/attendance-correction": "Attendance Correction",
+    "/payroll": "Payroll",
+    "/onboarding": "My Onboarding",
+    "/policies": "Policies",
+    "/profile": "Profile",
+    "/team": "Team",
+    "/notifications": "Notifications",
+    "/feedback": "Feedback",
+}
+
+_ADMIN_ROUTES = {
+    "/dashboard": "Dashboard",
+    "/employees": "Employees",
+    "/onboarding": "Onboarding Board",
+    "/onboarding/templates": "Onboarding Templates",
+    "/onboarding/letters": "Offer Letters",
+    "/leaves": "Leaves",
+    "/attendance": "Attendance",
+    "/payroll": "Payroll",
+    "/policies": "Policies",
+    "/settings": "Settings",
+    "/notifications": "Notifications",
+    "/feedback": "Feedback",
+    "/reports": "Reports",
+    "/performance": "Performance",
+}
+
+# Allowed query keys for deep-links (path must still be allowlisted)
+_ALLOWED_QUERY_KEYS = frozenset({"action", "tab", "highlight", "from"})
+
+
+def _normalize_route_path(path: str) -> tuple[str, str]:
+    """Return (pathname, full_href_with_safe_query)."""
+    raw = (path or "").strip()
+    if not raw.startswith("/"):
+        raw = "/" + raw
+    if "?" in raw:
+        pathname, query = raw.split("?", 1)
+    else:
+        pathname, query = raw, ""
+    pathname = pathname.rstrip("/") or "/"
+    if not query:
+        return pathname, pathname
+
+    from urllib.parse import parse_qsl, urlencode
+
+    safe_pairs = [
+        (k, v)
+        for k, v in parse_qsl(query, keep_blank_values=False)
+        if k in _ALLOWED_QUERY_KEYS and v
+    ]
+    if not safe_pairs:
+        return pathname, pathname
+    return pathname, f"{pathname}?{urlencode(safe_pairs)}"
+
+
+@tool
+def suggest_route(
+    user_id: int,
+    path: str,
+    label: str = "",
+    reason: str = "",
+    context: str = "user",
+):
+    """
+    Suggest an in-app page the user should open (never auto-redirects).
+    Use when they need a form, upload, camera/geofence punch, or full page UI —
+    not when an in-chat tool can finish the task alone.
+
+    path: allowlisted app path, optionally with query.
+      Employee examples: /leaves?action=apply, /attendance,
+        /attendance/attendance-correction, /payroll, /onboarding, /policies
+      Admin examples: /onboarding, /onboarding/templates, /leaves?tab=requests,
+        /employees, /payroll
+    label: button text (defaults to route name).
+    reason: short why they should go there (shown on the card).
+    context: 'user' (employee app) or 'admin' (admin app).
+    Returns a [ROUTE_CARD] for the UI Go button.
+    """
+    catalog = _ADMIN_ROUTES if (context or "user").lower() == "admin" else _EMPLOYEE_ROUTES
+    pathname, href = _normalize_route_path(path)
+
+    # Admin detail routes like /onboarding/123
+    if pathname not in catalog:
+        if pathname.startswith("/onboarding/") and pathname.count("/") == 2:
+            if (context or "user").lower() == "admin":
+                default_label = "Onboarding Detail"
+            else:
+                return (
+                    "[ERROR_CARD] title: Unknown route | "
+                    "message: That path is not available in the employee app. [/ERROR_CARD]"
+                )
+        elif pathname.startswith("/payroll/") and pathname.count("/") == 2:
+            default_label = "Payroll Detail"
+        else:
+            return (
+                "[ERROR_CARD] title: Unknown route | "
+                f"message: Path '{pathname}' is not in the allowlist. "
+                "Use a known app route. [/ERROR_CARD]"
+            )
+    else:
+        default_label = catalog[pathname]
+
+    btn = (label or "").strip() or default_label
+    why = (reason or "").strip() or f"Open {default_label} to continue."
+    # Pipe separators must not appear in free text fields
+    btn = btn.replace("|", "-")
+    why = why.replace("|", "-")
+    href_safe = href.replace("|", "")
+
+    return (
+        f"[ROUTE_CARD] path: {href_safe} | label: {btn} | "
+        f"reason: {why} [/ROUTE_CARD]"
+    )

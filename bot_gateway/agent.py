@@ -66,13 +66,17 @@ def run_agent_for_user(
     all_messages = existing + [HumanMessage(content=query)]
 
     org_id = user.organization_id if user.organization_id else 0
+    user_role = getattr(user, "role", None) or "employee"
     initial_state = {
         "messages": all_messages,
         "user_id": user.id,
         "organization_id": org_id,
+        "user_role": user_role,
         "latitude": latitude or 0,
         "longitude": longitude or 0,
         "payslip_context": None,
+        "page_path": "",
+        "app_context": "user",
     }
 
     def _run() -> str:
@@ -82,7 +86,11 @@ def run_agent_for_user(
         async def _collect() -> str:
             from ai_engine.graph import build_graph
 
-            compiled_app, _mcp = await build_graph(organization_id=org_id)
+            compiled_app, _mcp = await build_graph(
+                organization_id=org_id,
+                user_id=user.id,
+                user_role=user_role,
+            )
             content_accumulated = ""
             async for event in compiled_app.astream_events(initial_state, version="v2"):
                 kind = event.get("event", "")
