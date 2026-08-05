@@ -20,6 +20,7 @@ from feedback.graphql.queries import FeedbackQuery
 from feedback.graphql.mutations import FeedbackMutation
 from onboarding.graphql.queries import OnboardingQuery
 from onboarding.graphql.mutations import OnboardingMutation
+from ai_engine.graphql_queries import AiQuery
 
 @strawberry.type
 class Query(
@@ -34,8 +35,9 @@ class Query(
     PerformanceQuery,
     FeedbackQuery,
     OnboardingQuery,
+    AiQuery,
 ):
-    """Root Query including onboarding."""
+    """Root Query including onboarding and AI helpers."""
 
 
 @strawberry.type

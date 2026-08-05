@@ -3,6 +3,12 @@ from datetime import time
 from django.core.validators import RegexValidator
 from django.conf import settings
 
+
+def default_weekend_days():
+    """Sunday-only weekly off (matches historical leave duration behaviour)."""
+    return [6]
+
+
 class Organization(models.Model):
     """Enterprise organization model"""
     ACCENT_CHOICES = [
@@ -50,6 +56,14 @@ class Organization(models.Model):
     face_attendance_enabled = models.BooleanField(
         default=False,
         help_text="When True, employees must verify face to punch attendance (geofence remains soft-flagged)",
+    )
+    weekend_days = models.JSONField(
+        default=default_weekend_days,
+        blank=True,
+        help_text=(
+            "Weekly off days as Python weekday ints (Mon=0 … Sun=6). "
+            "Empty list means no weekly offs. Default is Sunday [6]."
+        ),
     )
     accent = models.CharField(
         max_length=20,

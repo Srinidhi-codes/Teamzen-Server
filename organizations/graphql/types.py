@@ -1,7 +1,8 @@
 import strawberry
-from typing import Optional
+from typing import List, Optional
 from strawberry import auto
 from organizations.models import OfficeLocation, Organization, Department, Designation
+from organizations.workweek import normalize_weekend_days
 
 @strawberry.django.type(Organization)
 class OrganizationType:
@@ -23,6 +24,10 @@ class OrganizationType:
     is_active: auto
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def weekend_days(self) -> List[int]:
+        return normalize_weekend_days(getattr(self, "weekend_days", None))
 
     @strawberry.field
     def can_enable_payroll_auto(self) -> bool:
