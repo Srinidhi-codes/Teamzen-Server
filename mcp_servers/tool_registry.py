@@ -255,19 +255,23 @@ def register_hr_tools(mcp) -> None:
         return invoke_tool(_tool, payload, required_scope="hr:read")
 
     @mcp.tool()
-    def get_team_stats(organization_id: int) -> dict:
+    def get_team_stats(organization_id: int, user_id: int = None) -> dict:
         """
         Fetches high-level attendance and leave stats for the whole organization.
         Returns headcount, present today, on-leave count, and low-attendance alerts.
-        Useful for managers and admins.
+        Useful for managers and admins. Pass authenticated user_id for role checks.
         """
         from ai_engine.tools import get_team_stats as _tool
         return invoke_tool(
-            _tool, {"organization_id": organization_id}, required_scope="hr:read"
+            _tool,
+            {"organization_id": organization_id, "user_id": user_id},
+            required_scope="hr:read",
         )
 
     @mcp.tool()
-    def generate_monthly_summary(organization_id: int, month: int, year: int) -> dict:
+    def generate_monthly_summary(
+        organization_id: int, month: int, year: int, user_id: int = None
+    ) -> dict:
         """
         Generates an executive summary of an organization's HR performance for a month.
         Aggregates attendance rates, leave trends, and departmental activity.
@@ -278,7 +282,12 @@ def register_hr_tools(mcp) -> None:
         from ai_engine.tools import generate_monthly_summary as _tool
         return invoke_tool(
             _tool,
-            {"organization_id": organization_id, "month": month, "year": year},
+            {
+                "organization_id": organization_id,
+                "month": month,
+                "year": year,
+                "user_id": user_id,
+            },
             required_scope="hr:read",
         )
 
@@ -380,23 +389,27 @@ def register_hr_tools(mcp) -> None:
 
 def register_payroll_tools(mcp) -> None:
     @mcp.tool()
-    def get_latest_payslip(user_id: int) -> str:
+    def get_latest_payslip(user_id: int, target_user_id: int = None) -> str:
         """
-        Returns the user's most recent payslip (gross, net, deductions, components).
-        Use for salary / payslip / net pay questions. Do not invent numbers.
+        Returns the authenticated user's most recent payslip.
+        HR/Admin only: pass target_user_id for another employee. Never put others in user_id.
         """
         from ai_engine.tools import get_latest_payslip as _tool
-        return invoke_tool(_tool, {"user_id": user_id}, required_scope="payroll:read")
+        payload = {"user_id": user_id}
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
+        return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
-    def get_payslip(user_id: int, month: int, year: int) -> str:
-        """Fetch payslip for a specific month (1-12) and year."""
+    def get_payslip(
+        user_id: int, month: int, year: int, target_user_id: int = None
+    ) -> str:
+        """Fetch authenticated user's payslip for month/year. HR/Admin: optional target_user_id."""
         from ai_engine.tools import get_payslip as _tool
-        return invoke_tool(
-            _tool,
-            {"user_id": user_id, "month": month, "year": year},
-            required_scope="payroll:read",
-        )
+        payload = {"user_id": user_id, "month": month, "year": year}
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
+        return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
     def explain_deduction(
@@ -404,8 +417,9 @@ def register_payroll_tools(mcp) -> None:
         month: int = None,
         year: int = None,
         component_name: str = None,
+        target_user_id: int = None,
     ) -> str:
-        """Explain payslip deductions (PF, PT, LOP, etc.). Optional month/year/component filter."""
+        """Explain payslip deductions. HR/Admin: optional target_user_id."""
         from ai_engine.tools import explain_deduction as _tool
         payload = {"user_id": user_id}
         if month is not None:
@@ -414,6 +428,8 @@ def register_payroll_tools(mcp) -> None:
             payload["year"] = year
         if component_name:
             payload["component_name"] = component_name
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
         return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
@@ -422,14 +438,17 @@ def register_payroll_tools(mcp) -> None:
         unpaid_days: float,
         month: int = None,
         year: int = None,
+        target_user_id: int = None,
     ) -> str:
-        """Estimate pay loss for unpaid/LOP days from active CTC. Read-only."""
+        """Estimate pay loss for unpaid/LOP days. HR/Admin: optional target_user_id."""
         from ai_engine.tools import salary_forecast as _tool
         payload = {"user_id": user_id, "unpaid_days": unpaid_days}
         if month is not None:
             payload["month"] = month
         if year is not None:
             payload["year"] = year
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
         return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
@@ -439,36 +458,46 @@ def register_payroll_tools(mcp) -> None:
         year1: int,
         month2: int,
         year2: int,
+        target_user_id: int = None,
     ) -> str:
-        """Compare two payslips across months for net/gross/LOP/deduction deltas."""
+        """Compare two payslips. HR/Admin: optional target_user_id."""
         from ai_engine.tools import compare_payslips as _tool
-        return invoke_tool(
-            _tool,
-            {
-                "user_id": user_id,
-                "month1": month1,
-                "year1": year1,
-                "month2": month2,
-                "year2": year2,
-            },
-            required_scope="payroll:read",
-        )
+        payload = {
+            "user_id": user_id,
+            "month1": month1,
+            "year1": year1,
+            "month2": month2,
+            "year2": year2,
+        }
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
+        return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
-    def get_payroll_history(user_id: int, limit: int = 6) -> str:
-        """List recent payslips (month/year/net/status) for an employee."""
+    def get_payroll_history(
+        user_id: int, limit: int = 6, target_user_id: int = None
+    ) -> str:
+        """List recent payslips for the authenticated employee. HR/Admin: optional target_user_id."""
         from ai_engine.tools import get_payroll_history as _tool
-        return invoke_tool(
-            _tool, {"user_id": user_id, "limit": limit}, required_scope="payroll:read"
-        )
+        payload = {"user_id": user_id, "limit": limit}
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
+        return invoke_tool(_tool, payload, required_scope="payroll:read")
 
     @mcp.tool()
-    def check_payroll_anomalies(organization_id: int, month: int, year: int) -> str:
-        """Scan a completed payroll run for anomalies (LOP spikes, net pay swings, double deductions, zero net, missing salary structures, new-joiner pro-rata)."""
+    def check_payroll_anomalies(
+        organization_id: int, month: int, year: int, user_id: int = None
+    ) -> str:
+        """Scan a completed payroll run for anomalies (LOP spikes, net pay swings, double deductions, zero net, missing salary structures, new-joiner pro-rata). HR/Admin only."""
         from ai_engine.tools import check_payroll_anomalies as _tool
         return invoke_tool(
             _tool,
-            {"organization_id": organization_id, "month": month, "year": year},
+            {
+                "organization_id": organization_id,
+                "month": month,
+                "year": year,
+                "user_id": user_id,
+            },
             required_scope="payroll:read",
         )
 

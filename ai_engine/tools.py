@@ -267,28 +267,43 @@ def mark_attendance(user_id: int, action: str, latitude: float = None, longitude
 
 
 @tool
-def get_latest_payslip(user_id: int):
+def get_latest_payslip(user_id: int, target_user_id: int = None):
     """
-    Returns the user's most recent published/paid payslip with gross, net, deductions,
-    worked days, LOP, and component breakdown. Use this whenever the user asks about
-    their salary, payslip, net pay, or last month's payroll without naming a month.
+    Returns the authenticated user's most recent published/paid payslip.
+    Use for "my salary / payslip / net pay".
+    HR/Admin only: pass target_user_id to view another employee in the same org.
+    Never put someone else's id in user_id — that arg is always the logged-in actor.
     """
-    payslip = _fetch_payslip(user_id)
+    from .actor_context import resolve_subject_user_id
+
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
+    payslip = _fetch_payslip(subject_id)
     if not payslip:
         return "No payslip found for this employee yet."
     return _format_payslip_card(payslip)
 
 
 @tool
-def get_payslip(user_id: int, month: int, year: int):
+def get_payslip(user_id: int, month: int, year: int, target_user_id: int = None):
     """
-    Fetch the user's payslip for a specific month and year.
-    month: 1–12 (e.g. 1 = January). year: e.g. 2026.
-    Use when the user names a month: "Show me my January 2026 salary slip".
+    Fetch the authenticated user's payslip for a specific month and year.
+    month: 1–12. year: e.g. 2026.
+    HR/Admin only: pass target_user_id for another employee in the same org.
     """
+    from .actor_context import resolve_subject_user_id
+
     if month < 1 or month > 12:
         return "[ERROR_CARD] title: Invalid Month | message: Month must be between 1 and 12. [/ERROR_CARD]"
-    payslip = _fetch_payslip(user_id, month=month, year=year)
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
+    payslip = _fetch_payslip(subject_id, month=month, year=year)
     if not payslip:
         return (
             f"No payslip found for {month}/{year}. "
@@ -298,14 +313,26 @@ def get_payslip(user_id: int, month: int, year: int):
 
 
 @tool
-def explain_deduction(user_id: int, month: int = None, year: int = None, component_name: str = None):
+def explain_deduction(
+    user_id: int,
+    month: int = None,
+    year: int = None,
+    component_name: str = None,
+    target_user_id: int = None,
+):
     """
-    Explain deduction lines on a payslip (PF, PT, LOP, TDS, etc.).
+    Explain deduction lines on the authenticated user's payslip (PF, PT, LOP, TDS, etc.).
     If month/year omitted, uses the latest payslip.
-    Optional component_name filters to one deduction (e.g. 'PF', 'LOP', 'Professional Tax').
-    Use for: "Why was my PF higher this month?" or "Explain my deductions".
+    HR/Admin only: pass target_user_id for another employee.
     """
-    payslip = _fetch_payslip(user_id, month=month, year=year)
+    from .actor_context import resolve_subject_user_id
+
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
+    payslip = _fetch_payslip(subject_id, month=month, year=year)
     if not payslip:
         return "No payslip found to explain deductions."
 
@@ -370,19 +397,31 @@ def explain_deduction(user_id: int, month: int = None, year: int = None, compone
 
 
 @tool
-def salary_forecast(user_id: int, unpaid_days: float, month: int = None, year: int = None):
+def salary_forecast(
+    user_id: int,
+    unpaid_days: float,
+    month: int = None,
+    year: int = None,
+    target_user_id: int = None,
+):
     """
-    Estimate how much net/CTC the employee would lose if they take unpaid_days of LOP.
+    Estimate how much net/CTC the authenticated employee would lose for unpaid_days of LOP.
     Use for: "If I take 3 unpaid days, how much do I lose?"
-    Optional month/year sets the calendar-days basis (defaults to current month).
-    Does NOT modify payroll — read-only estimate from active CTC.
+    HR/Admin only: pass target_user_id for another employee.
     """
     from django.contrib.auth import get_user_model
     from payroll.services import PayrollService
+    from .actor_context import resolve_subject_user_id
+
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
 
     User = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
+        user = User.objects.get(id=subject_id)
     except User.DoesNotExist:
         return "[ERROR_CARD] title: User Not Found | message: Invalid user id. [/ERROR_CARD]"
 
@@ -412,14 +451,23 @@ def compare_payslips(
     year1: int,
     month2: int,
     year2: int,
+    target_user_id: int = None,
 ):
     """
-    Compare two payslips for the same employee across months.
-    Use for: "Compare my last 2 salary slips" (resolve months first via get_payroll_history)
-    or explicit "Compare March 2026 vs April 2026".
+    Compare two payslips for the authenticated employee across months.
+    Use for: "Compare my last 2 salary slips" (resolve months first via get_payroll_history).
+    HR/Admin only: pass target_user_id for another employee.
     """
-    a = _fetch_payslip(user_id, month=month1, year=year1)
-    b = _fetch_payslip(user_id, month=month2, year=year2)
+    from .actor_context import resolve_subject_user_id
+
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
+
+    a = _fetch_payslip(subject_id, month=month1, year=year1)
+    b = _fetch_payslip(subject_id, month=month2, year=year2)
     if not a and not b:
         return f"No payslips found for {month1}/{year1} or {month2}/{year2}."
     if not a:
@@ -445,9 +493,10 @@ def compare_payslips(
     net_delta = float(b.net_pay) - float(a.net_pay)
     gross_delta = float(b.gross_earnings) - float(a.gross_earnings)
     change_text = "; ".join(changes) if changes else "No material deduction line changes."
+    who = _subject_label(a)
 
     return (
-        f"[INSIGHT_CARD] title: Payslip Comparison | "
+        f"[INSIGHT_CARD] title: Payslip Comparison ({who}) | "
         f"message: {month1}/{year1} vs {month2}/{year2}. "
         f"Net {a.net_pay} → {b.net_pay} (Δ {round(net_delta, 2)}). "
         f"Gross {a.gross_earnings} → {b.gross_earnings} (Δ {round(gross_delta, 2)}). "
@@ -461,22 +510,32 @@ def compare_payslips(
 
 
 @tool
-def get_payroll_history(user_id: int, limit: int = 6):
+def get_payroll_history(user_id: int, limit: int = 6, target_user_id: int = None):
     """
-    List recent payslips for the employee (month, year, net, status).
+    List recent payslips for the authenticated employee (month, year, net, status).
     Use to discover which months exist before get_payslip or compare_payslips.
+    HR/Admin only: pass target_user_id for another employee in the same org.
+    Never put someone else's id in user_id.
     """
     from payroll.models import Payslip
+    from .actor_context import resolve_subject_user_id
+
+    subject_id, err = resolve_subject_user_id(
+        user_id, target_user_id=target_user_id, allow_privileged_lookup=True
+    )
+    if err:
+        return err
 
     limit = max(1, min(int(limit or 6), 24))
     slips = (
-        Payslip.objects.filter(user_id=user_id)
-        .select_related("payroll_run")
+        Payslip.objects.filter(user_id=subject_id)
+        .select_related("payroll_run", "user")
         .order_by("-payroll_run__year", "-payroll_run__month", "-created_at")[:limit]
     )
     if not slips:
         return "No payroll history found for this employee."
 
+    who = _subject_label(slips[0])
     rows = []
     for p in slips:
         r = p.payroll_run
@@ -485,18 +544,26 @@ def get_payroll_history(user_id: int, limit: int = 6):
             f"LOP {p.lop_days}, status {p.status}"
         )
     return (
-        f"[INSIGHT_CARD] title: Payroll History | "
-        f"message: Last {len(rows)} payslip(s): " + " | ".join(rows) + " | "
+        f"[INSIGHT_CARD] title: Payroll History ({who}) | "
+        f"message: Last {len(rows)} payslip(s) for {who}: " + " | ".join(rows) + " | "
         f"type: info | topic: Payroll | stats: Count:{len(rows)} [/INSIGHT_CARD]"
     )
+
+
+def _subject_label(payslip) -> str:
+    user = getattr(payslip, "user", None)
+    if not user:
+        return f"user_id={payslip.user_id}"
+    name = (user.get_full_name() or "").strip() or user.email or f"user {user.id}"
+    return f"{name} (id {user.id})"
 
 
 def _fetch_payslip(user_id: int, month: int = None, year: int = None):
     from payroll.models import Payslip
 
-    qs = Payslip.objects.filter(user_id=user_id).select_related("payroll_run").prefetch_related(
-        "components"
-    )
+    qs = Payslip.objects.filter(user_id=user_id).select_related(
+        "payroll_run", "user"
+    ).prefetch_related("components")
     if month is not None and year is not None:
         qs = qs.filter(payroll_run__month=month, payroll_run__year=year)
         published = qs.filter(status__in=["published", "paid"]).first()
@@ -525,9 +592,10 @@ def _format_payslip_card(payslip) -> str:
 
     earnings_str = "{" + ", ".join(earnings) + "}" if earnings else "{}"
     deductions_str = "{" + ", ".join(deductions) + "}" if deductions else "{}"
+    who = _subject_label(payslip)
 
     return (
-        f"[PAYROLL_CARD] month: {run.month} | year: {run.year} | "
+        f"[PAYROLL_CARD] employee: {who} | month: {run.month} | year: {run.year} | "
         f"gross: {payslip.gross_earnings} | net: {payslip.net_pay} | "
         f"deductions: {payslip.total_deductions} | worked_days: {payslip.worked_days} | "
         f"lop: {payslip.lop_days} | status: {payslip.status} | "
@@ -715,16 +783,34 @@ def get_user_details(
 
 
 @tool
-def get_team_stats(organization_id: int):
+def get_team_stats(organization_id: int, user_id: int = None):
     """
     Fetches high-level attendance and leave stats for the whole organization.
     Useful for managers and admins to get a quick summary.
+    Requires manager, HR, admin, or superadmin role when user_id is provided.
     """
     from attendance.models import AttendanceRecord
     from leaves.models import LeaveRequest
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    
+
+    if user_id is not None:
+        actor = User.objects.filter(id=user_id, is_active=True).first()
+        if not actor or actor.role not in ("manager", "hr", "admin", "superadmin"):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Only managers, HR, or admins can view organization attendance stats. [/ERROR_CARD]"
+            )
+        if (
+            actor.organization_id
+            and int(organization_id) != int(actor.organization_id)
+            and actor.role != "superadmin"
+        ):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Organization mismatch. [/ERROR_CARD]"
+            )
+
     today = date.today()
     total_employees = User.objects.filter(organization_id=organization_id, is_active=True).count()
     present_today = AttendanceRecord.objects.filter(
@@ -996,7 +1082,7 @@ def get_attendance_trends(user_id: int, days: int = 30):
         return f"Error analyzing attendance trends: {str(e)}"
 
 @tool
-def generate_monthly_summary(organization_id: int, month: int, year: int):
+def generate_monthly_summary(organization_id: int, month: int, year: int, user_id: int = None):
     """
     Generates a high-level executive summary of an organization's performance for a specific month.
     Aggregates attendance rates, leave trends, and departmental activity.
@@ -1012,6 +1098,22 @@ def generate_monthly_summary(organization_id: int, month: int, year: int):
     from django.conf import settings
     
     User = get_user_model()
+    if user_id is not None:
+        actor = User.objects.filter(id=user_id, is_active=True).first()
+        if not actor or actor.role not in ("manager", "hr", "admin", "superadmin"):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Only managers, HR, or admins can generate monthly summaries. [/ERROR_CARD]"
+            )
+        if (
+            actor.organization_id
+            and int(organization_id) != int(actor.organization_id)
+            and actor.role != "superadmin"
+        ):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Organization mismatch. [/ERROR_CARD]"
+            )
     try:
         # 1. Gather Data
         _, last_day = calendar.monthrange(year, month)
@@ -1097,6 +1199,21 @@ def get_team_pulse(organization_id: int, user_id: int = None):
             manager = User.objects.get(id=user_id)
         except User.DoesNotExist:
             manager = None
+        if manager and manager.role not in ("manager", "hr", "admin", "superadmin"):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Only managers, HR, or admins can view team pulse. [/ERROR_CARD]"
+            )
+        if (
+            manager
+            and manager.organization_id
+            and int(organization_id) != int(manager.organization_id)
+            and manager.role != "superadmin"
+        ):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Organization mismatch. [/ERROR_CARD]"
+            )
 
     pulse = build_team_pulse(organization_id, manager=manager)
     stats = (
@@ -1220,6 +1337,15 @@ def review_attendance_correction(
     except AttendanceCorrection.DoesNotExist:
         return f"Error: Correction #{correction_id} not found."
 
+    requester_org = getattr(correction.requested_by, "organization_id", None)
+    if (
+        approver.organization_id
+        and requester_org
+        and int(approver.organization_id) != int(requester_org)
+        and approver.role != "superadmin"
+    ):
+        return "Error: Correction belongs to another organization."
+
     if correction._status != "pending":
         return f"Error: Correction already {correction._status}."
 
@@ -1258,14 +1384,34 @@ def review_attendance_correction(
 
 
 @tool
-def check_payroll_anomalies(organization_id: int, month: int, year: int):
+def check_payroll_anomalies(organization_id: int, month: int, year: int, user_id: int = None):
     """
     Scan a completed payroll run for anomalies (high LOP, net pay swings,
     double deductions, zero net, missing salary structures, new-joiner pro-rata).
     Returns a structured insight card with the anomaly digest.
+    Only available for HR, Admin, and Superadmin.
     """
     from payroll.models import PayrollRun
     from payroll.anomaly import scan_payroll_anomalies, format_anomaly_digest
+    from django.contrib.auth import get_user_model
+
+    if user_id is not None:
+        User = get_user_model()
+        actor = User.objects.filter(id=user_id, is_active=True).first()
+        if not actor or actor.role not in ("hr", "admin", "superadmin"):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Only HR or admins can scan payroll anomalies. [/ERROR_CARD]"
+            )
+        if (
+            actor.organization_id
+            and int(organization_id) != int(actor.organization_id)
+            and actor.role != "superadmin"
+        ):
+            return (
+                "[ERROR_CARD] title: Not allowed | "
+                "message: Organization mismatch. [/ERROR_CARD]"
+            )
 
     run = PayrollRun.objects.filter(
         organization_id=organization_id,
