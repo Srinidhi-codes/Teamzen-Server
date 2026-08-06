@@ -286,16 +286,14 @@ def _bind_identity(payload: dict, ctx: MCPAuthContext) -> tuple[dict, Optional[s
             out["approver_id"] = ctx.user_id
         return out, None
 
-    # No bound user — block user-scoped tools unless open-dev without auth requirement
+    # No bound user — always block user-scoped tools (even in open/dev mode).
+    # Previously open mode allowed LLM-supplied user_id, which leaked payslips.
     needs_user = "user_id" in out or "approver_id" in out
     if needs_user:
-        if _auth_required() or ctx.token_id is not None or (
-            ctx.is_internal and os.environ.get("MCP_INTERNAL_SECRET", "").strip()
-        ):
-            return out, (
-                "Authenticated user required. Use a user-bound MCP token (--user), "
-                "JWT Bearer, X-MCP-Acting-User-Id, or X-MCP-User-Id with internal secret."
-            )
+        return out, (
+            "Authenticated user required. Use a user-bound MCP token (--user), "
+            "JWT Bearer, X-MCP-Acting-User-Id, or X-MCP-User-Id with internal secret."
+        )
     return out, None
 
 
@@ -368,6 +366,21 @@ def invoke_tool(
         return f"Error: {msg}"
 
     actor = bound.get("user_id") or bound.get("approver_id") or ctx.user_id
+
+    # Bind AI actor ContextVar so tools ignore spoofed user_id even if args slip through
+    actor_token = None
+    try:
+        from ai_engine.actor_context import set_actor, reset_actor
+
+        if ctx.user_id is not None:
+            actor_token = set_actor(
+                ctx.user_id,
+                organization_id=ctx.organization_id,
+                role=ctx.user_role,
+            )
+    except Exception:
+        logger.exception("Failed to set AI actor context for %s", name)
+
     try:
         result = langchain_tool.invoke(bound)
         _write_audit(
@@ -389,6 +402,14 @@ def invoke_tool(
             actor_user_id=actor if isinstance(actor, int) else None,
         )
         raise
+    finally:
+        if actor_token is not None:
+            try:
+                from ai_engine.actor_context import reset_actor
+
+                reset_actor(actor_token)
+            except Exception:
+                pass
 
 
 def create_mcp(name: str, instructions: str, port: int):

@@ -292,6 +292,46 @@ class SmartAssistantChatView(APIView):
         context = request.data.get('context', 'user') # 'admin' or 'user'
         if not query:
             return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # High-confidence prompt-injection / jailbreak short-circuit (no tools, no LLM).
+        from .guardrails import is_jailbreak_probe, jailbreak_refusal_message
+        if is_jailbreak_probe(query):
+            logger.warning(
+                "Blocked jailbreak probe from user_id=%s context=%s",
+                getattr(request.user, "id", None),
+                context,
+            )
+            refusal = jailbreak_refusal_message()
+            from django.http import StreamingHttpResponse
+            import json
+
+            def _blocked_stream():
+                yield f"data: {json.dumps({'type': 'token', 'content': refusal})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            # Persist refusal in history so the UI stays consistent
+            try:
+                history_manager = self.get_history(request.user.id, context=context)
+                from langchain_core.messages import HumanMessage, AIMessage
+                from django.utils import timezone
+                history_manager.add_user_message(query)
+                # Prefer add_message with role if available
+                try:
+                    ai = AIMessage(
+                        content=refusal,
+                        additional_kwargs={"timestamp": timezone.now().isoformat()},
+                    )
+                    history_manager.add_message(ai)
+                except Exception:
+                    history_manager.add_ai_message(refusal)
+            except Exception:
+                logger.exception("Failed to persist jailbreak refusal in history")
+
+            return StreamingHttpResponse(
+                _blocked_stream(),
+                content_type="text/event-stream",
+            )
+
         try:
             from .graph import app
             from langchain_core.messages import HumanMessage, AIMessage
@@ -364,8 +404,17 @@ class SmartAssistantChatView(APIView):
                 async def collect_stream():
                     content_accumulated = ""
                     mcp_client = None
+                    actor_token = None
                     try:
+                        from .actor_context import set_actor, reset_actor
                         from .graph import build_graph
+
+                        actor_token = set_actor(
+                            initial_state["user_id"],
+                            organization_id=initial_state.get("organization_id"),
+                            role=initial_state.get("user_role"),
+                        )
+
                         # Build graph with MCP tools (or legacy fallback)
                         compiled_app, mcp_client = await build_graph(
                             organization_id=initial_state["organization_id"],
@@ -436,6 +485,11 @@ class SmartAssistantChatView(APIView):
                         traceback.print_exc()
                         q.put({'error': str(e)})
                     finally:
+                        if actor_token is not None:
+                            try:
+                                reset_actor(actor_token)
+                            except Exception:
+                                pass
                         q.put(None)  # Sentinel — mcp_client v0.2+ has no connection to close
 
                 loop.run_until_complete(collect_stream())
