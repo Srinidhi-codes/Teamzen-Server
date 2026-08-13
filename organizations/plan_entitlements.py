@@ -8,10 +8,11 @@ PLAN_RANK = {"free": 0, "pro": 1, "elite": 2}
 # Feature -> minimum plan required
 FEATURE_MIN_PLAN = {
     "payroll_basic": "free",
-    "ai_assistant": "free",
     "policies": "free",
+    "ai_assistant": "pro",
     "payroll_auto_run": "pro",
     "salary_advances": "pro",
+    "face_attendance": "pro",
     "org_llm_key": "elite",
     "advanced_analytics": "elite",
 }

@@ -358,11 +358,54 @@ def recompute_progress(onboarding: EmployeeOnboarding) -> int:
         done = tasks.filter(status__in=["completed", "skipped"]).count()
         pct = int(round(100 * done / total))
     onboarding.progress_pct = pct
+    just_completed = False
     if total > 0 and pct >= 100 and onboarding.status == "in_progress":
         onboarding.status = "completed"
         onboarding.completed_at = timezone.now()
+        just_completed = True
     onboarding.save(update_fields=["progress_pct", "status", "completed_at", "updated_at"])
+
+    # Account verification: employee is verified once all required onboarding tasks are done.
+    if onboarding.status == "completed":
+        sync_user_verified_from_onboarding(onboarding, notify=just_completed)
     return pct
+
+
+def sync_user_verified_from_onboarding(
+    onboarding: EmployeeOnboarding, *, notify: bool = False
+) -> bool:
+    """Mark the employee verified when their onboarding is completed. Returns True if flipped."""
+    if onboarding.status != "completed":
+        return False
+    user = onboarding.user
+    if user is None or user.is_verified:
+        return False
+    user.is_verified = True
+    user.save(update_fields=["is_verified"])
+    if notify:
+        try:
+            from notifications.utils import notify_user
+
+            notify_user(
+                recipient_id=user.id,
+                verb="Account verified",
+                message=(
+                    "Your account is now verified. All required onboarding "
+                    "tasks and documents are complete."
+                ),
+                actor_id=None,
+                target_type="Onboarding",
+                target_id=str(onboarding.id),
+                level="personal",
+                notification_type="BOTH",
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Verified notification failed for user_id=%s", user.id
+            )
+    return True
 
 
 @transaction.atomic

@@ -293,6 +293,19 @@ class SmartAssistantChatView(APIView):
         if not query:
             return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        org = getattr(request.user, "organization", None)
+        if request.user.role != "superadmin":
+            from organizations.plan_entitlements import org_has_feature
+            if not org_has_feature(org, "ai_assistant"):
+                return Response(
+                    {
+                        "error": "AI assistant requires the Pro plan. Ask your admin to upgrade in Settings → Plan & billing.",
+                        "code": "plan_required",
+                        "required_plan": "pro",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         # High-confidence prompt-injection / jailbreak short-circuit (no tools, no LLM).
         from .guardrails import is_jailbreak_probe, jailbreak_refusal_message
         if is_jailbreak_probe(query):

@@ -46,7 +46,7 @@ def get_location_from_ip(ip, lat=None, lon=None):
                 response = requests.get(
                     f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10", 
                     headers=headers,
-                    timeout=3
+                    timeout=1.5
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -70,7 +70,7 @@ def get_location_from_ip(ip, lat=None, lon=None):
         if not ip or ip == '127.0.0.1' or ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
             return "Local Network"
             
-        response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+        response = requests.get(f"https://ipapi.co/{ip}/json/", timeout=1.5)
         if response.status_code == 200:
             data = response.json()
             if data.get('error'):

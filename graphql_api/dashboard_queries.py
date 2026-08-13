@@ -10,6 +10,12 @@ from organizations.models import Department
 from notifications.models import Notification
 from graphql_api.ai_insights import generate_admin_insights, generate_user_insights
 
+
+def format_login_time_12h(login_time) -> str:
+    """Format a TimeField as 12-hour clock, e.g. 9:30 PM."""
+    return login_time.strftime("%I:%M %p").lstrip("0")
+
+
 @strawberry.type
 class AIInsight:
     title: str
@@ -483,7 +489,11 @@ class DashboardQuery:
             activities.append({
                 "id": strawberry.ID(f"att-{a.id}"),
                 "user": "You",
-                "action": f"checked in at {a.login_time} on {formatted_date}" if a.login_time else f"marked present on {formatted_date}",
+                "action": (
+                    f"checked in at {format_login_time_12h(a.login_time)} on {formatted_date}"
+                    if a.login_time
+                    else f"marked present on {formatted_date}"
+                ),
                 "time": dt,
             })
         for c in AttendanceCorrection.objects.filter(
@@ -611,7 +621,11 @@ class DashboardQuery:
             activities.append({
                 "id": strawberry.ID(f"att-{a.id}"),
                 "user": "You",
-                "action": f"checked in at {a.login_time} on {formatted_date}" if a.login_time else f"marked present on {formatted_date}",
+                "action": (
+                    f"checked in at {format_login_time_12h(a.login_time)} on {formatted_date}"
+                    if a.login_time
+                    else f"marked present on {formatted_date}"
+                ),
                 "time": dt
             })
 

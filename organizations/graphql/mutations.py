@@ -166,6 +166,14 @@ class OrganizationMutation:
                 raise GraphQLError("Invalid accent color")
             org.accent = input.accent
         if input.face_attendance_enabled is not None:
+            if input.face_attendance_enabled:
+                from organizations.plan_entitlements import require_feature
+
+                require_feature(
+                    org,
+                    "face_attendance",
+                    "Face attendance requires the Pro plan. Upgrade in Settings → Plan & billing.",
+                )
             org.face_attendance_enabled = input.face_attendance_enabled
         if input.weekend_days is not None:
             from organizations.workweek import validate_weekend_days_input

@@ -90,9 +90,67 @@ def _notify_login_activity(user, *, ip, location, user_agent):
         print(f"Error sending login alert emails: {e}")
 
 
+def _record_login_side_effects(
+    *,
+    user_id,
+    ip,
+    user_agent,
+    latitude,
+    longitude,
+    jti,
+):
+    """
+    Reverse-geocode, login history, device session, and alert emails.
+    Runs after cookies are returned so sign-in is not blocked on Nominatim/Brevo.
+    """
+    from django.db import close_old_connections
+    from users.models import UserDeviceSession
+    from users.utils import parse_user_agent
+
+    close_old_connections()
+    try:
+        user = User.objects.select_related("organization").get(pk=user_id)
+        location = get_location_from_ip(ip, lat=latitude, lon=longitude)
+
+        UserLoginHistory.objects.create(
+            user=user,
+            ip_address=ip,
+            location=location,
+            latitude=latitude,
+            longitude=longitude,
+            user_agent=user_agent,
+            status="success",
+        )
+
+        parsed_ua = parse_user_agent(user_agent or "")
+        UserDeviceSession.objects.create(
+            user=user,
+            jti=jti,
+            ip_address=ip,
+            user_agent=user_agent,
+            location=location,
+            browser=parsed_ua["browser"],
+            os=parsed_ua["os"],
+            device_type=parsed_ua["device_type"],
+            device_name=parsed_ua["device_name"],
+            is_active=True,
+        )
+
+        _notify_login_activity(
+            user,
+            ip=ip,
+            location=location,
+            user_agent=user_agent,
+        )
+    except Exception as e:
+        print(f"Error logging login history or creating session: {e}")
+    finally:
+        close_old_connections()
+
+
 def login_user_and_set_cookies(user, request):
-    """Generates simple JWT tokens and sets access/refresh cookies on response"""
-    from users.utils import create_user_session
+    """Generates JWT tokens and sets access/refresh cookies. Side effects run in the background."""
+    import threading
 
     # Ensure org plan/accent are available for the session payload (no Free/teal flash).
     if getattr(user, "organization_id", None):
@@ -130,38 +188,27 @@ def login_user_and_set_cookies(user, request):
         max_age=7 * 24 * 60 * 60,
         **get_cookie_settings(httponly=False)
     )
-    
-    # Log Login History and Create Active Device Session
-    try:
-        latitude = request.data.get('latitude')
-        longitude = request.data.get('longitude')
-        ip = get_client_ip(request)
-        location = get_location_from_ip(ip, lat=latitude, lon=longitude)
-        user_agent = request.META.get('HTTP_USER_AGENT')
-        
-        # Log History
-        UserLoginHistory.objects.create(
-            user=user,
-            ip_address=ip,
-            location=location,
-            latitude=latitude,
-            longitude=longitude,
-            user_agent=user_agent,
-            status='success'
-        )
-        
-        # Create Active Device Session
-        create_user_session(user, refresh, request)
 
-        _notify_login_activity(
-            user,
-            ip=ip,
-            location=location,
-            user_agent=user_agent,
-        )
-    except Exception as e:
-        print(f"Error logging login history or creating session: {e}")
-        
+    latitude = request.data.get("latitude") if hasattr(request, "data") else None
+    longitude = request.data.get("longitude") if hasattr(request, "data") else None
+    ip = get_client_ip(request)
+    user_agent = request.META.get("HTTP_USER_AGENT")
+    jti = refresh["jti"]
+    user_id = user.id
+
+    threading.Thread(
+        target=_record_login_side_effects,
+        kwargs={
+            "user_id": user_id,
+            "ip": ip,
+            "user_agent": user_agent,
+            "latitude": latitude,
+            "longitude": longitude,
+            "jti": jti,
+        },
+        daemon=True,
+    ).start()
+
     return response
 
 
