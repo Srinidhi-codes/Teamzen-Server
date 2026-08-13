@@ -26,7 +26,11 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
 def org_requires_face(user) -> bool:
     org = getattr(user, "organization", None)
-    return bool(org and getattr(org, "face_attendance_enabled", False))
+    if not org or not getattr(org, "face_attendance_enabled", False):
+        return False
+    from organizations.plan_entitlements import org_has_feature
+
+    return org_has_feature(org, "face_attendance")
 
 
 def _as_float_list(raw) -> list[float]:

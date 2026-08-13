@@ -18,12 +18,20 @@ class OrganizationType:
     plan_expires_at: auto
     payroll_cycle_day: auto
     payroll_auto_enabled: auto
-    face_attendance_enabled: auto
     accent: auto
     employee_count: int
     is_active: auto
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def face_attendance_enabled(self) -> bool:
+        """Off for Free plan even if the org setting is still stored as on."""
+        from organizations.plan_entitlements import org_has_feature
+
+        if not org_has_feature(self, "face_attendance"):
+            return False
+        return bool(getattr(self, "face_attendance_enabled", False))
 
     @strawberry.field
     def weekend_days(self) -> List[int]:
@@ -34,6 +42,12 @@ class OrganizationType:
         from organizations.plan_entitlements import org_has_feature
 
         return org_has_feature(self, "payroll_auto_run")
+
+    @strawberry.field
+    def can_enable_face_attendance(self) -> bool:
+        from organizations.plan_entitlements import org_has_feature
+
+        return org_has_feature(self, "face_attendance")
 
     @strawberry.field
     def days_until_plan_expiry(self) -> Optional[int]:

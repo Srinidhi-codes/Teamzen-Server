@@ -145,6 +145,12 @@ def _offer_type(o, onboarding=None) -> Optional[OfferLetterType]:
 def _onboarding_type(
     ob: EmployeeOnboarding, *, include_details: bool = True
 ) -> EmployeeOnboardingType:
+    # Backfill verification for hires who already finished onboarding
+    if ob.status == "completed":
+        from onboarding.services import sync_user_verified_from_onboarding
+
+        sync_user_verified_from_onboarding(ob, notify=False)
+
     user = ob.user
     tasks = []
     docs = []

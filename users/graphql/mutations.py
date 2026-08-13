@@ -158,6 +158,18 @@ class UserMutation:
         if not user.is_authenticated:
             return EnrollFacePayload(error="Not authenticated")
 
+        org = getattr(user, "organization", None)
+        from organizations.plan_entitlements import org_has_feature
+
+        if not org_has_feature(org, "face_attendance"):
+            return EnrollFacePayload(
+                error="Face attendance requires the Pro plan. Ask your admin to upgrade."
+            )
+        if not org or not getattr(org, "face_attendance_enabled", False):
+            return EnrollFacePayload(
+                error="Face attendance is not enabled for your organization."
+            )
+
         if not input.descriptor or len(input.descriptor) != FACE_DESCRIPTOR_DIM:
             got = len(input.descriptor) if input.descriptor is not None else 0
             return EnrollFacePayload(
@@ -265,7 +277,9 @@ class UserMutation:
             if input.uan_number:
                 new_user.uan_number = input.uan_number
             new_user.is_staff = bool(input.is_staff)
-            new_user.is_verified = bool(input.is_verified)
+            # Verification is earned by completing required onboarding tasks/docs —
+            # never mark verified on create.
+            new_user.is_verified = False
 
             new_user.save()
 

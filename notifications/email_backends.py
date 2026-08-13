@@ -1,5 +1,9 @@
 import base64
+import http.client
+import io
 import json
+import socket
+import ssl
 import urllib.request
 from email.mime.base import MIMEBase
 from urllib.error import HTTPError, URLError
@@ -100,15 +104,43 @@ class BrevoHTTPBackend(BaseEmailBackend):
 
         return payload
 
-    def _post(self, payload, timeout=30):
+    def _post(self, payload, timeout=30, ipv4_only=False):
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "api-key": self.api_key,
+        }
+
+        if ipv4_only:
+            context = ssl.create_default_context()
+            addr = socket.getaddrinfo(
+                "api.brevo.com", 443, socket.AF_INET, socket.SOCK_STREAM
+            )[0][4]
+            sock = socket.create_connection(addr, timeout)
+            sock = context.wrap_socket(sock, server_hostname="api.brevo.com")
+            conn = http.client.HTTPSConnection("api.brevo.com", 443, timeout=timeout, context=context)
+            try:
+                conn.sock = sock
+                conn.request("POST", "/v3/smtp/email", body=body, headers=headers)
+                response = conn.getresponse()
+                raw = response.read()
+                if response.status not in (200, 201):
+                    raise HTTPError(
+                        self.api_url,
+                        response.status,
+                        response.reason,
+                        response.msg,
+                        io.BytesIO(raw),
+                    )
+                return response.status
+            finally:
+                conn.close()
+
         req = urllib.request.Request(
             self.api_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "api-key": self.api_key,
-            },
+            data=body,
+            headers=headers,
             method="POST",
         )
         response = urllib.request.urlopen(req, timeout=timeout)
@@ -121,6 +153,7 @@ class BrevoHTTPBackend(BaseEmailBackend):
         num_sent = 0
         for email in email_messages:
             payload = None
+            ipv4_retried = False
             try:
                 payload = self._build_payload(email, include_attachments=True)
                 timeout = 45 if payload.get("attachment") else 15
@@ -130,7 +163,33 @@ class BrevoHTTPBackend(BaseEmailBackend):
                     continue
             except HTTPError as e:
                 error_body = e.read().decode(errors="replace")
+                ip_blocked = e.code == 401 and (
+                    "authorised_ips" in error_body or "unrecognised IP" in error_body
+                )
+
+                if ip_blocked and not ipv4_retried:
+                    ipv4_retried = True
+                    try:
+                        code = self._post(payload, timeout=timeout, ipv4_only=True)
+                        if code in (200, 201):
+                            num_sent += 1
+                            continue
+                    except HTTPError as ipv4_err:
+                        error_body = ipv4_err.read().decode(errors="replace")
+                        e = ipv4_err
+                    except Exception:
+                        pass
+
                 print(f"Brevo HTTP {e.code}: {error_body[:500]}")
+
+                if ip_blocked or e.code == 401:
+                    print(
+                        "Brevo rejected this machine's IP. Add it at "
+                        "https://app.brevo.com/security/authorised_ips "
+                        "(or turn off IP restriction on the API key). Email was not sent."
+                    )
+                    continue
+
                 # Only strip attachments as last resort so the invite still arrives
                 if payload and payload.get("attachment"):
                     try:

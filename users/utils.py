@@ -77,10 +77,11 @@ def parse_user_agent(user_agent_string):
     }
 
 
-def create_user_session(user, refresh_token, request):
+def create_user_session(user, refresh_token, request, location=None):
     """
     Parses request user-agent and IP to create an active UserDeviceSession.
     Embeds refresh token's jti.
+    Pass location to skip a second reverse-geocode lookup.
     """
     from users.models import UserDeviceSession
     from users.views import get_client_ip, get_location_from_ip
@@ -98,7 +99,7 @@ def create_user_session(user, refresh_token, request):
             latitude = request.data.get('latitude')
             longitude = request.data.get('longitude')
             
-        location = get_location_from_ip(ip, lat=latitude, lon=longitude)
+        location = get_location_from_ip(ip, lat=latitude, lon=longitude) if location is None else location
         
         return UserDeviceSession.objects.create(
             user=user,
