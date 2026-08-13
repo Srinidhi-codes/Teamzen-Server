@@ -369,247 +369,214 @@ class DashboardQuery:
         if not user.is_authenticated:
             raise Exception("Unauthorized")
 
+        from organizations.workweek import get_weekend_days
+
         today = date.today()
+        org = user.organization
+        weekend_days = get_weekend_days(org)
+        attendance_statuses = ("present", "late_login", "early_logout", "half_day")
+        start_7 = today - timedelta(days=6)
+        horizon = today + timedelta(days=30)
+
+        trend_month = today.month - 5
+        trend_year = today.year
+        while trend_month <= 0:
+            trend_month += 12
+            trend_year -= 1
+        trend_start = date(trend_year, trend_month, 1)
+
         wish_message = None
-        
-        # Check for user's own birthday/anniversary
         if user.date_of_birth and user.date_of_birth.month == today.month and user.date_of_birth.day == today.day:
             wish_message = f"Happy Birthday, {user.first_name}! Wishing you a fantastic day ahead!"
-        elif user.date_of_joining and user.date_of_joining.month == today.month and user.date_of_joining.day == today.day and user.date_of_joining.year < today.year:
+        elif (
+            user.date_of_joining
+            and user.date_of_joining.month == today.month
+            and user.date_of_joining.day == today.day
+            and user.date_of_joining.year < today.year
+        ):
             years = today.year - user.date_of_joining.year
             wish_message = f"Happy {years} Year Anniversary, {user.first_name}! Thank you for being an amazing part of our team!"
 
-        # Upcoming Events for User Dashboard (Team mates)
-        upcoming_events = []
-        team_members = CustomUser.objects.filter(organization=user.organization, is_active=True).exclude(id=user.id)
-        for u in team_members:
-            # Birthday logic
-            if u.date_of_birth:
-                try:
-                    bday_this_year = u.date_of_birth.replace(year=today.year)
-                except ValueError: bday_this_year = u.date_of_birth.replace(year=today.year, day=28)
-                
-                if bday_this_year < today:
-                    bday_next = bday_this_year.replace(year=today.year + 1)
-                else:
-                    bday_next = bday_this_year
-                
-                days_until = (bday_next - today).days
-                if 0 <= days_until <= 30:
-                    upcoming_events.append(UpcomingEvent(
-                        id=f"bday-{u.id}",
-                        user=f"{u.first_name} {u.last_name}",
-                        profile_picture=u.profile_picture.url if u.profile_picture else None,
-                        type="birthday",
-                        date=bday_next.isoformat(),
-                        days_until=days_until
-                    ))
-            
-            # Joining logic
-            if u.date_of_joining:
-                try:
-                    anniv_this_year = u.date_of_joining.replace(year=today.year)
-                except ValueError: anniv_this_year = u.date_of_joining.replace(year=today.year, day=28)
-                
-                if anniv_this_year < today:
-                    anniv_next = anniv_this_year.replace(year=today.year + 1)
-                else:
-                    anniv_next = anniv_this_year
-                
-                days_until = (anniv_next - today).days
-                if 0 <= days_until <= 30 and u.date_of_joining.year < today.year:
-                    upcoming_events.append(UpcomingEvent(
-                        id=f"anniv-{u.id}",
-                        user=f"{u.first_name} {u.last_name}",
-                        profile_picture=u.profile_picture.url if u.profile_picture else None,
-                        type="anniversary",
-                        date=anniv_next.isoformat(),
-                        days_until=days_until
-                    ))
+        def _next_occurrence(original: date) -> date:
+            try:
+                this_year = original.replace(year=today.year)
+            except ValueError:
+                this_year = original.replace(year=today.year, day=28)
+            return this_year.replace(year=today.year + 1) if this_year < today else this_year
 
-        # Holidays in next 30 days
-        holidays = CompanyHoliday.objects.filter(
-            organization=user.organization,
-            holiday_date__range=[today, today + timedelta(days=30)]
-        )
-        for h in holidays:
-            days_until = (h.holiday_date - today).days
-            upcoming_events.append(UpcomingEvent(
-                id=f"holiday-{h.id}",
-                user=h.name,
-                profile_picture=None,
-                type="optional_holiday" if h.is_optional else "holiday",
-                date=h.holiday_date.isoformat(),
-                days_until=days_until
-            ))
+        def _picture(u) -> Optional[str]:
+            pic = getattr(u, "profile_picture", None)
+            if not pic:
+                return None
+            try:
+                return pic.url
+            except Exception:
+                return None
 
-        # 1. Attendance Rate (Last 30 records)
-        attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
-        total_records = AttendanceRecord.objects.filter(user=user).count()
-        present_records = AttendanceRecord.objects.filter(user=user, status__in=attendance_statuses).count()
+        upcoming_events: List[UpcomingEvent] = []
+        if org:
+            team_members = CustomUser.objects.filter(
+                organization=org, is_active=True
+            ).exclude(id=user.id).only(
+                "id", "first_name", "last_name", "date_of_birth", "date_of_joining", "profile_picture"
+            )
+            for u in team_members:
+                if u.date_of_birth:
+                    bday_next = _next_occurrence(u.date_of_birth)
+                    days_until = (bday_next - today).days
+                    if 0 <= days_until <= 30:
+                        upcoming_events.append(UpcomingEvent(
+                            id=f"bday-{u.id}",
+                            user=f"{u.first_name} {u.last_name}",
+                            profile_picture=_picture(u),
+                            type="birthday",
+                            date=bday_next.isoformat(),
+                            days_until=days_until,
+                        ))
+                if u.date_of_joining and u.date_of_joining.year < today.year:
+                    anniv_next = _next_occurrence(u.date_of_joining)
+                    days_until = (anniv_next - today).days
+                    if 0 <= days_until <= 30:
+                        upcoming_events.append(UpcomingEvent(
+                            id=f"anniv-{u.id}",
+                            user=f"{u.first_name} {u.last_name}",
+                            profile_picture=_picture(u),
+                            type="anniversary",
+                            date=anniv_next.isoformat(),
+                            days_until=days_until,
+                        ))
+
+            for h in CompanyHoliday.objects.filter(
+                organization=org, holiday_date__range=[today, horizon]
+            ).only("id", "name", "holiday_date", "is_optional"):
+                upcoming_events.append(UpcomingEvent(
+                    id=f"holiday-{h.id}",
+                    user=h.name,
+                    profile_picture=None,
+                    type="optional_holiday" if h.is_optional else "holiday",
+                    date=h.holiday_date.isoformat(),
+                    days_until=(h.holiday_date - today).days,
+                ))
+
+        att_qs = AttendanceRecord.objects.filter(user=user)
+        total_records = att_qs.count()
+        present_records = att_qs.filter(status__in=attendance_statuses).count()
         attendance_rate = (present_records / total_records * 100) if total_records > 0 else 0
 
-        # 2. Leave Balances
-        balances = []
-        user_balances = LeaveBalance.objects.filter(user=user, year=date.today().year)
-        for b in user_balances:
-            balances.append(UserLeaveBalance(
+        balances = [
+            UserLeaveBalance(
                 name=b.leave_type.name,
                 leave_type=b.leave_type.name,
                 balance=float(b.get_available_balance()),
-                total=float(b.total_entitled + b.carried_forward)
-            ))
-        
-        # 3. Pending Requests
-        pending_count = LeaveRequest.objects.filter(user=user, _status='pending').count()
-
-        # 4. Recent Activity (Attendance + Notifications)
-        activities = []
-
-        recent_attendance = AttendanceRecord.objects.filter(user=user)\
-            .order_by('-attendance_date', '-login_time')[:5]
-
-        for a in recent_attendance:
-            dt = timezone.make_aware(
-                timezone.datetime.combine(
-                    a.attendance_date,
-                    a.login_time or timezone.datetime.min.time()
-                )
+                total=float(b.total_entitled + b.carried_forward),
             )
+            for b in LeaveBalance.objects.filter(user=user, year=today.year).select_related("leave_type")
+        ]
+
+        pending_count = LeaveRequest.objects.filter(user=user, _status="pending").count()
+
+        activities = []
+        for a in AttendanceRecord.objects.filter(user=user).order_by("-attendance_date", "-login_time")[:5]:
+            naive = timezone.datetime.combine(a.attendance_date, a.login_time or timezone.datetime.min.time())
+            dt = timezone.make_aware(naive) if timezone.is_naive(naive) else naive
             formatted_date = a.attendance_date.strftime("%b %d, %Y")
             activities.append({
                 "id": strawberry.ID(f"att-{a.id}"),
                 "user": "You",
                 "action": f"checked in at {a.login_time} on {formatted_date}" if a.login_time else f"marked present on {formatted_date}",
-                "time": dt
+                "time": dt,
             })
-
-
-        # Recent Attendance Correction Requests (Proactive user action)
-        recent_corrections = AttendanceCorrection.objects.filter(attendance_record__user=user)\
-            .order_by('-created_at')[:5]
-        for c in recent_corrections:
+        for c in AttendanceCorrection.objects.filter(
+            attendance_record__user=user
+        ).select_related("attendance_record").order_by("-created_at")[:5]:
             formatted_date = c.attendance_record.attendance_date.strftime("%b %d, %Y")
             activities.append({
                 "id": strawberry.ID(f"corr-{c.id}"),
                 "user": "You",
                 "action": f"requested attendance correction for {formatted_date}",
-                "time": c.created_at
+                "time": c.created_at,
             })
-
-
-        # ✅ Sort by datetime (newest first)
         activities.sort(key=lambda x: x["time"], reverse=True)
-
-        # ✅ Take latest 5 & convert time to ISO string
         activities = [
-            ActivityStat(
-                id=item["id"],
-                user=item["user"],
-                action=item["action"],
-                time=item["time"].isoformat()
-            )
+            ActivityStat(id=item["id"], user=item["user"], action=item["action"], time=item["time"].isoformat())
             for item in activities[:5]
         ]
 
+        week_records = {
+            r.attendance_date: r.status
+            for r in AttendanceRecord.objects.filter(
+                user=user, attendance_date__range=[start_7, today]
+            ).only("attendance_date", "status")
+        }
+        holiday_dates = set()
+        if org:
+            holiday_dates = set(
+                CompanyHoliday.objects.filter(
+                    organization=org, holiday_date__range=[start_7, today]
+                ).values_list("holiday_date", flat=True)
+            )
+        pending_corr_dates = set(
+            AttendanceCorrection.objects.filter(
+                attendance_record__user=user,
+                attendance_record__attendance_date__range=[start_7, today],
+                _status="pending",
+            ).values_list("attendance_record__attendance_date", flat=True)
+        )
+        leave_days = set()
+        for lv in LeaveRequest.objects.filter(
+            user=user, _status="approved", from_date__lte=today, to_date__gte=start_7
+        ).only("from_date", "to_date"):
+            cursor = max(lv.from_date, start_7)
+            end = min(lv.to_date, today)
+            while cursor <= end:
+                leave_days.add(cursor)
+                cursor += timedelta(days=1)
 
-        # 5. Last 7 Days Status
         last_7_days = []
-        today = date.today()
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
-            day_str = d.strftime("%a")
-            date_num = str(d.day)
-            
-            # 1. Base status
-            status = 'absent'
-            from organizations.workweek import is_org_weekend
-            if is_org_weekend(d, user.organization):
-                status = 'weekend'
-            
-            # 2. Check Record
-            record = AttendanceRecord.objects.filter(user=user, attendance_date=d).first()
-            if record:
-                if record.status in ['present', 'late_login', 'early_logout', 'half_day']:
-                    status = 'present'
-                elif record.status == 'leave':
-                    status = 'leave'
-            else:
-                # 2.5 Check for Holiday
-                on_holiday = CompanyHoliday.objects.filter(
-                    organization=user.organization,
-                    holiday_date=d
-                ).exists()
-                if on_holiday:
-                    status = 'leave'
-                
-                # If it's today and no record yet, don't show as absent
-                elif d == today:
-                    status = 'not_started'
+            status = "absent"
+            if d.weekday() in weekend_days:
+                status = "weekend"
+            rec_status = week_records.get(d)
+            if rec_status in attendance_statuses:
+                status = "present"
+            elif rec_status == "leave":
+                status = "leave"
+            elif d in holiday_dates:
+                status = "leave"
+            elif d == today and d not in week_records:
+                status = "not_started"
+            if status in ("absent", "not_started", "leave") and d in pending_corr_dates:
+                status = "pending"
+            if status not in ("present", "pending") and d in leave_days:
+                status = "leave"
+            last_7_days.append(DayStatus(date=str(d.day), day_str=d.strftime("%a"), status=status))
 
-            # 3. Check for Pending Corrections (Overrides absent/not_started/holiday??)
-            # Actually, if they requested correction, they want it shown as pending.
-            if status in ['absent', 'not_started', 'leave']:
-                has_pending = AttendanceCorrection.objects.filter(
-                    attendance_record__user=user,
-                    attendance_record__attendance_date=d,
-                    _status='pending'
-                ).exists()
-                if has_pending:
-                    status = 'pending'
-            
-            # 4. Check for Approved Leaves (Alternative)
-            if status not in ['present', 'pending']:
-                on_leave = LeaveRequest.objects.filter(
-                    user=user, 
-                    _status='approved',
-                    from_date__lte=d,
-                    to_date__gte=d
-                ).exists()
-                if on_leave:
-                    status = 'leave'
-                
-            last_7_days.append(DayStatus(
-                date=date_num,
-                day_str=day_str,
-                status=status
-            ))
+        present_by_month: dict[tuple[int, int], int] = {}
+        for att_date, status in AttendanceRecord.objects.filter(
+            user=user, attendance_date__range=[trend_start, today]
+        ).values_list("attendance_date", "status"):
+            if status in attendance_statuses:
+                key = (att_date.year, att_date.month)
+                present_by_month[key] = present_by_month.get(key, 0) + 1
 
-        # 6. Attendance Trend (Last 6 Months)
         trend = []
-        today = date.today()
         for i in range(5, -1, -1):
-            # Calculate month and year for i months ago
             m = today.month - i
             y = today.year
             while m <= 0:
                 m += 12
                 y -= 1
-            
             month_start = date(y, m, 1)
-            # End of month: first day of next month minus one day
-            next_m = m + 1
-            next_y = y
-            if next_m > 12:
-                next_m = 1
-                next_y += 1
+            next_m, next_y = (1, y + 1) if m == 12 else (m + 1, y)
             month_end = date(next_y, next_m, 1) - timedelta(days=1)
-            
-            # If current month, end at today
             if y == today.year and m == today.month:
                 month_end = today
-
-            month_name = month_start.strftime("%b")
-            
-            records = AttendanceRecord.objects.filter(
-                user=user,
-                attendance_date__range=[month_start, month_end]
-            )
             total_days = (month_end - month_start).days + 1
-            present_days = records.filter(status__in=attendance_statuses).count()
-            
+            present_days = present_by_month.get((y, m), 0)
             rate = (present_days / total_days * 100) if total_days > 0 else 0
-            trend.append(MonthlyStat(month=month_name, value=round(rate)))
+            trend.append(MonthlyStat(month=month_start.strftime("%b"), value=round(rate)))
 
         return UserDashboardStats(
             attendance_rate=round(attendance_rate, 1),
@@ -621,7 +588,7 @@ class DashboardQuery:
             attendance_trend=trend,
             upcoming_events=sorted(upcoming_events, key=lambda x: x.days_until),
             ai_insights=[AIInsight(**i) for i in generate_user_insights(user)],
-            wish_message=wish_message
+            wish_message=wish_message,
         )
 
     @strawberry.field

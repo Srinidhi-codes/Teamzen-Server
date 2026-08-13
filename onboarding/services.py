@@ -455,6 +455,97 @@ def start_preboarding(
     return onboarding, raw_token
 
 
+@transaction.atomic
+def start_onboarding_for_existing_user(
+    *,
+    actor,
+    user,
+    template_id=None,
+    generate_offer: bool = False,
+    letter_template_id=None,
+    include_ctc_annexure: bool = False,
+    annual_ctc=None,
+    send_invite: bool = False,
+) -> tuple[EmployeeOnboarding, str | None]:
+    """
+    Attach an onboarding record + checklist to an existing employee.
+    Does not create a user or force inactive. Use for:
+    - Add employee + "also start onboarding"
+    - Start onboarding from an existing employee card
+    """
+    if not user.organization_id:
+        raise ValueError("Employee has no organization.")
+
+    existing = EmployeeOnboarding.objects.filter(user_id=user.id).first()
+    if existing and existing.status != "cancelled":
+        raise ValueError(
+            f"Onboarding already exists for this employee "
+            f"(id={existing.id}, status={existing.status}). "
+            f"Open it from the Onboarding board."
+        )
+
+    template = resolve_template(
+        user.organization,
+        template_id=template_id,
+        department_id=user.department_id,
+        designation_id=user.designation_id,
+        employment_type=user.employment_type or "full_time",
+    )
+
+    # Already-active staff: run full checklist; inactive hires: preboarding first
+    phases = None if user.is_active else ["preboarding"]
+    status = "in_progress" if user.is_active else "preboarding"
+
+    if existing and existing.status == "cancelled":
+        onboarding = existing
+        onboarding.template = template
+        onboarding.status = status
+        onboarding.progress_pct = 0
+        onboarding.join_date = user.date_of_joining
+        onboarding.started_at = timezone.now()
+        onboarding.completed_at = None
+        onboarding.activated_at = (
+            timezone.now() if user.is_active else None
+        )
+        onboarding.created_by = actor
+        onboarding.notes = (onboarding.notes or "") + "\nReopened for existing employee."
+        onboarding.save()
+        # Drop old incomplete tasks so template can re-instantiate cleanly
+        onboarding.tasks.exclude(status__in=["completed", "skipped"]).delete()
+    else:
+        onboarding = EmployeeOnboarding.objects.create(
+            organization=user.organization,
+            user=user,
+            template=template,
+            status=status,
+            join_date=user.date_of_joining,
+            created_by=actor,
+            started_at=timezone.now(),
+            activated_at=timezone.now() if user.is_active else None,
+            notes="Started from existing employee",
+        )
+
+    instantiate_tasks(onboarding, phases=phases)
+
+    if generate_offer:
+        generate_offer_letter(
+            onboarding,
+            actor=actor,
+            letter_template_id=letter_template_id,
+            include_ctc_annexure=include_ctc_annexure,
+            annual_ctc=annual_ctc,
+        )
+
+    raw_token = None
+    if send_invite:
+        raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor)
+        if onboarding.status == "invited":
+            onboarding.status = "preboarding"
+            onboarding.save(update_fields=["status", "updated_at"])
+
+    return onboarding, raw_token
+
+
 def create_preboarding_invite(
     onboarding: EmployeeOnboarding,
     *,
