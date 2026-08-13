@@ -26,6 +26,7 @@ from onboarding.graphql.types import (
     OnboardingTemplateType,
     PolishOfferLetterInput,
     PolishOfferLetterPayload,
+    StartOnboardingForEmployeeInput,
     StartPreboardingInput,
     SuggestOnboardingTasksInput,
     SuggestOnboardingTasksPayload,
@@ -52,6 +53,7 @@ from onboarding.services import (
     generate_offer_letter,
     get_invite_by_token,
     preboarding_portal_url,
+    start_onboarding_for_existing_user,
     start_preboarding,
     verify_document,
 )
@@ -190,6 +192,68 @@ class OnboardingMutation:
                 success=True,
                 invite_token=raw_token,
                 invite_url=preboarding_portal_url(raw_token) if raw_token else None,
+                onboarding_id=strawberry.ID(str(onboarding.id)),
+            )
+        except Exception as e:
+            return OnboardingPayload(error=str(e))
+
+    @strawberry.mutation
+    def start_onboarding_for_employee(
+        self, info: Info, input: StartOnboardingForEmployeeInput
+    ) -> OnboardingPayload:
+        """Attach onboarding to an existing employee without creating a new user."""
+        from django.contrib.auth import get_user_model
+
+        user = info.context.request.user
+        require_hr(user)
+        User = get_user_model()
+        try:
+            employee = User.objects.select_related("organization").get(id=input.user_id)
+            if user.role != "superadmin":
+                if not user.organization_id or employee.organization_id != user.organization_id:
+                    return OnboardingPayload(error="Unauthorized")
+
+            existing = (
+                EmployeeOnboarding.objects.filter(user_id=employee.id)
+                .exclude(status="cancelled")
+                .first()
+            )
+            if existing:
+                return OnboardingPayload(
+                    success=False,
+                    error=(
+                        f"Onboarding already exists (status={existing.status}). "
+                        "Open it from the Onboarding board."
+                    ),
+                    onboarding_id=strawberry.ID(str(existing.id)),
+                )
+
+            onboarding, raw_token = start_onboarding_for_existing_user(
+                actor=user,
+                user=employee,
+                template_id=input.template_id,
+                generate_offer=input.generate_offer,
+                letter_template_id=input.letter_template_id,
+                include_ctc_annexure=input.include_ctc_annexure,
+                annual_ctc=input.annual_ctc,
+                send_invite=input.send_invite,
+            )
+            if input.send_invite and raw_token:
+                try:
+                    onboarding = EmployeeOnboarding.objects.select_related(
+                        "user", "offer_letter", "organization"
+                    ).get(id=onboarding.id)
+                    _notify_preboarding_invite(onboarding, raw_token, actor=user)
+                except Exception:
+                    import traceback
+
+                    print("Failed to send preboarding invite email:")
+                    print(traceback.format_exc())
+            return OnboardingPayload(
+                success=True,
+                invite_token=raw_token,
+                invite_url=preboarding_portal_url(raw_token) if raw_token else None,
+                onboarding_id=strawberry.ID(str(onboarding.id)),
             )
         except Exception as e:
             return OnboardingPayload(error=str(e))

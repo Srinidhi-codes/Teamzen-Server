@@ -12,6 +12,7 @@ class OnboardingPayload:
     error: Optional[str] = None
     invite_token: Optional[str] = None
     invite_url: Optional[str] = None
+    onboarding_id: Optional[strawberry.ID] = None
 
 
 @strawberry.type
@@ -176,6 +177,19 @@ class StartPreboardingInput:
     include_ctc_annexure: bool = False
     annual_ctc: Optional[float] = None
     send_invite: bool = True
+
+
+@strawberry.input
+class StartOnboardingForEmployeeInput:
+    """Attach onboarding checklist to an existing employee (no new user)."""
+
+    user_id: strawberry.ID
+    template_id: Optional[strawberry.ID] = None
+    letter_template_id: Optional[strawberry.ID] = None
+    generate_offer: bool = False
+    include_ctc_annexure: bool = False
+    annual_ctc: Optional[float] = None
+    send_invite: bool = False
 
 
 @strawberry.input
