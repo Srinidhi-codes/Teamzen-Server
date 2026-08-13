@@ -31,6 +31,17 @@ class Organization(models.Model):
     )
     gst_number = models.CharField(max_length=50, null=True, blank=True)
     pan_number = models.CharField(max_length=50, null=True, blank=True)
+    tan_number = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text="Tax Deduction Account Number (for Form 16)",
+    )
+    cit_tds_office = models.TextField(
+        blank=True,
+        default="",
+        help_text="CIT (TDS) office address shown on Form 16",
+    )
     registration_number = models.CharField(max_length=100, null=True, blank=True)
     headquarters_address = models.TextField()
     PLAN_CHOICES = [

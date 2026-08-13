@@ -1,0 +1,1447 @@
+[
+  {
+    "y": 72.4,
+    "x": 259.2,
+    "w": 75.7,
+    "h": 16.6,
+    "text": "FORM NO. 16",
+    "size": 12.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      259.2,
+      72.4,
+      334.8,
+      89.0
+    ]
+  },
+  {
+    "y": 93.5,
+    "x": 277.0,
+    "w": 40.0,
+    "h": 15.2,
+    "text": "PART B",
+    "size": 11.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      277.0,
+      93.5,
+      317.0,
+      108.8
+    ]
+  },
+  {
+    "y": 112.4,
+    "x": 25.5,
+    "w": 543.0,
+    "h": 11.1,
+    "text": "Certificate under section 203 of the Income-tax Act, 1961 for tax deducted at source on salary paid to an employee under section 192 or pension/interest income",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      25.5,
+      112.4,
+      568.5,
+      123.5
+    ]
+  },
+  {
+    "y": 122.4,
+    "x": 220.8,
+    "w": 152.4,
+    "h": 11.1,
+    "text": "of specified senior citizen under section 194P",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      220.8,
+      122.4,
+      373.2,
+      133.5
+    ]
+  },
+  {
+    "y": 138.3,
+    "x": 81.0,
+    "w": 40.0,
+    "h": 10.7,
+    "text": "MVQSNRA",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      81.0,
+      138.3,
+      121.0,
+      149.0
+    ]
+  },
+  {
+    "y": 138.8,
+    "x": 513.3,
+    "w": 40.4,
+    "h": 10.7,
+    "text": "24-Jun-2026",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      513.3,
+      138.8,
+      553.7,
+      149.5
+    ]
+  },
+  {
+    "y": 138.9,
+    "x": 22.0,
+    "w": 50.2,
+    "h": 11.1,
+    "text": "Certificate No.",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      22.0,
+      138.9,
+      72.2,
+      150.0
+    ]
+  },
+  {
+    "y": 138.9,
+    "x": 441.4,
+    "w": 55.6,
+    "h": 11.1,
+    "text": "Last updated on",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      441.4,
+      138.9,
+      497.0,
+      150.0
+    ]
+  },
+  {
+    "y": 158.9,
+    "x": 73.1,
+    "w": 173.8,
+    "h": 11.1,
+    "text": "Name and address of the Employer/Specified Bank",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      73.1,
+      158.9,
+      246.9,
+      170.0
+    ]
+  },
+  {
+    "y": 158.9,
+    "x": 336.7,
+    "w": 200.7,
+    "h": 11.1,
+    "text": "Name and address of the Employee/Specified senior citizen",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      336.7,
+      158.9,
+      537.3,
+      170.0
+    ]
+  },
+  {
+    "y": 181.2,
+    "x": 29.0,
+    "w": 183.5,
+    "h": 10.7,
+    "text": "NETWORTH DATA PRODUCTS PRIVATE LIMITED",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      181.2,
+      212.5,
+      191.9
+    ]
+  },
+  {
+    "y": 191.3,
+    "x": 29.0,
+    "w": 67.6,
+    "h": 10.7,
+    "text": "132 C,, ECC ROAD,",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      191.3,
+      96.6,
+      201.9
+    ]
+  },
+  {
+    "y": 191.3,
+    "x": 321.0,
+    "w": 194.6,
+    "h": 10.7,
+    "text": "SOMAMBUDIAGRAHARA NAGESHACHAR SRINIDHI",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      321.0,
+      191.3,
+      515.6,
+      201.9
+    ]
+  },
+  {
+    "y": 201.3,
+    "x": 29.0,
+    "w": 116.0,
+    "h": 10.7,
+    "text": "WHITEFIELD, Bangalore - 560066",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      201.3,
+      145.0,
+      212.0
+    ]
+  },
+  {
+    "y": 201.3,
+    "x": 321.0,
+    "w": 225.5,
+    "h": 10.7,
+    "text": "12 BRAHHENDRA SWAMY, KRUPA SRI SAI JYOTHI, LAYOUT",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      321.0,
+      201.3,
+      546.5,
+      212.0
+    ]
+  },
+  {
+    "y": 211.4,
+    "x": 29.0,
+    "w": 32.9,
+    "h": 10.7,
+    "text": "Karnataka",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      211.4,
+      61.9,
+      222.0
+    ]
+  },
+  {
+    "y": 211.4,
+    "x": 321.0,
+    "w": 227.1,
+    "h": 10.7,
+    "text": "SINGANAYAKANHALLI, YELAHANKA, BANGALORE - 560064",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      321.0,
+      211.4,
+      548.1,
+      222.0
+    ]
+  },
+  {
+    "y": 221.4,
+    "x": 29.0,
+    "w": 68.5,
+    "h": 10.7,
+    "text": "+(91)91-9739217445",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      221.4,
+      97.5,
+      232.1
+    ]
+  },
+  {
+    "y": 221.4,
+    "x": 321.0,
+    "w": 32.9,
+    "h": 10.7,
+    "text": "Karnataka",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      321.0,
+      221.4,
+      353.9,
+      232.1
+    ]
+  },
+  {
+    "y": 231.5,
+    "x": 29.0,
+    "w": 60.9,
+    "h": 10.7,
+    "text": "sufyaan@saseca.in",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.0,
+      231.5,
+      89.9,
+      242.2
+    ]
+  },
+  {
+    "y": 253.9,
+    "x": 76.1,
+    "w": 71.8,
+    "h": 11.1,
+    "text": "PAN of the Deductor",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      76.1,
+      253.9,
+      147.9,
+      265.0
+    ]
+  },
+  {
+    "y": 253.9,
+    "x": 254.9,
+    "w": 72.2,
+    "h": 11.1,
+    "text": "TAN of the Deductor",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      254.9,
+      253.9,
+      327.1,
+      265.0
+    ]
+  },
+  {
+    "y": 253.9,
+    "x": 399.0,
+    "w": 154.0,
+    "h": 11.1,
+    "text": "PAN of the Employee/Specified senior citizen",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      399.0,
+      253.9,
+      553.0,
+      265.0
+    ]
+  },
+  {
+    "y": 273.8,
+    "x": 86.9,
+    "w": 50.2,
+    "h": 10.7,
+    "text": "AAGCN2055H",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      86.9,
+      273.8,
+      137.1,
+      284.5
+    ]
+  },
+  {
+    "y": 273.8,
+    "x": 267.7,
+    "w": 46.7,
+    "h": 10.7,
+    "text": "BLRN12363B",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      267.7,
+      273.8,
+      314.3,
+      284.5
+    ]
+  },
+  {
+    "y": 273.8,
+    "x": 452.0,
+    "w": 48.0,
+    "h": 10.7,
+    "text": "MSXPS6972G",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      452.0,
+      273.8,
+      500.0,
+      284.5
+    ]
+  },
+  {
+    "y": 293.9,
+    "x": 141.4,
+    "w": 37.1,
+    "h": 11.1,
+    "text": "CIT (TDS)",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      141.4,
+      293.9,
+      178.6,
+      305.0
+    ]
+  },
+  {
+    "y": 293.9,
+    "x": 338.5,
+    "w": 58.0,
+    "h": 11.1,
+    "text": "Assessment Year",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      338.5,
+      293.9,
+      396.5,
+      305.0
+    ]
+  },
+  {
+    "y": 293.9,
+    "x": 460.4,
+    "w": 88.2,
+    "h": 11.1,
+    "text": "Period with the Employer",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      460.4,
+      293.9,
+      548.6,
+      305.0
+    ]
+  },
+  {
+    "y": 313.9,
+    "x": 458.0,
+    "w": 19.1,
+    "h": 11.1,
+    "text": "From",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      458.0,
+      313.9,
+      477.1,
+      325.0
+    ]
+  },
+  {
+    "y": 313.9,
+    "x": 532.3,
+    "w": 9.3,
+    "h": 11.1,
+    "text": "To",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      532.3,
+      313.9,
+      541.7,
+      325.0
+    ]
+  },
+  {
+    "y": 318.8,
+    "x": 93.2,
+    "w": 132.6,
+    "h": 10.7,
+    "text": "The Commissioner of Income Tax (TDS)",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      93.2,
+      318.8,
+      225.8,
+      329.5
+    ]
+  },
+  {
+    "y": 328.8,
+    "x": 67.8,
+    "w": 183.3,
+    "h": 10.7,
+    "text": "Room No. 59, H.M.T. Bhawan, 4th Floor, Bellary Road ,",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      67.8,
+      328.8,
+      251.2,
+      339.5
+    ]
+  },
+  {
+    "y": 329.3,
+    "x": 354.2,
+    "w": 26.7,
+    "h": 10.7,
+    "text": "2026-27",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      354.2,
+      329.3,
+      380.8,
+      340.0
+    ]
+  },
+  {
+    "y": 332.8,
+    "x": 446.6,
+    "w": 41.8,
+    "h": 10.7,
+    "text": "01-Apr-2025",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      446.6,
+      332.8,
+      488.4,
+      343.5
+    ]
+  },
+  {
+    "y": 332.8,
+    "x": 515.7,
+    "w": 42.7,
+    "h": 10.7,
+    "text": "31-Mar-2026",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      515.7,
+      332.8,
+      558.3,
+      343.5
+    ]
+  },
+  {
+    "y": 338.9,
+    "x": 106.4,
+    "w": 106.2,
+    "h": 10.7,
+    "text": "Ganganagar, Bangalore - 560032",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      106.4,
+      338.9,
+      212.6,
+      349.6
+    ]
+  },
+  {
+    "y": 361.6,
+    "x": 502.2,
+    "w": 56.1,
+    "h": 13.3,
+    "text": "Annexure  -  I",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      502.2,
+      361.6,
+      558.3,
+      374.9
+    ]
+  },
+  {
+    "y": 381.6,
+    "x": 22.0,
+    "w": 246.6,
+    "h": 13.3,
+    "text": "Details of Salary Paid and any other income and tax deducted",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      22.0,
+      381.6,
+      268.6,
+      394.9
+    ]
+  },
+  {
+    "y": 404.6,
+    "x": 27.0,
+    "w": 7.2,
+    "h": 13.3,
+    "text": "A",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      404.6,
+      34.2,
+      417.9
+    ]
+  },
+  {
+    "y": 404.6,
+    "x": 53.0,
+    "w": 198.9,
+    "h": 13.3,
+    "text": "Whether opting out of taxation u/s 115BAC(1A)?",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      53.0,
+      404.6,
+      251.9,
+      417.9
+    ]
+  },
+  {
+    "y": 404.6,
+    "x": 455.4,
+    "w": 12.2,
+    "h": 13.3,
+    "text": "No",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      455.4,
+      404.6,
+      467.6,
+      417.9
+    ]
+  },
+  {
+    "y": 426.6,
+    "x": 58.0,
+    "w": 51.4,
+    "h": 13.3,
+    "text": "Gross Salary",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      426.6,
+      109.4,
+      439.9
+    ]
+  },
+  {
+    "y": 426.6,
+    "x": 399.0,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      399.0,
+      426.6,
+      412.0,
+      439.9
+    ]
+  },
+  {
+    "y": 426.6,
+    "x": 512.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      512.5,
+      426.6,
+      525.5,
+      439.9
+    ]
+  },
+  {
+    "y": 427.8,
+    "x": 27.0,
+    "w": 6.0,
+    "h": 10.7,
+    "text": "1.",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      427.8,
+      33.0,
+      438.5
+    ]
+  },
+  {
+    "y": 452.6,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(a)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      452.6,
+      41.1,
+      465.9
+    ]
+  },
+  {
+    "y": 452.6,
+    "x": 58.0,
+    "w": 202.5,
+    "h": 13.3,
+    "text": "Salary as per provisions contained in section 17(1)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      452.6,
+      260.5,
+      465.9
+    ]
+  },
+  {
+    "y": 452.6,
+    "x": 418.5,
+    "w": 42.5,
+    "h": 13.3,
+    "text": "660000.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      418.5,
+      452.6,
+      461.0,
+      465.9
+    ]
+  },
+  {
+    "y": 474.3,
+    "x": 58.0,
+    "w": 260.5,
+    "h": 13.3,
+    "text": "Value of perquisites under section 17(2) (as per Form No. 12BA,",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      474.3,
+      318.5,
+      487.6
+    ]
+  },
+  {
+    "y": 480.6,
+    "x": 29.7,
+    "w": 11.7,
+    "h": 13.3,
+    "text": "(b)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.7,
+      480.6,
+      41.3,
+      493.9
+    ]
+  },
+  {
+    "y": 480.6,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      480.6,
+      461.0,
+      493.9
+    ]
+  },
+  {
+    "y": 486.9,
+    "x": 58.0,
+    "w": 84.1,
+    "h": 13.3,
+    "text": "wherever applicable)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      486.9,
+      142.1,
+      500.2
+    ]
+  },
+  {
+    "y": 500.8,
+    "x": 58.0,
+    "w": 242.7,
+    "h": 13.3,
+    "text": "Profits in lieu of salary under section 17(3) (as per Form No.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      500.8,
+      300.7,
+      514.1
+    ]
+  },
+  {
+    "y": 507.1,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(c)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      507.1,
+      41.1,
+      520.4
+    ]
+  },
+  {
+    "y": 507.1,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      507.1,
+      461.0,
+      520.4
+    ]
+  },
+  {
+    "y": 513.3,
+    "x": 58.0,
+    "w": 113.0,
+    "h": 13.3,
+    "text": "12BA, wherever applicable)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      513.3,
+      171.0,
+      526.7
+    ]
+  },
+  {
+    "y": 529.1,
+    "x": 29.7,
+    "w": 11.7,
+    "h": 13.3,
+    "text": "(d)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.7,
+      529.1,
+      41.3,
+      542.4
+    ]
+  },
+  {
+    "y": 529.1,
+    "x": 58.0,
+    "w": 21.1,
+    "h": 13.3,
+    "text": "Total",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      529.1,
+      79.1,
+      542.4
+    ]
+  },
+  {
+    "y": 529.1,
+    "x": 530.5,
+    "w": 42.5,
+    "h": 13.3,
+    "text": "660000.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      530.5,
+      529.1,
+      573.0,
+      542.4
+    ]
+  },
+  {
+    "y": 552.1,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(e)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      552.1,
+      41.1,
+      565.4
+    ]
+  },
+  {
+    "y": 552.1,
+    "x": 58.0,
+    "w": 258.8,
+    "h": 13.3,
+    "text": "Reported total amount of salary received from other employer(s)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      552.1,
+      316.8,
+      565.4
+    ]
+  },
+  {
+    "y": 552.1,
+    "x": 555.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      555.5,
+      552.1,
+      573.0,
+      565.4
+    ]
+  },
+  {
+    "y": 577.6,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "2.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      577.6,
+      34.5,
+      590.9
+    ]
+  },
+  {
+    "y": 577.6,
+    "x": 58.0,
+    "w": 223.3,
+    "h": 13.3,
+    "text": "Less: Allowances to the extent exempt under section 10",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      577.6,
+      281.3,
+      590.9
+    ]
+  },
+  {
+    "y": 603.1,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(a)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      603.1,
+      41.1,
+      616.4
+    ]
+  },
+  {
+    "y": 603.1,
+    "x": 58.0,
+    "w": 206.1,
+    "h": 13.3,
+    "text": "Travel concession or assistance under section 10(5)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      603.1,
+      264.1,
+      616.4
+    ]
+  },
+  {
+    "y": 603.1,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      603.1,
+      461.0,
+      616.4
+    ]
+  },
+  {
+    "y": 632.1,
+    "x": 29.7,
+    "w": 11.7,
+    "h": 13.3,
+    "text": "(b)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.7,
+      632.1,
+      41.3,
+      645.4
+    ]
+  },
+  {
+    "y": 632.1,
+    "x": 58.0,
+    "w": 207.7,
+    "h": 13.3,
+    "text": "Death-cum-retirement gratuity under section 10(10)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      632.1,
+      265.7,
+      645.4
+    ]
+  },
+  {
+    "y": 632.1,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      632.1,
+      461.0,
+      645.4
+    ]
+  },
+  {
+    "y": 661.1,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(c)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      661.1,
+      41.1,
+      674.4
+    ]
+  },
+  {
+    "y": 661.1,
+    "x": 58.0,
+    "w": 205.5,
+    "h": 13.3,
+    "text": "Commuted value of pension under section 10(10A)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      661.1,
+      263.5,
+      674.4
+    ]
+  },
+  {
+    "y": 661.1,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      661.1,
+      461.0,
+      674.4
+    ]
+  },
+  {
+    "y": 684.3,
+    "x": 58.0,
+    "w": 243.3,
+    "h": 13.3,
+    "text": "Cash equivalent of leave salary encashment under section 10",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      684.3,
+      301.3,
+      697.6
+    ]
+  },
+  {
+    "y": 690.6,
+    "x": 29.7,
+    "w": 11.7,
+    "h": 13.3,
+    "text": "(d)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      29.7,
+      690.6,
+      41.3,
+      703.9
+    ]
+  },
+  {
+    "y": 690.6,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      690.6,
+      461.0,
+      703.9
+    ]
+  },
+  {
+    "y": 696.8,
+    "x": 58.0,
+    "w": 31.1,
+    "h": 13.3,
+    "text": "(10AA)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      696.8,
+      89.1,
+      710.2
+    ]
+  },
+  {
+    "y": 719.6,
+    "x": 30.0,
+    "w": 11.1,
+    "h": 13.3,
+    "text": "(e)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.0,
+      719.6,
+      41.1,
+      732.9
+    ]
+  },
+  {
+    "y": 719.6,
+    "x": 58.0,
+    "w": 179.1,
+    "h": 13.3,
+    "text": "House rent allowance under section 10(13A)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      719.6,
+      237.1,
+      732.9
+    ]
+  },
+  {
+    "y": 719.6,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      719.6,
+      461.0,
+      732.9
+    ]
+  },
+  {
+    "y": 747.6,
+    "x": 30.5,
+    "w": 10.0,
+    "h": 13.3,
+    "text": "(f)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      30.5,
+      747.6,
+      40.5,
+      760.9
+    ]
+  },
+  {
+    "y": 747.6,
+    "x": 58.0,
+    "w": 185.2,
+    "h": 13.3,
+    "text": "Other special allowances under section 10(14)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      58.0,
+      747.6,
+      243.2,
+      760.9
+    ]
+  },
+  {
+    "y": 747.6,
+    "x": 443.5,
+    "w": 17.5,
+    "h": 13.3,
+    "text": "0.00",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      443.5,
+      747.6,
+      461.0,
+      760.9
+    ]
+  },
+  {
+    "y": 801.6,
+    "x": 217.0,
+    "w": 51.6,
+    "h": 13.7,
+    "text": "Page 1 of 4",
+    "size": 10.0,
+    "font": "Helvetica",
+    "color": 0,
+    "flags": 0,
+    "bbox": [
+      217.0,
+      801.6,
+      268.6,
+      815.4
+    ]
+  }
+]

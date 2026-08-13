@@ -11,6 +11,8 @@ class OrganizationType:
     logo: auto
     gst_number: auto
     pan_number: auto
+    tan_number: auto
+    cit_tds_office: auto
     registration_number: auto
     headquarters_address: auto
     llm_api_key: auto

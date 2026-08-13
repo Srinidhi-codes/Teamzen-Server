@@ -189,11 +189,24 @@ def render_networth_style_payslip(payslip) -> bytes:
         pdf.set_fill_color(*rgb)
         pdf.rect(page_w - right_bar, i * seg_h, right_bar, seg_h + 0.5, "F")
 
+    # ── Org logo (top-right of header) ──
+    logo_tmp = None
+    try:
+        from payroll.services import _resolve_logo_path
+
+        logo_path, logo_is_temp = _resolve_logo_path(org)
+        if logo_path:
+            pdf.image(logo_path, x=page_w - right_bar - 28, y=10, h=16)
+            if logo_is_temp:
+                logo_tmp = logo_path
+    except Exception:
+        pass
+
     # ── Company name ──
     pdf.set_xy(content_x, 14)
     pdf.set_font("helvetica", "B", 22)
     pdf.set_text_color(20, 20, 20)
-    pdf.cell(content_w, 10, _safe_text(brand[:40]), align="L")
+    pdf.cell(content_w * 0.75, 10, _safe_text(brand[:40]), align="L")
 
     # ── Period title ──
     pdf.set_xy(content_x, 28)
@@ -370,6 +383,11 @@ def render_networth_style_payslip(payslip) -> bytes:
     pdf.cell(content_w * 0.55, 4, _safe_text(legal[:48]), align="R")
 
     out = pdf.output(dest="S")
+    if logo_tmp:
+        try:
+            os.unlink(logo_tmp)
+        except OSError:
+            pass
     if isinstance(out, str):
         return out.encode("latin-1")
     return bytes(out)

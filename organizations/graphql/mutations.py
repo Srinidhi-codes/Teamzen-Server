@@ -11,6 +11,8 @@ class OrganizationInput:
     logo: Optional[str]
     gst_number: Optional[str]
     pan_number: Optional[str]
+    tan_number: Optional[str] = None
+    cit_tds_office: Optional[str] = None
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
@@ -26,6 +28,8 @@ class CreateOrganizationInput:
     logo: Optional[str]
     gst_number: Optional[str]
     pan_number: Optional[str]
+    tan_number: Optional[str] = None
+    cit_tds_office: Optional[str] = None
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
@@ -153,6 +157,10 @@ class OrganizationMutation:
                 org.logo = logo_val
         org.gst_number = input.gst_number
         org.pan_number = input.pan_number
+        if getattr(input, "tan_number", None) is not None:
+            org.tan_number = input.tan_number
+        if getattr(input, "cit_tds_office", None) is not None:
+            org.cit_tds_office = input.cit_tds_office or ""
         org.registration_number = input.registration_number
         org.headquarters_address = input.headquarters_address
         if input.llm_api_key is not None and input.llm_api_key != org.llm_api_key:

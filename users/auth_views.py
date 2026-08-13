@@ -222,12 +222,20 @@ class RequestOTPView(APIView):
             
         try:
             user = User.objects.get(email=email)
-            if not user.is_active:
-                return Response({"error": "This account is inactive"}, status=status.HTTP_400_BAD_REQUEST)
-                
+            from users.exit_access import (
+                can_authenticate_user,
+                inactive_login_blocked_message,
+            )
+
+            if not can_authenticate_user(user):
+                return Response(
+                    {"error": inactive_login_blocked_message()},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Generate 6-digit OTP
             otp = "".join(secrets.choice("0123456789") for _ in range(6))
-            
+
             # Store OTP in cache (5 minutes TTL)
             cache.set(f"otp_{email}", otp, timeout=300)
             
@@ -278,8 +286,16 @@ class VerifyOTPView(APIView):
         
         try:
             user = User.objects.get(email=email)
-            if not user.is_active:
-                return Response({"error": "This account is inactive"}, status=status.HTTP_400_BAD_REQUEST)
+            from users.exit_access import (
+                can_authenticate_user,
+                inactive_login_blocked_message,
+            )
+
+            if not can_authenticate_user(user):
+                return Response(
+                    {"error": inactive_login_blocked_message()},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
                 
             # If 2FA (TOTP) is enabled, return temp session token for step-2 validation
             if user.is_totp_enabled:
@@ -385,8 +401,16 @@ class VerifyTOTPView(APIView):
             
         try:
             user = User.objects.get(id=user_id)
-            if not user.is_active:
-                return Response({"error": "This account is inactive"}, status=status.HTTP_400_BAD_REQUEST)
+            from users.exit_access import (
+                can_authenticate_user,
+                inactive_login_blocked_message,
+            )
+
+            if not can_authenticate_user(user):
+                return Response(
+                    {"error": inactive_login_blocked_message()},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
                 
             totp = pyotp.TOTP(user.totp_secret)
             if totp.verify(code):
@@ -428,8 +452,16 @@ class GoogleLoginView(APIView):
                 
             try:
                 user = User.objects.get(email=email)
-                if not user.is_active:
-                    return Response({"error": "This account is inactive"}, status=status.HTTP_400_BAD_REQUEST)
+                from users.exit_access import (
+                    can_authenticate_user,
+                    inactive_login_blocked_message,
+                )
+
+                if not can_authenticate_user(user):
+                    return Response(
+                        {"error": inactive_login_blocked_message()},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                     
                 # Check if 2FA is enabled
                 if user.is_totp_enabled:

@@ -1,0 +1,852 @@
+[
+  {
+    "y": 33.7,
+    "x": 29.9,
+    "w": 84.1,
+    "h": 8.3,
+    "text": "Certificate Number: MVQSNRA",
+    "size": 6.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      29.9,
+      33.7,
+      114.0,
+      42.0
+    ]
+  },
+  {
+    "y": 33.7,
+    "x": 162.0,
+    "w": 84.7,
+    "h": 8.3,
+    "text": "TAN of Employer: BLRN12363B",
+    "size": 6.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      162.0,
+      33.7,
+      246.7,
+      42.0
+    ]
+  },
+  {
+    "y": 33.7,
+    "x": 312.3,
+    "w": 85.7,
+    "h": 8.3,
+    "text": "PAN of Employee: MSXPS6972G",
+    "size": 6.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      312.3,
+      33.7,
+      398.0,
+      42.0
+    ]
+  },
+  {
+    "y": 33.7,
+    "x": 459.5,
+    "w": 66.5,
+    "h": 8.3,
+    "text": "Assessment Year: 2026-27",
+    "size": 6.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      459.5,
+      33.7,
+      526.0,
+      42.0
+    ]
+  },
+  {
+    "y": 51.1,
+    "x": 27.0,
+    "w": 398.8,
+    "h": 13.3,
+    "text": "2. (f) Break up for \u2018Amount of any other exemption under section 10\u2019 to be filled in the table below",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      51.1,
+      425.8,
+      64.4
+    ]
+  },
+  {
+    "y": 64.9,
+    "x": 68.6,
+    "w": 144.8,
+    "h": 13.3,
+    "text": "Particular's of Amount for any other",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      68.6,
+      64.9,
+      213.4,
+      78.2
+    ]
+  },
+  {
+    "y": 72.8,
+    "x": 27.1,
+    "w": 10.8,
+    "h": 13.3,
+    "text": "Sl.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.1,
+      72.8,
+      37.9,
+      86.1
+    ]
+  },
+  {
+    "y": 77.4,
+    "x": 85.6,
+    "w": 110.8,
+    "h": 13.3,
+    "text": "exemption under section 10",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      85.6,
+      77.4,
+      196.4,
+      90.8
+    ]
+  },
+  {
+    "y": 77.4,
+    "x": 262.7,
+    "w": 58.6,
+    "h": 13.3,
+    "text": "Gross Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      262.7,
+      77.4,
+      321.3,
+      90.8
+    ]
+  },
+  {
+    "y": 77.4,
+    "x": 363.7,
+    "w": 78.6,
+    "h": 13.3,
+    "text": "Qualifying Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      363.7,
+      77.4,
+      442.3,
+      90.8
+    ]
+  },
+  {
+    "y": 77.4,
+    "x": 476.2,
+    "w": 81.7,
+    "h": 13.3,
+    "text": "Deductible  Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      476.2,
+      77.4,
+      557.8,
+      90.8
+    ]
+  },
+  {
+    "y": 85.4,
+    "x": 25.1,
+    "w": 14.7,
+    "h": 13.3,
+    "text": "No.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      25.1,
+      85.4,
+      39.9,
+      98.7
+    ]
+  },
+  {
+    "y": 92.6,
+    "x": 283.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      283.5,
+      92.6,
+      296.5,
+      105.9
+    ]
+  },
+  {
+    "y": 92.6,
+    "x": 399.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      399.5,
+      92.6,
+      412.5,
+      105.9
+    ]
+  },
+  {
+    "y": 92.6,
+    "x": 508.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      508.5,
+      92.6,
+      521.5,
+      105.9
+    ]
+  },
+  {
+    "y": 93.6,
+    "x": 138.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      138.5,
+      93.6,
+      151.5,
+      106.9
+    ]
+  },
+  {
+    "y": 107.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "1.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      107.1,
+      34.5,
+      120.4
+    ]
+  },
+  {
+    "y": 122.1,
+    "x": 27.0,
+    "w": 10.0,
+    "h": 13.3,
+    "text": "2..",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      122.1,
+      37.0,
+      135.4
+    ]
+  },
+  {
+    "y": 137.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "3.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      137.1,
+      34.5,
+      150.4
+    ]
+  },
+  {
+    "y": 152.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "4.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      152.1,
+      34.5,
+      165.4
+    ]
+  },
+  {
+    "y": 167.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "5.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      167.1,
+      34.5,
+      180.4
+    ]
+  },
+  {
+    "y": 182.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "6.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      182.1,
+      34.5,
+      195.4
+    ]
+  },
+  {
+    "y": 218.1,
+    "x": 27.0,
+    "w": 464.4,
+    "h": 13.3,
+    "text": "10(k). Break up for \u2018Amount deductible under any other provision(s) of Chapter VIA \u2018to be filled in the table below",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      218.1,
+      491.4,
+      231.4
+    ]
+  },
+  {
+    "y": 233.9,
+    "x": 60.9,
+    "w": 160.1,
+    "h": 13.3,
+    "text": "Particular's of Amount deductible under",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      60.9,
+      233.9,
+      221.1,
+      247.2
+    ]
+  },
+  {
+    "y": 246.4,
+    "x": 64.2,
+    "w": 153.6,
+    "h": 13.3,
+    "text": "any other provision(s) of Chapter VIA",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      64.2,
+      246.4,
+      217.8,
+      259.8
+    ]
+  },
+  {
+    "y": 246.4,
+    "x": 262.7,
+    "w": 58.6,
+    "h": 13.3,
+    "text": "Gross Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      262.7,
+      246.4,
+      321.3,
+      259.8
+    ]
+  },
+  {
+    "y": 246.4,
+    "x": 363.7,
+    "w": 78.6,
+    "h": 13.3,
+    "text": "Qualifying Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      363.7,
+      246.4,
+      442.3,
+      259.8
+    ]
+  },
+  {
+    "y": 246.4,
+    "x": 476.2,
+    "w": 81.7,
+    "h": 13.3,
+    "text": "Deductible  Amount",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      476.2,
+      246.4,
+      557.8,
+      259.8
+    ]
+  },
+  {
+    "y": 246.8,
+    "x": 27.1,
+    "w": 10.8,
+    "h": 13.3,
+    "text": "Sl.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.1,
+      246.8,
+      37.9,
+      260.1
+    ]
+  },
+  {
+    "y": 259.4,
+    "x": 25.1,
+    "w": 14.7,
+    "h": 13.3,
+    "text": "No.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      25.1,
+      259.4,
+      39.9,
+      272.7
+    ]
+  },
+  {
+    "y": 269.6,
+    "x": 286.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      286.5,
+      269.6,
+      299.5,
+      282.9
+    ]
+  },
+  {
+    "y": 269.6,
+    "x": 507.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      507.5,
+      269.6,
+      520.5,
+      282.9
+    ]
+  },
+  {
+    "y": 271.6,
+    "x": 138.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      138.5,
+      271.6,
+      151.5,
+      284.9
+    ]
+  },
+  {
+    "y": 271.6,
+    "x": 399.5,
+    "w": 13.1,
+    "h": 13.3,
+    "text": "Rs.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      399.5,
+      271.6,
+      412.5,
+      284.9
+    ]
+  },
+  {
+    "y": 286.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "1.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      286.1,
+      34.5,
+      299.4
+    ]
+  },
+  {
+    "y": 301.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "2.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      301.1,
+      34.5,
+      314.4
+    ]
+  },
+  {
+    "y": 316.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "3.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      316.1,
+      34.5,
+      329.4
+    ]
+  },
+  {
+    "y": 331.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "4.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      331.1,
+      34.5,
+      344.4
+    ]
+  },
+  {
+    "y": 346.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "5.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      346.1,
+      34.5,
+      359.4
+    ]
+  },
+  {
+    "y": 361.1,
+    "x": 27.0,
+    "w": 7.5,
+    "h": 13.3,
+    "text": "6.",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      27.0,
+      361.1,
+      34.5,
+      374.4
+    ]
+  },
+  {
+    "y": 405.8,
+    "x": 341.0,
+    "w": 196.6,
+    "h": 13.3,
+    "text": "(Signature of person responsible for deduction of",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      341.0,
+      405.8,
+      537.6,
+      419.1
+    ]
+  },
+  {
+    "y": 408.3,
+    "x": 158.2,
+    "w": 102.7,
+    "h": 10.7,
+    "text": "BANGALORE, BANGALORE",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      158.2,
+      408.3,
+      260.8,
+      419.0
+    ]
+  },
+  {
+    "y": 413.4,
+    "x": 22.0,
+    "w": 18.2,
+    "h": 11.1,
+    "text": "Place",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      22.0,
+      413.4,
+      40.2,
+      424.5
+    ]
+  },
+  {
+    "y": 418.4,
+    "x": 341.0,
+    "w": 15.5,
+    "h": 13.3,
+    "text": "tax)",
+    "size": 10.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      341.0,
+      418.4,
+      356.5,
+      431.7
+    ]
+  },
+  {
+    "y": 437.4,
+    "x": 339.0,
+    "w": 13.8,
+    "h": 11.1,
+    "text": "Full",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      339.0,
+      437.4,
+      352.8,
+      448.5
+    ]
+  },
+  {
+    "y": 442.3,
+    "x": 189.3,
+    "w": 40.4,
+    "h": 10.7,
+    "text": "24-Jun-2026",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      189.3,
+      442.3,
+      229.7,
+      453.0
+    ]
+  },
+  {
+    "y": 442.3,
+    "x": 381.0,
+    "w": 84.4,
+    "h": 10.7,
+    "text": "NITISH  VISHWANATH",
+    "size": 8.0,
+    "font": "Times-Roman",
+    "color": 0,
+    "flags": 4,
+    "bbox": [
+      381.0,
+      442.3,
+      465.4,
+      453.0
+    ]
+  },
+  {
+    "y": 442.4,
+    "x": 22.0,
+    "w": 16.0,
+    "h": 11.1,
+    "text": "Date",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      22.0,
+      442.4,
+      38.0,
+      453.5
+    ]
+  },
+  {
+    "y": 447.4,
+    "x": 339.0,
+    "w": 22.7,
+    "h": 11.1,
+    "text": "Name:",
+    "size": 8.0,
+    "font": "Times-Bold",
+    "color": 0,
+    "flags": 20,
+    "bbox": [
+      339.0,
+      447.4,
+      361.7,
+      458.5
+    ]
+  },
+  {
+    "y": 801.6,
+    "x": 217.0,
+    "w": 51.6,
+    "h": 13.7,
+    "text": "Page 4 of 4",
+    "size": 10.0,
+    "font": "Helvetica",
+    "color": 0,
+    "flags": 0,
+    "bbox": [
+      217.0,
+      801.6,
+      268.6,
+      815.4
+    ]
+  }
+]

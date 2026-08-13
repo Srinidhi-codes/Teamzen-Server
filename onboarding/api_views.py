@@ -97,6 +97,7 @@ class EmployeeDocumentUploadView(APIView):
             file=upload,
             file_name=getattr(upload, "name", "")[:255],
             uploaded_by=actor,
+            source="onboarding",
             ai_suggested_category=suggested,
             ai_confidence=confidence,
             verification_status="pending",

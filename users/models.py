@@ -75,6 +75,11 @@ class CustomUser(AbstractUser):
     aadhar_number = models.CharField(max_length=100, null=True, blank=True)
     pan_number = models.CharField(max_length=20, null=True, blank=True)
     uan_number = models.CharField(max_length=100, null=True, blank=True)
+    residential_address = models.TextField(
+        blank=True,
+        default="",
+        help_text="Residential / permanent address for Form 16 and letters",
+    )
     
     # Razorpay Integration
     razorpay_contact_id = models.CharField(max_length=100, null=True, blank=True)

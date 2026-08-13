@@ -115,10 +115,25 @@ class LoginSerializer(serializers.Serializer):
     longitude = serializers.DecimalField(max_digits=25, decimal_places=10, required=False)
 
     def validate(self, data):
-        user = authenticate(username=data['email'], password=data['password'])
+        from django.contrib.auth import get_user_model
+        from users.exit_access import can_authenticate_user, has_exit_portal_access
+
+        User = get_user_model()
+        user = authenticate(username=data["email"], password=data["password"])
         if not user:
-            raise serializers.ValidationError("Invalid credentials")
-        data['user'] = user
+            # Django authenticate() rejects inactive users — allow F&F portal access
+            candidate = User.objects.filter(email__iexact=data["email"]).first()
+            if (
+                candidate
+                and candidate.check_password(data["password"])
+                and has_exit_portal_access(candidate)
+            ):
+                user = candidate
+            else:
+                raise serializers.ValidationError("Invalid credentials")
+        if not can_authenticate_user(user):
+            raise serializers.ValidationError("This account is inactive")
+        data["user"] = user
         return data
 
 

@@ -4,6 +4,7 @@ from payroll.api_views import (
     DataImportUploadView,
     PayslipTemplateCloneView,
     PayslipTemplateDemoDownloadView,
+    PayslipTemplatePreviewView,
     BankPayoutExportView,
 )
 
@@ -20,6 +21,11 @@ urlpatterns = [
         "payroll/payslip-templates/<int:template_id>/demo/",
         PayslipTemplateDemoDownloadView.as_view(),
         name="payroll-payslip-template-demo",
+    ),
+    path(
+        "payroll/payslip-templates/<int:template_id>/preview/",
+        PayslipTemplatePreviewView.as_view(),
+        name="payroll-payslip-template-preview",
     ),
     path(
         "payroll/runs/<int:run_id>/bank-export/",

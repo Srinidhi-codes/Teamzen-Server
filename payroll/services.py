@@ -539,7 +539,7 @@ class PayrollService:
         persist: if False, return PDF bytes without uploading to Cloudinary.
 
         If the org default (or override) is an uploaded PDF template, the slip
-        is generated on top of that PDF as a full-page background.
+        is filled pin-to-pin on that PDF (original layout, rewritten values).
         """
         from payroll.template_services import (
             theme_for_payslip,
@@ -553,8 +553,9 @@ class PayrollService:
         theme = (getattr(tpl, "theme", None) or {}) if tpl else {}
         if (
             _template_uses_uploaded_pdf(tpl)
-            or layout_key == "networth"
-            or theme.get("renderer") == "networth_replica"
+            or layout_key in ("networth", "uploaded")
+            or theme.get("renderer") in ("networth_replica", "pdf_fill", "corporate_replica")
+            or theme.get("fill_in_place")
         ):
             return PayrollService._generate_payslip_on_uploaded_template(
                 payslip, tpl, persist=persist
@@ -932,13 +933,22 @@ class PayrollService:
     @staticmethod
     def _generate_payslip_on_uploaded_template(payslip, template, *, persist=True):
         """
-        Clean Networth-style replica — drawn from scratch (no PDF patching).
+        Clean redraw matching the uploaded payslip structure (corporate/Eazy style).
+        Never returns the raw uploaded sample PDF.
         """
-        from payroll.networth_layout import render_networth_style_payslip
+        from payroll.corporate_layout import render_corporate_style_payslip
 
         month_name = calendar.month_name[payslip.payroll_run.month]
         year = payslip.payroll_run.year
-        pdf_bytes = render_networth_style_payslip(payslip)
+        # Prefer corporate structure replica; Networth only if explicitly themed
+        theme = getattr(template, "theme", None) or {}
+        renderer = theme.get("renderer") or ""
+        if renderer == "networth_replica" and not theme.get("fill_in_place"):
+            from payroll.networth_layout import render_networth_style_payslip
+
+            pdf_bytes = render_networth_style_payslip(payslip)
+        else:
+            pdf_bytes = render_corporate_style_payslip(payslip)
 
         if not persist:
             return pdf_bytes

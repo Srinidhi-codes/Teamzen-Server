@@ -258,6 +258,9 @@ class OnboardingQuery:
 
         if status:
             qs = qs.filter(status=status)
+        else:
+            # Active board hides cancelled (e.g. after F&F starts).
+            qs = qs.exclude(status="cancelled")
         if search:
             qs = qs.filter(
                 Q(user__email__icontains=search)

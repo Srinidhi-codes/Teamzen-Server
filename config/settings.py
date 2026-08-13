@@ -100,6 +100,8 @@ INSTALLED_APPS = [
     "performance.apps.PerformanceConfig",
     "feedback.apps.FeedbackConfig",
     "onboarding.apps.OnboardingConfig",
+    "documents.apps.DocumentsConfig",
+    "offboarding.apps.OffboardingConfig",
     "graphql",
     "notifications",
     "channels",
@@ -349,6 +351,8 @@ SIMPLE_JWT = {
 
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    # Allow inactive users with an open F&F / exit portal
+    "USER_AUTHENTICATION_RULE": "users.exit_access.can_authenticate_user",
     "AUTH_COOKIE": "access_token",
     "AUTH_COOKIE_REFRESH": "refresh_token",
     "AUTH_COOKIE_SECURE": not DEBUG,  # True in production
