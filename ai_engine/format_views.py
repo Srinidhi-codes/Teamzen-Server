@@ -44,6 +44,20 @@ class FormatTextView(APIView):
             )
 
         user = request.user
+        org = getattr(user, "organization", None)
+        if getattr(user, "role", None) != "superadmin":
+            from organizations.plan_entitlements import org_has_feature
+
+            if not org_has_feature(org, "ai_assistant"):
+                return Response(
+                    {
+                        "error": "AI write requires the Pro plan. Ask your admin to upgrade in Settings → Plan & billing.",
+                        "code": "plan_required",
+                        "required_plan": "pro",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         org_id = getattr(user, "organization_id", None)
         if not org_id:
             return Response({"error": "No organization assigned"}, status=status.HTTP_400_BAD_REQUEST)

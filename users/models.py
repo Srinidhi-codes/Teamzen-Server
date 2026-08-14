@@ -78,7 +78,7 @@ class CustomUser(AbstractUser):
     residential_address = models.TextField(
         blank=True,
         default="",
-        help_text="Residential / permanent address for Form 16 and letters",
+        help_text="Residential / permanent address",
     )
     
     # Razorpay Integration

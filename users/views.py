@@ -28,6 +28,54 @@ def get_cookie_settings(httponly=True):
         'path': '/',
     }
 
+
+REMEMBER_REFRESH_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
+ACCESS_COOKIE_MAX_AGE = 30 * 60
+
+
+def wants_remember_me(request) -> bool:
+    data = getattr(request, "data", None) or {}
+    raw = data.get("remember_me", data.get("rememberMe"))
+    if raw is None:
+        raw = request.COOKIES.get("remember_me")
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def set_auth_cookies(response, *, access=None, refresh=None, remember=False):
+    """Attach JWT cookies. Remember me → 30-day refresh; otherwise session cookies."""
+    cookie_settings = get_cookie_settings()
+    persist = {"max_age": REMEMBER_REFRESH_MAX_AGE} if remember else {}
+
+    if access:
+        response.set_cookie(
+            key="access_token",
+            value=str(access),
+            max_age=ACCESS_COOKIE_MAX_AGE,
+            **cookie_settings,
+        )
+    if refresh:
+        response.set_cookie(
+            key="refresh_token",
+            value=str(refresh),
+            **cookie_settings,
+            **persist,
+        )
+    response.set_cookie(
+        key="session_can_refresh",
+        value="true",
+        **get_cookie_settings(httponly=False),
+        **persist,
+    )
+    response.set_cookie(
+        key="remember_me",
+        value="true" if remember else "false",
+        **get_cookie_settings(httponly=False),
+        **persist,
+    )
+    return response
+
 def get_client_ip(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
@@ -215,6 +263,8 @@ class CookieTokenRefreshView(TokenRefreshView):
             # Clear invalid cookies
             response.delete_cookie('access_token', path='/')
             response.delete_cookie('refresh_token', path='/')
+            response.delete_cookie('session_can_refresh', path='/')
+            response.delete_cookie('remember_me', path='/')
             return response
             
         token_data = serializer.validated_data
@@ -223,33 +273,12 @@ class CookieTokenRefreshView(TokenRefreshView):
             'access': token_data.get('access'),
             'refresh': token_data.get('refresh'),
         }, status=status.HTTP_200_OK)
-        
-        cookie_settings = get_cookie_settings()  # ← Use centralized settings
-        
-        # Always set new access token
-        if 'access' in token_data:
-            response.set_cookie(
-                key="access_token",
-                value=token_data['access'],
-                max_age=30 * 60,
-                **cookie_settings
-            )
-        
-        # Set new refresh token if rotation is enabled
-        if 'refresh' in token_data:
-            response.set_cookie(
-                key="refresh_token",
-                value=token_data['refresh'],
-                max_age=7 * 24 * 60 * 60,
-                **cookie_settings
-            )
-            
-        # Ensure session flag is present
-        response.set_cookie(
-            key="session_can_refresh",
-            value="true",
-            max_age=7 * 24 * 60 * 60,
-            **get_cookie_settings(httponly=False)
+
+        set_auth_cookies(
+            response,
+            access=token_data.get("access"),
+            refresh=token_data.get("refresh"),
+            remember=wants_remember_me(request),
         )
             
         return response
@@ -272,6 +301,7 @@ class LogoutView(APIView):
         response.delete_cookie("access_token", path='/')
         response.delete_cookie("refresh_token", path='/')
         response.delete_cookie("session_can_refresh", path='/')
+        response.delete_cookie("remember_me", path='/')
         return response
 
 class PasswordResetRequestView(APIView):

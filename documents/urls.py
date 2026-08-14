@@ -7,7 +7,6 @@ from documents.api_views import (
 )
 from documents.form16_api import (
     Form16BulkPublishView,
-    Form16GenerateView,
     Form16PreviewMatchView,
 )
 
@@ -31,11 +30,6 @@ urlpatterns = [
         "documents/form16/bulk-publish/",
         Form16BulkPublishView.as_view(),
         name="form16-bulk-publish",
-    ),
-    path(
-        "documents/form16/generate/",
-        Form16GenerateView.as_view(),
-        name="form16-generate",
     ),
     path(
         "documents/form16/preview-match/",

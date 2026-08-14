@@ -50,6 +50,19 @@ class Feedback(models.Model):
         related_name="feedback_replies",
     )
     replied_at = models.DateTimeField(null=True, blank=True)
+    escalated_to_platform = models.BooleanField(
+        default=False,
+        help_text="True after company admin forwards this item to platform superadmin.",
+    )
+    escalated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedback_escalations",
+    )
+    escalated_at = models.DateTimeField(null=True, blank=True)
+    escalation_note = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -58,6 +71,7 @@ class Feedback(models.Model):
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["organization", "visibility"]),
+            models.Index(fields=["escalated_to_platform"]),
         ]
 
     def __str__(self):

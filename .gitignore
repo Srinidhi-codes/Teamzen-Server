@@ -96,12 +96,6 @@ celerybeat.pid
 # ============================
 .ipynb_checkpoints/
 
-# Form 16 extract/preview scratch (keep form16_assets blank + layout)
-documents/_form16_ref/
-documents/form16_assets/generated_*
-documents/form16_assets/blank_page*_preview.png
-documents/form16_assets/xref_*.png
-
 
 # ============================
 # Node / Frontend (if mixed project)

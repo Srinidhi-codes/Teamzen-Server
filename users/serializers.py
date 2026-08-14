@@ -29,6 +29,14 @@ class OrganizationBriefSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from organizations.plan_entitlements import org_has_feature
+
+        if not org_has_feature(instance, "custom_accent"):
+            data["accent"] = "teal"
+        return data
+
 
 class UserSerializer(serializers.ModelSerializer):
     """User serializer"""

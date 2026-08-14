@@ -14,7 +14,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from users.serializers import UserSerializer
 from users.models import UserLoginHistory
-from users.views import get_client_ip, get_location_from_ip, get_cookie_settings
+from datetime import timedelta
+
+from users.views import get_client_ip, get_location_from_ip, set_auth_cookies, wants_remember_me
 from notifications.email_backends import BrevoHTTPBackend
 from temp_email.otp_email import get_otp_email_html
 
@@ -157,6 +159,9 @@ def login_user_and_set_cookies(user, request):
         user = User.objects.select_related("organization").get(pk=user.pk)
     
     refresh = RefreshToken.for_user(user)
+    remember = wants_remember_me(request)
+    if remember:
+        refresh.set_exp(lifetime=timedelta(days=30))
     access_token = refresh.access_token
     # Set the refresh token's JTI on the access token so we can map requests to the device session
     access_token['refresh_jti'] = refresh['jti']
@@ -166,27 +171,14 @@ def login_user_and_set_cookies(user, request):
         'success': True,
         'access': str(access_token),
         'refresh': str(refresh),
+        'remember_me': remember,
     }, status=status.HTTP_200_OK)
-    
-    cookie_settings = get_cookie_settings()
-    
-    response.set_cookie(
-        key="access_token",
-        value=str(access_token),
-        max_age=30 * 60,  # 30 minutes
-        **cookie_settings
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=str(refresh),
-        max_age=7 * 24 * 60 * 60,  # 7 days
-        **cookie_settings
-    )
-    response.set_cookie(
-        key="session_can_refresh",
-        value="true",
-        max_age=7 * 24 * 60 * 60,
-        **get_cookie_settings(httponly=False)
+
+    set_auth_cookies(
+        response,
+        access=access_token,
+        refresh=refresh,
+        remember=remember,
     )
 
     latitude = request.data.get("latitude") if hasattr(request, "data") else None

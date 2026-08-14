@@ -10,6 +10,7 @@ FEATURE_MIN_PLAN = {
     "payroll_basic": "free",
     "policies": "free",
     "ai_assistant": "pro",
+    "custom_accent": "pro",
     "payroll_auto_run": "pro",
     "salary_advances": "pro",
     "face_attendance": "pro",

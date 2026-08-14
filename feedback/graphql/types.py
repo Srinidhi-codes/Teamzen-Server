@@ -33,10 +33,14 @@ class FeedbackType:
     visibility: auto
     admin_reply: auto
     replied_at: auto
+    escalated_to_platform: auto
+    escalated_at: auto
+    escalation_note: auto
     created_at: auto
     updated_at: auto
     author: UserType
     replied_by: Optional[UserType]
+    escalated_by: Optional[UserType]
 
     @strawberry.field(name="attachments")
     def resolve_attachments(self) -> List[FeedbackAttachmentType]:
