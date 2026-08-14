@@ -34,6 +34,8 @@ urlpatterns = [
     path("api/", include("attendance.urls")),
     path("api/", include("feedback.urls")),
     path("api/", include("onboarding.urls")),
+    path("api/", include("documents.urls")),
+    path("api/", include("offboarding.urls")),
     path("mcp/", include("mcp_oauth.urls")),
 ]
 

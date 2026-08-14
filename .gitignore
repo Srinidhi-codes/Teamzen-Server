@@ -96,6 +96,7 @@ celerybeat.pid
 # ============================
 .ipynb_checkpoints/
 
+
 # ============================
 # Node / Frontend (if mixed project)
 # ============================

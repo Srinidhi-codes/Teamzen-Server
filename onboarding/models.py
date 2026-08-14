@@ -74,6 +74,9 @@ class OnboardingTaskDefinition(models.Model):
         ("education", "Education"),
         ("offer", "Offer letter"),
         ("signed_policy", "Signed policy"),
+        ("form_16", "Form 16"),
+        ("hr_request", "HR request"),
+        ("exit_clearance", "Exit clearance"),
         ("other", "Other"),
     ]
 
@@ -251,8 +254,18 @@ class EmployeeDocument(models.Model):
         blank=True,
         related_name="documents",
     )
+    SOURCE_CHOICES = [
+        ("onboarding", "Onboarding"),
+        ("hr_request", "HR request"),
+        ("offboarding", "Offboarding"),
+        ("self", "Self upload"),
+    ]
+
     category = models.CharField(max_length=32, choices=CATEGORY_CHOICES, default="other")
     title = models.CharField(max_length=255, blank=True, default="")
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default="onboarding"
+    )
     file = models.FileField(
         upload_to=employee_document_upload_to,
         storage=RawMediaCloudinaryStorage(),
@@ -295,6 +308,7 @@ class DocumentLetterTemplate(models.Model):
     LETTER_TYPE_CHOICES = [
         ("offer", "Offer letter"),
         ("experience", "Experience letter"),
+        ("relieving", "Relieving letter"),
         ("salary_certificate", "Salary certificate"),
     ]
 

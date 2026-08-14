@@ -31,6 +31,13 @@ class FeedbackAttachmentUploadView(APIView):
             return Response({"error": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
         if user.role != "superadmin" and item.organization_id != getattr(user, "organization_id", None):
             return Response({"error": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
+        if (
+            user.role == "superadmin"
+            and not item.escalated_to_platform
+            and item.category != "admin_share"
+            and item.author_id != user.id
+        ):
+            return Response({"error": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
 
         if upload.size and upload.size > 10 * 1024 * 1024:
             return Response({"error": "File too large (max 10MB)"}, status=status.HTTP_400_BAD_REQUEST)

@@ -11,6 +11,8 @@ class OrganizationType:
     logo: auto
     gst_number: auto
     pan_number: auto
+    tan_number: auto
+    cit_tds_office: auto
     registration_number: auto
     headquarters_address: auto
     llm_api_key: auto
@@ -18,11 +20,26 @@ class OrganizationType:
     plan_expires_at: auto
     payroll_cycle_day: auto
     payroll_auto_enabled: auto
-    accent: auto
     employee_count: int
     is_active: auto
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def accent(self) -> str:
+        """Teal for Free plan even if a paid accent is still stored."""
+        from organizations.plan_entitlements import org_has_feature
+
+        stored = getattr(self, "accent", None) or "teal"
+        if not org_has_feature(self, "custom_accent"):
+            return "teal"
+        return stored
+
+    @strawberry.field
+    def can_customize_accent(self) -> bool:
+        from organizations.plan_entitlements import org_has_feature
+
+        return org_has_feature(self, "custom_accent")
 
     @strawberry.field
     def face_attendance_enabled(self) -> bool:

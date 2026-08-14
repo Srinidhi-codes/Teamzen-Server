@@ -100,6 +100,8 @@ INSTALLED_APPS = [
     "performance.apps.PerformanceConfig",
     "feedback.apps.FeedbackConfig",
     "onboarding.apps.OnboardingConfig",
+    "documents.apps.DocumentsConfig",
+    "offboarding.apps.OffboardingConfig",
     "graphql",
     "notifications",
     "channels",
@@ -342,13 +344,15 @@ SPECTACULAR_SETTINGS = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),     
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),    
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),    
 
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    # Allow inactive users with an open F&F / exit portal
+    "USER_AUTHENTICATION_RULE": "users.exit_access.can_authenticate_user",
     "AUTH_COOKIE": "access_token",
     "AUTH_COOKIE_REFRESH": "refresh_token",
     "AUTH_COOKIE_SECURE": not DEBUG,  # True in production

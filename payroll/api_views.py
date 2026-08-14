@@ -18,6 +18,8 @@ from payroll.import_services import (
 from payroll.template_services import (
     clone_template_from_upload,
     generate_demo_pdf_bytes,
+    read_template_source_bytes,
+    render_pdf_first_page_to_png,
 )
 from payroll.bank_export import FORMATS, build_bank_export
 
@@ -201,6 +203,64 @@ class PayslipTemplateDemoDownloadView(APIView):
         filename = f"demo_payslip_{safe_name}.pdf"
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class PayslipTemplatePreviewView(APIView):
+    """
+    GET: PNG preview of page 1 for a template card.
+    Uploaded templates → filled pin-to-pin demo (falls back to source PDF page).
+    Query: organization_id (optional for superadmin).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, template_id):
+        user = request.user
+        org_id = request.query_params.get("organization_id") or None
+        try:
+            require_payroll_admin(user, allow_hr=True)
+            org = require_org(user, organization_id=org_id)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+
+        tpl = PayslipTemplate.objects.filter(id=template_id, is_active=True).first()
+        if not tpl:
+            return Response({"error": "Template not found"}, status=status.HTTP_404_NOT_FOUND)
+        if tpl.organization_id and tpl.organization_id != org.id:
+            if user.role != "superadmin" or (
+                user.organization_id and user.organization_id != tpl.organization_id
+            ):
+                return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        pdf_bytes = None
+        try:
+            pdf_bytes = generate_demo_pdf_bytes(org, tpl)
+        except Exception:
+            pdf_bytes = None
+
+        if not pdf_bytes:
+            pdf_bytes = read_template_source_bytes(tpl)
+
+        if not pdf_bytes:
+            return Response(
+                {"error": "No PDF available to preview"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        png = render_pdf_first_page_to_png(pdf_bytes, zoom=1.6)
+        if not png:
+            return Response(
+                {"error": "Could not rasterize PDF preview"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        response = HttpResponse(png, content_type="image/png")
+        # Avoid stale browser/CDN caches when a new PDF is uploaded
+        response["Cache-Control"] = "private, no-store, max-age=0"
+        updated = getattr(tpl, "updated_at", None)
+        if updated:
+            response["ETag"] = f'W/"tpl-{tpl.id}-{int(updated.timestamp())}"'
         return response
 
 

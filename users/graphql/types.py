@@ -88,6 +88,7 @@ class UserType:
     pan_number: auto
     aadhar_number: auto
     uan_number: auto
+    residential_address: auto
     
     @strawberry.field
     def salary_details(self) -> Optional[SalarySummaryType]:
@@ -146,6 +147,18 @@ class UserType:
     @strawberry.field
     def face_enrolled(self) -> bool:
         return bool(self.face_enrolled_at and self.face_descriptor)
+
+    @strawberry.field
+    def onboarding_started(self) -> bool:
+        """True when a non-cancelled onboarding record exists for this user."""
+        try:
+            from onboarding.models import EmployeeOnboarding
+
+            return EmployeeOnboarding.objects.filter(user_id=self.id).exclude(
+                status="cancelled"
+            ).exists()
+        except Exception:
+            return False
 
     @strawberry.field
     def face_descriptor(self) -> Optional[List[float]]:

@@ -11,6 +11,8 @@ class OrganizationInput:
     logo: Optional[str]
     gst_number: Optional[str]
     pan_number: Optional[str]
+    tan_number: Optional[str] = None
+    cit_tds_office: Optional[str] = None
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
@@ -26,6 +28,8 @@ class CreateOrganizationInput:
     logo: Optional[str]
     gst_number: Optional[str]
     pan_number: Optional[str]
+    tan_number: Optional[str] = None
+    cit_tds_office: Optional[str] = None
     registration_number: Optional[str]
     headquarters_address: Optional[str]
     llm_api_key: Optional[str] = None
@@ -113,11 +117,8 @@ class OrganizationMutation:
             raise GraphQLError("Not authorized")
 
         payload = vars(input)
-        accent = payload.get("accent") or "teal"
-        valid = {c[0] for c in Organization.ACCENT_CHOICES}
-        if accent not in valid:
-            raise GraphQLError("Invalid accent color")
-        payload["accent"] = accent
+        # New orgs start on Free — custom color themes require Pro.
+        payload["accent"] = "teal"
 
         from organizations.workweek import validate_weekend_days_input
 
@@ -153,6 +154,10 @@ class OrganizationMutation:
                 org.logo = logo_val
         org.gst_number = input.gst_number
         org.pan_number = input.pan_number
+        if getattr(input, "tan_number", None) is not None:
+            org.tan_number = input.tan_number
+        if getattr(input, "cit_tds_office", None) is not None:
+            org.cit_tds_office = input.cit_tds_office or ""
         org.registration_number = input.registration_number
         org.headquarters_address = input.headquarters_address
         if input.llm_api_key is not None and input.llm_api_key != org.llm_api_key:
@@ -164,7 +169,11 @@ class OrganizationMutation:
             valid = {c[0] for c in Organization.ACCENT_CHOICES}
             if input.accent not in valid:
                 raise GraphQLError("Invalid accent color")
-            org.accent = input.accent
+            from organizations.plan_entitlements import org_has_feature
+
+            if org_has_feature(org, "custom_accent"):
+                org.accent = input.accent
+            # Free orgs keep stored accent but it is not applied until they upgrade.
         if input.face_attendance_enabled is not None:
             if input.face_attendance_enabled:
                 from organizations.plan_entitlements import require_feature

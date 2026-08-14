@@ -19,6 +19,7 @@ class UpdateProfileInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
+    residential_address: str | None = None
     has_seen_onboarding: bool | None = None
     has_seen_ai_onboarding: bool | None = None
     email_login_alerts: bool | None = None
@@ -44,6 +45,7 @@ class CreateUserInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
+    residential_address: str | None = None
     phone_number: str | None = None
     designation_id: str | None = None
     office_location_id: str | None = None
@@ -71,6 +73,7 @@ class UpdateUserInput:
     pan_number: str | None = None
     aadhar_number: str | None = None
     uan_number: str | None = None
+    residential_address: str | None = None
     phone_number: str | None = None
     designation_id: str | None = None
     office_location_id: str | None = None

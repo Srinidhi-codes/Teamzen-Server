@@ -22,6 +22,51 @@ def _is_admin_role(user) -> bool:
     return getattr(user, "role", None) in ("admin", "superadmin", "hr")
 
 
+def _is_company_admin(user) -> bool:
+    return getattr(user, "role", None) in ("admin", "hr")
+
+
+def _notify_company_admins(actor, message, target_id):
+    from notifications.utils import notify_user
+    from users.models import CustomUser
+
+    org_id = getattr(actor, "organization_id", None)
+    if not org_id:
+        return
+    recipients = CustomUser.objects.filter(
+        organization_id=org_id,
+        role__in=("admin", "hr"),
+        is_active=True,
+    ).exclude(id=actor.id)
+    for recipient in recipients.iterator():
+        notify_user(
+            recipient_id=recipient.id,
+            verb="submitted",
+            message=message,
+            actor_id=actor.id,
+            target_type="Feedback",
+            target_id=str(target_id),
+            level="admin",
+        )
+
+
+def _notify_superadmins(actor, message, target_id):
+    from notifications.utils import notify_user
+    from users.models import CustomUser
+
+    recipients = CustomUser.objects.filter(role="superadmin", is_active=True).exclude(id=actor.id)
+    for recipient in recipients.iterator():
+        notify_user(
+            recipient_id=recipient.id,
+            verb="escalated",
+            message=message,
+            actor_id=actor.id,
+            target_type="Feedback",
+            target_id=str(target_id),
+            level="admin",
+        )
+
+
 @strawberry.input
 class CreateFeedbackInput:
     title: str
@@ -42,6 +87,12 @@ class ReplyFeedbackInput:
 class UpdateFeedbackStatusInput:
     id: strawberry.ID
     status: str
+
+
+@strawberry.input
+class EscalateFeedbackInput:
+    id: strawberry.ID
+    note: Optional[str] = None
 
 
 @strawberry.type
@@ -103,21 +154,18 @@ class FeedbackMutation:
             status="open",
         )
 
-        # Notify management for employee feedback
         try:
-            from notifications.utils import notify_management, notify_user
+            from notifications.utils import notify_user
             from users.models import CustomUser
 
             if category != "admin_share":
-                notify_management(
-                    user=user,
-                    verb="submitted",
-                    message=f"New feedback from {user.first_name or user.email}: {item.title}",
-                    target_type="Feedback",
-                    target_id=str(item.id),
+                # Employee / internal notes go to company admin & HR only — not platform superadmin.
+                _notify_company_admins(
+                    user,
+                    f"New feedback from {user.first_name or user.email}: {item.title}",
+                    item.id,
                 )
             else:
-                # Notify org employees about admin share
                 recipients = CustomUser.objects.filter(
                     organization_id=org_id,
                     is_active=True,
@@ -150,6 +198,8 @@ class FeedbackMutation:
 
         if user.role != "superadmin" and item.organization_id != user.organization_id:
             return FeedbackPayload(success=False, error="Not authorized")
+        if user.role == "superadmin" and not item.escalated_to_platform and item.category != "admin_share":
+            return FeedbackPayload(success=False, error="This feedback has not been forwarded by the company admin")
 
         reply = (input.reply or "").strip()
         if len(reply) < 2:
@@ -196,6 +246,8 @@ class FeedbackMutation:
 
         if user.role != "superadmin" and item.organization_id != user.organization_id:
             return FeedbackPayload(success=False, error="Not authorized")
+        if user.role == "superadmin" and not item.escalated_to_platform and item.category != "admin_share":
+            return FeedbackPayload(success=False, error="This feedback has not been forwarded by the company admin")
 
         valid = {s[0] for s in Feedback.STATUS_CHOICES}
         if input.status not in valid:
@@ -203,4 +255,46 @@ class FeedbackMutation:
 
         item.status = input.status
         item.save(update_fields=["status", "updated_at"])
+        return FeedbackPayload(success=True, feedback=item)
+
+    @strawberry.mutation
+    def escalate_feedback(self, info: Info, input: EscalateFeedbackInput) -> FeedbackPayload:
+        """Company admin/HR forwards a reviewed item to platform superadmin."""
+        user = _require_user(info)
+        if not _is_company_admin(user):
+            return FeedbackPayload(success=False, error="Only company admins can forward feedback to Teamzen")
+
+        try:
+            item = Feedback.objects.select_related("author", "organization").get(id=input.id)
+        except Feedback.DoesNotExist:
+            return FeedbackPayload(success=False, error="Feedback not found")
+
+        if item.organization_id != user.organization_id:
+            return FeedbackPayload(success=False, error="Not authorized")
+        if item.category == "admin_share":
+            return FeedbackPayload(success=False, error="Organization shares stay inside the company")
+        if item.escalated_to_platform:
+            return FeedbackPayload(success=False, error="This feedback was already sent to Teamzen")
+
+        note = (input.note or "").strip()
+        item.escalated_to_platform = True
+        item.escalated_by = user
+        item.escalated_at = timezone.now()
+        item.escalation_note = note
+        if item.status == "open":
+            item.status = "in_progress"
+        item.save()
+
+        try:
+            author_name = item.author.first_name or item.author.email
+            org_name = getattr(item.organization, "name", "") or "an organization"
+            extra = f" Note: {note}" if note else ""
+            _notify_superadmins(
+                user,
+                f"{user.first_name or user.email} forwarded feedback from {author_name} ({org_name}): {item.title}.{extra}",
+                item.id,
+            )
+        except Exception:
+            pass
+
         return FeedbackPayload(success=True, feedback=item)

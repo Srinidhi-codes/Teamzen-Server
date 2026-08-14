@@ -241,20 +241,50 @@ def build_demo_payslip_mock(organization):
     )
 
 
+def render_filled_source_pdf(template, payslip) -> bytes | None:
+    """
+    Pin-to-pin fill of the template's uploaded source PDF.
+    Returns None if source is missing, unreadable, or fill cannot rewrite
+    employee-specific fields (never return the unmodified sample PDF).
+    """
+    src = read_template_source_bytes(template)
+    if not src:
+        return None
+    try:
+        from payroll.pdf_fill import fill_pdf_for_payslip
+
+        theme = getattr(template, "theme", None) or {}
+        return fill_pdf_for_payslip(src, theme.get("field_map"), payslip)
+    except Exception as e:
+        logger.warning(
+            "In-place payslip fill unavailable for template id=%s: %s",
+            getattr(template, "id", None),
+            e,
+        )
+        return None
+
+
 def generate_demo_pdf_bytes(organization, template) -> bytes:
     """
     Demo PDF for a template.
-    Uploaded / Networth-replica templates → clean drawn layout (never patch PDF).
+    Uploaded templates → clean structural replica (never the raw sample PDF).
     Gallery layouts → Teamzen theme render.
     """
     from payroll.services import PayrollService
 
     mock = build_demo_payslip_mock(organization)
-    # Uploaded payslips use the clean Networth-style replica (no redact patching)
-    if _template_uses_uploaded_pdf(template) or (template and template.layout_key == "networth"):
-        from payroll.networth_layout import render_networth_style_payslip
+    if _template_uses_uploaded_pdf(template) or (
+        template and template.layout_key in ("networth", "uploaded")
+    ):
+        theme = getattr(template, "theme", None) or {}
+        renderer = theme.get("renderer") or ""
+        if renderer == "networth_replica" and not getattr(template, "source_file", None):
+            from payroll.networth_layout import render_networth_style_payslip
 
-        return render_networth_style_payslip(mock)
+            return render_networth_style_payslip(mock)
+        from payroll.corporate_layout import render_corporate_style_payslip
+
+        return render_corporate_style_payslip(mock)
 
     return PayrollService.generate_payslip_pdf(
         mock, template_override=template, persist=False
@@ -269,7 +299,12 @@ def _template_uses_uploaded_pdf(template) -> bool:
     if getattr(template, "source", None) == "cloned" and getattr(template, "source_file", None):
         return True
     theme = getattr(template, "theme", None) or {}
-    return bool(theme.get("use_source_pdf") or theme.get("renderer") == "networth_replica")
+    return bool(
+        theme.get("use_source_pdf")
+        or theme.get("fill_in_place")
+        or theme.get("renderer")
+        in ("networth_replica", "pdf_fill", "corporate_replica")
+    )
 
 
 def read_template_source_bytes(template) -> bytes | None:
@@ -372,8 +407,9 @@ def clone_template_from_upload(
     created_by=None,
 ):
     """
-    Store uploaded payslip PDF as reference and create a clean Networth-style
-    replica template. Generation always redraws from scratch (no PDF patching).
+    Store uploaded payslip PDF as a structure reference and create a clean
+    corporate-style replica template. Generation redraws the same structure
+    with each employee's data and the org logo (never clones the sample PDF).
     """
     from django.core.files.base import ContentFile
     from payroll.models import PayslipTemplate
@@ -398,24 +434,25 @@ def clone_template_from_upload(
         field_map = {}
 
     notes = (
-        "Clean replica of your uploaded payslip design (Networth-style grid). "
-        "Payroll redraws the layout from scratch — no overlapping/patched text."
+        "Clean replica of your uploaded payslip structure. "
+        "Payroll redraws the layout with each employee's data and your company logo."
     )
 
     tpl = PayslipTemplate(
         organization=organization,
         name=tpl_name,
         slug="",
-        description="Pixel-clean replica of uploaded payslip",
-        layout_key="networth",
+        description="Structural replica of uploaded payslip (per-employee data)",
+        layout_key="uploaded",
         theme={
             **DEFAULT_THEME,
-            "use_source_pdf": True,
-            "renderer": "networth_replica",
+            "use_source_pdf": False,
+            "renderer": "corporate_replica",
             "fill_in_place": False,
             "field_map": field_map,
-            "primary": "#141414",
-            "accent": "#800020",
+            "primary": "#1e293b",
+            "accent": "#1d4ed8",
+            "show_logo": True,
         },
         source="cloned",
         preview_notes=notes[:4000],
@@ -429,7 +466,7 @@ def clone_template_from_upload(
         save=False,
     )
     tpl.save()
-    return tpl
+    return set_org_default_template(organization, tpl)
 
 
 def _extract_json_object(text: str) -> dict:
