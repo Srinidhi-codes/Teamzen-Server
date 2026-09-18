@@ -10,10 +10,10 @@ clients cannot bypass by sending faceVerified=true alone.
 # FaceNet 128-d descriptors from @vladmandic/face-api
 FACE_DESCRIPTOR_DIM = 128
 
-# Euclidean distance threshold (strict). Typical face-api default is 0.6;
-# 0.5 reduces false accepts across different people.
-FACE_DISTANCE_THRESHOLD = 0.5
+# Euclidean distance threshold. Standard SFace/FaceNet default is 0.60–0.65.
+# 0.65 prevents false rejections from slight head tilts or lighting variations
+# while reliably rejecting impostors (whose distance is typically > 0.90).
+FACE_DISTANCE_THRESHOLD = 0.65
 
 # Stored face_match_score is similarity in [0, 1] for audit display: max(0, 1 - distance)
-# Keep a soft floor so GraphQL clients that still send "score" aren't confused.
-FACE_MATCH_THRESHOLD = 0.5  # minimum similarity (= 1 - max distance)
+FACE_MATCH_THRESHOLD = 0.35  # minimum similarity (= 1 - max distance)

@@ -61,6 +61,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                             "isRead": notification.is_read,
                             "target_type": target_type,
                             "target_id": str(target_id) if target_id else None,
+                            "imageUrl": notification.image_url,
                             "actor": {
                                 "id": str(actor.id) if actor else None,
                                 "firstName": actor.first_name if actor else "System",

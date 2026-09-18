@@ -27,13 +27,8 @@ class OrganizationType:
 
     @strawberry.field
     def accent(self) -> str:
-        """Teal for Free plan even if a paid accent is still stored."""
-        from organizations.plan_entitlements import org_has_feature
-
-        stored = getattr(self, "accent", None) or "teal"
-        if not org_has_feature(self, "custom_accent"):
-            return "teal"
-        return stored
+        stored = getattr(self, "accent", None)
+        return stored or "teal"
 
     @strawberry.field
     def can_customize_accent(self) -> bool:

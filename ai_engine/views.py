@@ -640,3 +640,81 @@ class AIConfigurationView(generics.RetrieveUpdateAPIView):
             )
         return super().update(request, *args, **kwargs)
 
+
+class VoiceTranscribeView(APIView):
+    """
+    Transcribes audio recordings to text using Groq Whisper (with OpenAI Whisper fallback).
+    Accepts multipart audio file: 'file' or 'audio'
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import os
+        import requests
+
+        audio_file = request.FILES.get("file") or request.FILES.get("audio")
+        if not audio_file:
+            return Response({"error": "No audio file provided"}, status=400)
+
+        if audio_file.size and audio_file.size > 25 * 1024 * 1024:
+            return Response({"error": "Audio file too large (max 25MB)"}, status=400)
+
+        groq_key = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
+        openai_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+
+        filename = getattr(audio_file, "name", "recording.m4a") or "recording.m4a"
+
+        # 1. Try Groq Whisper (ultra-fast transcription)
+        if groq_key:
+            try:
+                audio_file.seek(0)
+                files = {
+                    "file": (filename, audio_file.read(), audio_file.content_type or "audio/m4a")
+                }
+                data = {"model": "whisper-large-v3"}
+                headers = {"Authorization": f"Bearer {groq_key}"}
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=30,
+                )
+                if res.status_code == 200:
+                    text = res.json().get("text", "").strip()
+                    return Response({"text": text, "provider": "groq"})
+                else:
+                    logger.warning(f"Groq Whisper failed: {res.status_code} {res.text}")
+            except Exception as e:
+                logger.error(f"Error calling Groq transcription: {e}")
+
+        # 2. Fallback to OpenAI Whisper
+        if openai_key:
+            try:
+                audio_file.seek(0)
+                files = {
+                    "file": (filename, audio_file.read(), audio_file.content_type or "audio/m4a")
+                }
+                data = {"model": "whisper-1"}
+                headers = {"Authorization": f"Bearer {openai_key}"}
+                res = requests.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=30,
+                )
+                if res.status_code == 200:
+                    text = res.json().get("text", "").strip()
+                    return Response({"text": text, "provider": "openai"})
+                else:
+                    logger.warning(f"OpenAI Whisper failed: {res.status_code} {res.text}")
+            except Exception as e:
+                logger.error(f"Error calling OpenAI transcription: {e}")
+
+        return Response(
+            {"error": "Transcription service unavailable. Please check GROQ_API_KEY or OPENAI_API_KEY."},
+            status=503,
+        )
+
