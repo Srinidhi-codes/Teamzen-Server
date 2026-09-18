@@ -246,10 +246,7 @@ class PayrollMutation:
         payslips = Payslip.objects.filter(payroll_run=run)
         if not payslips.exists():
             raise Exception("No payslips to publish. Process the run first.")
-        for payslip in payslips:
-            # Always regenerate so structure/adjustments/LOP changes are reflected
-            PayrollService.generate_payslip_pdf(payslip)
-        payslips.update(status="published")
+        PayrollService.publish_run_pdfs(run)
         return True
 
     @strawberry.mutation
@@ -551,118 +548,6 @@ class PayrollMutation:
             raise Exception("Unauthorized")
         result = set_org_default_template(org, tpl)
         return PayslipTemplateType.from_model(result)
-
-    @strawberry.mutation
-    def update_payslip_template(
-        self,
-        info: Info,
-        template_id: strawberry.ID,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        layout_key: Optional[str] = None,
-        theme: Optional[JSON] = None,
-        is_active: Optional[bool] = None,
-    ) -> PayslipTemplateType:
-        user = info.context.request.user
-        require_payroll_admin(user, allow_hr=True)
-        tpl = PayslipTemplate.objects.filter(id=template_id).first()
-        if not tpl:
-            raise Exception("Template not found")
-        if tpl.organization_id is None:
-            raise Exception("System gallery templates cannot be edited. Set as default to clone.")
-        if user.role != "superadmin" or user.organization_id:
-            if tpl.organization_id != require_org(user).id:
-                raise Exception("Unauthorized")
-        if name is not None:
-            tpl.name = name.strip()[:120]
-        if description is not None:
-            tpl.description = description
-        if layout_key is not None:
-            if layout_key not in (
-                "classic",
-                "modern",
-                "compact",
-                "minimal",
-                "uploaded",
-                "networth",
-            ):
-                raise Exception("Invalid layout_key")
-            tpl.layout_key = layout_key
-        if theme is not None:
-            tpl.theme = dict(theme)
-        if is_active is not None:
-            tpl.is_active = is_active
-        tpl.save()
-        return PayslipTemplateType.from_model(tpl)
-
-    @strawberry.mutation
-    def create_payslip_template(
-        self,
-        info: Info,
-        name: str,
-        layout_key: str = "classic",
-        description: str = "",
-        theme: Optional[JSON] = None,
-        organization_id: Optional[strawberry.ID] = None,
-        set_as_default: bool = False,
-    ) -> PayslipTemplateType:
-        from ..template_services import DEFAULT_THEME, set_org_default_template
-
-        user = info.context.request.user
-        require_payroll_admin(user, allow_hr=True)
-        org = require_org(user, organization_id)
-        if layout_key not in (
-            "classic",
-            "modern",
-            "compact",
-            "minimal",
-            "uploaded",
-            "networth",
-        ):
-            raise Exception("Invalid layout_key")
-        tpl = PayslipTemplate.objects.create(
-            organization=org,
-            name=name.strip()[:120],
-            description=description or "",
-            layout_key=layout_key,
-            theme=dict(theme or DEFAULT_THEME),
-            source="custom",
-            is_default=False,
-            is_active=True,
-            created_by=user,
-        )
-        if set_as_default:
-            tpl = set_org_default_template(org, tpl)
-        return PayslipTemplateType.from_model(tpl)
-
-    @strawberry.mutation
-    def delete_payslip_template(
-        self,
-        info: Info,
-        template_id: strawberry.ID,
-    ) -> bool:
-        """Delete an org-owned payslip template. System gallery templates cannot be deleted."""
-        user = info.context.request.user
-        require_payroll_admin(user, allow_hr=True)
-        tpl = PayslipTemplate.objects.filter(id=template_id).first()
-        if not tpl:
-            raise Exception("Template not found")
-        if tpl.organization_id is None:
-            raise Exception("System gallery templates cannot be deleted.")
-        org = require_org(user)
-        if user.role != "superadmin" or user.organization_id:
-            if tpl.organization_id != org.id:
-                raise Exception("Unauthorized")
-        elif user.role == "superadmin" and not user.organization_id:
-            # Superadmin without org may delete any org template
-            pass
-        was_default = tpl.is_default
-        org_id = tpl.organization_id
-        tpl.delete()
-        # If default was removed, leave org without default (falls back to system classic)
-        if was_default and org_id:
-            pass
-        return True
 
     @strawberry.mutation
     def ensure_founder_payroll_setup(

@@ -12,6 +12,7 @@ class NotificationType:
     verb: str
     target_type: Optional[str]
     target_id: Optional[str]
+    image_url: Optional[str]
     message: str
     notification_type: str
     level: str

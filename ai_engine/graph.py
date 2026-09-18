@@ -104,6 +104,7 @@ def _get_legacy_tools():
         get_my_onboarding_status, list_pending_onboarding_tasks,
         explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
         suggest_onboarding_checklist, polish_offer_letter_draft, suggest_route,
+        simulate_hiring_impact, run_sensitive_action_debate,
     )
     return [
         get_leave_balances, apply_for_leave, get_attendance_today,
@@ -117,6 +118,7 @@ def _get_legacy_tools():
         get_my_onboarding_status, list_pending_onboarding_tasks,
         explain_onboarding_task, get_required_documents, complete_onboarding_task_tool,
         suggest_onboarding_checklist, polish_offer_letter_draft, suggest_route,
+        simulate_hiring_impact, run_sensitive_action_debate,
     ]
 
 

@@ -1,5 +1,7 @@
 # Teamzen MCP Sign-in (Sequence 5.1)
 
+**Learn:** [`docs/backend/14-mcp.md`](../../docs/backend/14-mcp.md) · [18 Rate limits](../../docs/backend/18-rate-limits-scaling.md) (device/token throttles live in `api.py`)
+
 Connect Cursor / Claude to Teamzen by signing in with your Teamzen account
 (email/password or OTP). Issues a **user-bound** `tzm_…` token so MCP tools
 run as that user.

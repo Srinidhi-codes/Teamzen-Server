@@ -1,5 +1,9 @@
-"""REST multipart endpoints for payroll data import and payslip template clone."""
+"""REST multipart endpoints for payroll imports, payslip PDFs, and bank exports."""
 
+import json
+import re
+
+from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -9,16 +13,14 @@ from django.core.files.base import ContentFile
 from django.http import HttpResponse
 
 from payroll.graphql.auth import require_payroll_admin, require_org
-from payroll.models import DataImportJob, PayslipTemplate, PayrollRun
+from payroll.models import DataImportJob, Payslip, PayslipTemplate, PayrollRun
 from payroll.import_services import (
     parse_tabular_file,
     heuristic_column_mapping,
     ai_refine_column_mapping,
 )
 from payroll.template_services import (
-    clone_template_from_upload,
     generate_demo_pdf_bytes,
-    read_template_source_bytes,
     render_pdf_first_page_to_png,
 )
 from payroll.bank_export import FORMATS, build_bank_export
@@ -102,64 +104,229 @@ class DataImportUploadView(APIView):
         )
 
 
-class PayslipTemplateCloneView(APIView):
-    """POST multipart: file (pdf), optional name, organization_id → cloned template."""
+def _normalized_file_token(value):
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _match_uploaded_payslips(run, uploads):
+    payslips = list(
+        Payslip.objects.filter(payroll_run=run)
+        .select_related("user")
+        .order_by("user__employee_id", "user__first_name", "user__last_name")
+    )
+    name_counts = {}
+    for payslip in payslips:
+        full_name = _normalized_file_token(
+            f"{payslip.user.first_name or ''}{payslip.user.last_name or ''}"
+        )
+        if full_name:
+            name_counts[full_name] = name_counts.get(full_name, 0) + 1
+
+    results = []
+    claimed = set()
+    for index, upload in enumerate(uploads):
+        filename = getattr(upload, "name", f"payslip-{index + 1}.pdf")
+        token = _normalized_file_token(filename.rsplit(".", 1)[0])
+        candidates = []
+        match_by = None
+
+        # Employee ID is the strongest identifier and is checked first.
+        for payslip in payslips:
+            employee_id = _normalized_file_token(payslip.user.employee_id)
+            if employee_id and employee_id in token:
+                candidates.append(payslip)
+        if len(candidates) > 1:
+            longest = max(
+                len(_normalized_file_token(item.user.employee_id))
+                for item in candidates
+            )
+            candidates = [
+                item
+                for item in candidates
+                if len(_normalized_file_token(item.user.employee_id)) == longest
+            ]
+        if len(candidates) == 1:
+            match_by = "employee_id"
+        else:
+            candidates = []
+            for payslip in payslips:
+                full_name = _normalized_file_token(
+                    f"{payslip.user.first_name or ''}{payslip.user.last_name or ''}"
+                )
+                if (
+                    len(full_name) >= 4
+                    and name_counts.get(full_name) == 1
+                    and full_name in token
+                ):
+                    candidates.append(payslip)
+            if len(candidates) == 1:
+                match_by = "name"
+
+        matched = candidates[0] if len(candidates) == 1 else None
+        reason = ""
+        if not matched:
+            reason = "No unique employee ID or full-name match in filename"
+        elif matched.id in claimed:
+            reason = "Another PDF already matched this employee"
+            matched = None
+        else:
+            claimed.add(matched.id)
+
+        results.append(
+            {
+                "index": index,
+                "fileName": filename,
+                "matched": bool(matched),
+                "matchBy": match_by if matched else None,
+                "reason": reason,
+                "payslipId": str(matched.id) if matched else None,
+                "employeeId": matched.user.employee_id if matched else None,
+                "employeeName": (
+                    matched.user.get_full_name().strip() or matched.user.email
+                    if matched
+                    else None
+                ),
+                "currentStatus": matched.status if matched else None,
+            }
+        )
+    return results
+
+
+class PayslipBulkUploadView(APIView):
+    """
+    Preview or publish admin-provided payslip PDFs for an existing processed run.
+
+    Files are matched from their filenames, employee ID first and then unique full
+    name. Unmatched/ambiguous PDFs are never published.
+    """
 
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user = request.user
-        org_id = request.data.get("organization_id") or None
+        run_id = request.data.get("run_id")
+        mode = (request.data.get("mode") or "preview").strip().lower()
+        if mode not in ("preview", "publish"):
+            return Response({"error": "mode must be preview or publish"}, status=400)
+        if not run_id:
+            return Response({"error": "run_id is required"}, status=400)
+
         try:
             require_payroll_admin(user, allow_hr=True)
-            org = require_org(user, organization_id=org_id)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
 
-        upload = request.FILES.get("file")
-        if not upload:
-            return Response({"error": "file is required"}, status=status.HTTP_400_BAD_REQUEST)
-        if upload.size and upload.size > 10 * 1024 * 1024:
+        run = PayrollRun.objects.select_related("organization").filter(id=run_id).first()
+        if not run:
+            return Response({"error": "Payroll run not found"}, status=404)
+        if (
+            user.role != "superadmin"
+            and run.organization_id != user.organization_id
+        ) or (
+            user.role == "superadmin"
+            and user.organization_id
+            and run.organization_id != user.organization_id
+        ):
+            return Response({"error": "Unauthorized"}, status=403)
+        if run.status != "completed":
             return Response(
-                {"error": "File too large (max 10MB)"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "Process payroll before uploading and publishing payslips."},
+                status=400,
             )
 
-        file_name = getattr(upload, "name", "payslip.pdf") or "payslip.pdf"
-        file_bytes = upload.read()
-        name = (request.data.get("name") or "").strip()
+        uploads = request.FILES.getlist("files")
+        if not uploads:
+            return Response({"error": "Select at least one PDF"}, status=400)
+        if len(uploads) > 200:
+            return Response({"error": "Upload at most 200 PDFs per batch"}, status=400)
 
-        try:
-            tpl = clone_template_from_upload(
-                org,
-                file_bytes=file_bytes,
-                file_name=file_name,
-                name=name,
-                created_by=user,
+        total_size = 0
+        for upload in uploads:
+            filename = getattr(upload, "name", "")
+            if not filename.lower().endswith(".pdf"):
+                return Response({"error": f"{filename} is not a PDF"}, status=400)
+            signature = upload.read(5)
+            upload.seek(0)
+            if signature != b"%PDF-":
+                return Response({"error": f"{filename} is not a valid PDF"}, status=400)
+            if upload.size and upload.size > 15 * 1024 * 1024:
+                return Response({"error": f"{filename} exceeds 15MB"}, status=400)
+            total_size += upload.size or 0
+        if total_size > 150 * 1024 * 1024:
+            return Response({"error": "Batch exceeds 150MB"}, status=400)
+
+        matches = _match_uploaded_payslips(run, uploads)
+        matched_count = sum(1 for item in matches if item["matched"])
+        if mode == "preview":
+            return Response(
+                {
+                    "runId": str(run.id),
+                    "month": run.month,
+                    "year": run.year,
+                    "total": len(matches),
+                    "matched": matched_count,
+                    "unmatched": len(matches) - matched_count,
+                    "files": matches,
+                }
             )
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        source_url = ""
+        if matched_count == 0:
+            return Response({"error": "No PDFs matched employees; nothing published"}, status=400)
+
+        # Optional preview mapping protects against files changing between steps.
+        raw_mapping = request.data.get("mapping")
+        if not raw_mapping:
+            return Response(
+                {"error": "Preview this exact batch before publishing."},
+                status=400,
+            )
+        expected = {}
         try:
-            if tpl.source_file:
-                source_url = tpl.source_file.url
-        except Exception:
-            source_url = ""
+            for row in json.loads(raw_mapping):
+                expected[int(row["index"])] = str(row["payslipId"])
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            return Response({"error": "Invalid preview mapping"}, status=400)
+
+        matched_by_index = {item["index"]: item for item in matches if item["matched"]}
+        if set(expected) != set(matched_by_index):
+            return Response(
+                {"error": "Files no longer match the preview. Preview the batch again."},
+                status=400,
+            )
+        for index, payslip_id in expected.items():
+            current = matched_by_index.get(index)
+            if not current or current["payslipId"] != payslip_id:
+                return Response(
+                    {"error": "Files no longer match the preview. Preview the batch again."},
+                    status=400,
+                )
+
+        published = []
+        with transaction.atomic():
+            for item in matches:
+                if not item["matched"]:
+                    continue
+                payslip = Payslip.objects.select_for_update().get(
+                    id=item["payslipId"], payroll_run=run
+                )
+                if payslip.status == "paid":
+                    continue
+                upload = uploads[item["index"]]
+                safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", upload.name)[:180]
+                payslip.payslip_pdf.save(safe_name or "payslip.pdf", upload, save=False)
+                payslip.status = "published"
+                payslip.pdf_source = "uploaded"
+                payslip.save(update_fields=["payslip_pdf", "status", "pdf_source"])
+                published.append(item)
 
         return Response(
             {
-                "id": str(tpl.id),
-                "name": tpl.name,
-                "layoutKey": tpl.layout_key,
-                "source": tpl.source,
-                "theme": tpl.theme,
-                "previewNotes": tpl.preview_notes,
-                "isDefault": tpl.is_default,
-                "sourceFileUrl": source_url,
-            },
-            status=status.HTTP_201_CREATED,
+                "success": True,
+                "published": len(published),
+                "skipped": len(matches) - len(published),
+                "files": matches,
+            }
         )
 
 
@@ -238,9 +405,6 @@ class PayslipTemplatePreviewView(APIView):
             pdf_bytes = generate_demo_pdf_bytes(org, tpl)
         except Exception:
             pdf_bytes = None
-
-        if not pdf_bytes:
-            pdf_bytes = read_template_source_bytes(tpl)
 
         if not pdf_bytes:
             return Response(

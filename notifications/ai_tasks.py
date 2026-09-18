@@ -220,3 +220,54 @@ def detect_burnout_signals():
         count += 1
 
     return f"Sent burnout alerts to {count} manager(s)."
+
+@shared_task(name="notifications.ai_tasks.detect_missing_checkin_and_prompt_leave")
+def detect_missing_checkin_and_prompt_leave():
+    from notifications.proactive import notify_bot_user
+    from leaves.models import CompanyHoliday
+    
+    today = timezone.localdate()
+    
+    # Check if weekend (5=Saturday, 6=Sunday)
+    if today.weekday() >= 5:
+        return "Weekend. Skipping missing checkin detector."
+        
+    # Check if today is a company holiday globally
+    # Note: For multi-org, we'd loop orgs, but here we do a global check for simplicity
+    is_holiday = CompanyHoliday.objects.filter(holiday_date=today).exists()
+    if is_holiday:
+        return "Company Holiday. Skipping missing checkin detector."
+        
+    active_users = CustomUser.objects.filter(is_active=True)
+    
+    count = 0
+    for user in active_users:
+        # Check if they have punched in today
+        has_punched_in = AttendanceRecord.objects.filter(
+            user=user,
+            attendance_date=today
+        ).exists()
+        
+        if has_punched_in:
+            continue
+            
+        # Check if they have an approved or pending leave
+        has_leave = LeaveRequest.objects.filter(
+            user=user,
+            from_date__lte=today,
+            to_date__gte=today,
+            _status__in=['approved', 'pending']
+        ).exists()
+        
+        if has_leave:
+            continue
+            
+        # Not punched in, no leave -> Prompt them
+        msg = (
+            f"Hi {user.first_name or 'there'}! I noticed you haven't logged in today yet. "
+            f"Are you taking the day off? Let me know if you'd like me to apply for leave for you!"
+        )
+        notify_bot_user(user.id, msg)
+        count += 1
+        
+    return f"Notified {count} users about missing check-in and prompted for leave."

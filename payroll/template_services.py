@@ -1,11 +1,8 @@
-"""Payslip template gallery: system presets, org defaults, clone-from-upload."""
+"""Standard payslip template gallery and organization defaults."""
 
 from __future__ import annotations
 
-import io
-import json
 import logging
-import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -27,9 +24,9 @@ DEFAULT_THEME: dict[str, Any] = {
 
 SYSTEM_TEMPLATES: list[dict[str, Any]] = [
     {
-        "name": "Classic India",
+        "name": "Statutory India",
         "slug": "classic-india",
-        "description": "Standard Indian payslip with net-pay hero and two-column employee grid.",
+        "description": "Conventional Indian payroll format with employee details, earnings, deductions, net pay, and amount in words.",
         "layout_key": "classic",
         "theme": {
             **DEFAULT_THEME,
@@ -38,9 +35,9 @@ SYSTEM_TEMPLATES: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "Modern Teal",
+        "name": "Modern Professional",
         "slug": "modern-teal",
-        "description": "Bold net-pay band with teal accents — great for product startups.",
+        "description": "Branded contemporary format with a prominent net-pay summary and clear payroll sections.",
         "layout_key": "modern",
         "theme": {
             **DEFAULT_THEME,
@@ -53,9 +50,9 @@ SYSTEM_TEMPLATES: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "Compact Register",
+        "name": "Finance Register",
         "slug": "compact-register",
-        "description": "Tighter spacing for denser salary breakups — good for finance-heavy teams.",
+        "description": "Dense payroll-ledger format for detailed earnings and deduction breakups.",
         "layout_key": "compact",
         "theme": {
             **DEFAULT_THEME,
@@ -66,9 +63,9 @@ SYSTEM_TEMPLATES: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "Minimal Clean",
+        "name": "Formal Minimal",
         "slug": "minimal-clean",
-        "description": "Quiet layout without a large net-pay hero — closer to traditional slips.",
+        "description": "Formal monochrome format suited to established companies and printable records.",
         "layout_key": "minimal",
         "theme": {
             **DEFAULT_THEME,
@@ -78,25 +75,18 @@ SYSTEM_TEMPLATES: list[dict[str, Any]] = [
             "table_header_bg": "#334155",
         },
     },
-    {
-        "name": "Networth Grid",
-        "slug": "networth-grid",
-        "description": "Clean branded grid with side color bar, Full/Actual earnings, amount in words.",
-        "layout_key": "networth",
-        "theme": {
-            **DEFAULT_THEME,
-            "renderer": "networth_replica",
-            "primary": "#141414",
-            "accent": "#800020",
-            "show_net_hero": False,
-        },
-    },
 ]
 
 
 def ensure_system_templates() -> int:
     """Idempotently seed gallery templates (organization=null). Returns created count."""
     from payroll.models import PayslipTemplate
+
+    # Retire the old upload-replica preset and any uploaded structure copies.
+    PayslipTemplate.objects.filter(
+        organization=None, slug="networth-grid"
+    ).delete()
+    PayslipTemplate.objects.filter(source="cloned").delete()
 
     created = 0
     for spec in SYSTEM_TEMPLATES:
@@ -115,9 +105,17 @@ def ensure_system_templates() -> int:
         )
         if was_created:
             created += 1
-        elif obj.source != "system":
-            # Keep slug reserved for system
-            pass
+        else:
+            changed = False
+            for field in ("name", "description", "layout_key"):
+                if getattr(obj, field) != spec[field]:
+                    setattr(obj, field, spec[field])
+                    changed = True
+            if obj.theme != spec["theme"]:
+                obj.theme = spec["theme"]
+                changed = True
+            if changed:
+                obj.save(update_fields=["name", "description", "layout_key", "theme", "updated_at"])
     return created
 
 
@@ -241,85 +239,14 @@ def build_demo_payslip_mock(organization):
     )
 
 
-def render_filled_source_pdf(template, payslip) -> bytes | None:
-    """
-    Pin-to-pin fill of the template's uploaded source PDF.
-    Returns None if source is missing, unreadable, or fill cannot rewrite
-    employee-specific fields (never return the unmodified sample PDF).
-    """
-    src = read_template_source_bytes(template)
-    if not src:
-        return None
-    try:
-        from payroll.pdf_fill import fill_pdf_for_payslip
-
-        theme = getattr(template, "theme", None) or {}
-        return fill_pdf_for_payslip(src, theme.get("field_map"), payslip)
-    except Exception as e:
-        logger.warning(
-            "In-place payslip fill unavailable for template id=%s: %s",
-            getattr(template, "id", None),
-            e,
-        )
-        return None
-
-
 def generate_demo_pdf_bytes(organization, template) -> bytes:
-    """
-    Demo PDF for a template.
-    Uploaded templates → clean structural replica (never the raw sample PDF).
-    Gallery layouts → Teamzen theme render.
-    """
+    """Generate a demo PDF from one of the standard gallery templates."""
     from payroll.services import PayrollService
 
     mock = build_demo_payslip_mock(organization)
-    if _template_uses_uploaded_pdf(template) or (
-        template and template.layout_key in ("networth", "uploaded")
-    ):
-        theme = getattr(template, "theme", None) or {}
-        renderer = theme.get("renderer") or ""
-        if renderer == "networth_replica" and not getattr(template, "source_file", None):
-            from payroll.networth_layout import render_networth_style_payslip
-
-            return render_networth_style_payslip(mock)
-        from payroll.corporate_layout import render_corporate_style_payslip
-
-        return render_corporate_style_payslip(mock)
-
     return PayrollService.generate_payslip_pdf(
         mock, template_override=template, persist=False
     )
-
-
-def _template_uses_uploaded_pdf(template) -> bool:
-    if not template:
-        return False
-    if getattr(template, "layout_key", None) in ("uploaded", "networth"):
-        return True
-    if getattr(template, "source", None) == "cloned" and getattr(template, "source_file", None):
-        return True
-    theme = getattr(template, "theme", None) or {}
-    return bool(
-        theme.get("use_source_pdf")
-        or theme.get("fill_in_place")
-        or theme.get("renderer")
-        in ("networth_replica", "pdf_fill", "corporate_replica")
-    )
-
-
-def read_template_source_bytes(template) -> bytes | None:
-    """Read the stored source PDF bytes from storage."""
-    if not template or not template.source_file:
-        return None
-    try:
-        template.source_file.open("rb")
-        try:
-            return template.source_file.read()
-        finally:
-            template.source_file.close()
-    except Exception:
-        logger.exception("Could not read template source_file id=%s", getattr(template, "id", None))
-        return None
 
 
 def render_pdf_first_page_to_png(file_bytes: bytes, zoom: float = 2.0) -> bytes | None:
@@ -356,24 +283,26 @@ def hex_to_rgb(hex_color: str, fallback=(33, 37, 41)) -> tuple[int, int, int]:
         return fallback
 
 
-def set_org_default_template(organization, template) -> None:
+def set_org_default_template(organization, template):
     from payroll.models import PayslipTemplate
 
     PayslipTemplate.objects.filter(
         organization=organization, is_default=True
     ).update(is_default=False)
     if template.organization_id is None:
-        # Clone system template into org as default so theme can be customized later
-        clone = PayslipTemplate.objects.create(
+        # Keep one organization-owned default per standard gallery design.
+        clone, _ = PayslipTemplate.objects.update_or_create(
             organization=organization,
-            name=template.name,
             slug=f"{template.slug}-org" if template.slug else "",
-            description=template.description,
-            layout_key=template.layout_key,
-            theme=dict(template.theme or DEFAULT_THEME),
-            source="custom",
-            is_default=True,
-            is_active=True,
+            defaults={
+                "name": template.name,
+                "description": template.description,
+                "layout_key": template.layout_key,
+                "theme": dict(template.theme or DEFAULT_THEME),
+                "source": "custom",
+                "is_default": True,
+                "is_active": True,
+            },
         )
         return clone
     template.is_default = True
@@ -382,110 +311,16 @@ def set_org_default_template(organization, template) -> None:
     return template
 
 
-def extract_text_from_pdf(file_bytes: bytes, max_chars: int = 8000) -> str:
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        return ""
-    reader = PdfReader(io.BytesIO(file_bytes))
-    parts: list[str] = []
-    for page in reader.pages[:4]:
-        try:
-            parts.append(page.extract_text() or "")
-        except Exception:
-            continue
-    text = "\n".join(parts).strip()
-    return text[:max_chars]
+__all__ = [
+    "DEFAULT_THEME",
+    "SYSTEM_TEMPLATES",
+    "build_demo_payslip_mock",
+    "ensure_system_templates",
+    "generate_demo_pdf_bytes",
+    "hex_to_rgb",
+    "render_pdf_first_page_to_png",
+    "resolve_template_for_org",
+    "set_org_default_template",
+    "theme_for_payslip",
+]  # explicit public API
 
-
-def clone_template_from_upload(
-    organization,
-    *,
-    file_bytes: bytes,
-    file_name: str,
-    name: str = "",
-    created_by=None,
-):
-    """
-    Store uploaded payslip PDF as a structure reference and create a clean
-    corporate-style replica template. Generation redraws the same structure
-    with each employee's data and the org logo (never clones the sample PDF).
-    """
-    from django.core.files.base import ContentFile
-    from payroll.models import PayslipTemplate
-
-    ensure_system_templates()
-    lower = (file_name or "").lower()
-    if not lower.endswith(".pdf"):
-        raise ValueError("Please upload a PDF payslip to use as a template.")
-
-    base = (name or "").strip()
-    if not base:
-        base = (file_name or "Uploaded payslip").rsplit(".", 1)[0]
-    tpl_name = base[:120] or "Uploaded payslip"
-
-    field_map: dict = {}
-    try:
-        from payroll.pdf_fill import build_payslip_field_map
-
-        field_map = build_payslip_field_map(file_bytes)
-    except Exception:
-        logger.exception("Could not analyze uploaded payslip structure")
-        field_map = {}
-
-    notes = (
-        "Clean replica of your uploaded payslip structure. "
-        "Payroll redraws the layout with each employee's data and your company logo."
-    )
-
-    tpl = PayslipTemplate(
-        organization=organization,
-        name=tpl_name,
-        slug="",
-        description="Structural replica of uploaded payslip (per-employee data)",
-        layout_key="uploaded",
-        theme={
-            **DEFAULT_THEME,
-            "use_source_pdf": False,
-            "renderer": "corporate_replica",
-            "fill_in_place": False,
-            "field_map": field_map,
-            "primary": "#1e293b",
-            "accent": "#1d4ed8",
-            "show_logo": True,
-        },
-        source="cloned",
-        preview_notes=notes[:4000],
-        is_default=False,
-        is_active=True,
-        created_by=created_by,
-    )
-    tpl.source_file.save(
-        file_name or "payslip.pdf",
-        ContentFile(file_bytes),
-        save=False,
-    )
-    tpl.save()
-    return set_org_default_template(organization, tpl)
-
-
-def _extract_json_object(text: str) -> dict:
-    raw = (text or "").strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-    try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            return data
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r"\{[\s\S]*\}", raw)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            if isinstance(data, dict):
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {}

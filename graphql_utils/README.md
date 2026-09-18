@@ -1,21 +1,7 @@
-# GraphQL Utilities
+# graphql_utils
 
-## Overview
-The `graphql_utils` directory contains shared types, decorators, and helper functions used by all GraphQL components in the project.
+Shared GraphQL context (JWT over session) and helpers.
 
-## File Breakdown
+**Learn:** [04 GraphQL vs REST](../../docs/backend/04-graphql-vs-rest.md) · [03 Auth](../../docs/backend/03-auth-security.md)
 
-### `types.py`
-- **Purpose**: Common Strawberry types (e.g., `ErrorType`, `SuccessType`, `PaginationInput`).
-- **Benefit**: Ensures a consistent API response structure across the entire application.
-
-### `decorators.py`
-- **Purpose**: Custom Python decorators for GraphQL resolvers.
-- **Examples**: `@login_required`, `@role_required(['admin', 'hr'])`.
-
-### `converters.py`
-- **Purpose**: Helpers to convert standard Django models or QuerySets into Strawberry-compatible types or lists.
-
-## Benefits
-- **DRY (Don't Repeat Yourself)**: Standardizes error handling and permission checks so they don't have to be rewritten in every app.
-- **Consistency**: All mutations return a predictable response structure, making frontend integration much smoother.
+Start here: `context.py` (`CustomContext` + `CookieJWTAuthentication`).

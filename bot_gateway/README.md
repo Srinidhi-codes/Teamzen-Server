@@ -1,5 +1,7 @@
 # Bot Gateway (Telegram + Slack + WhatsApp)
 
+**Learn:** [`docs/backend/16-bots-integrations.md`](../../docs/backend/16-bots-integrations.md)
+
 ## Telegram
 - Webhook: `POST /api/bot/telegram/`
 - Env: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`

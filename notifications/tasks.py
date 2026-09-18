@@ -37,7 +37,8 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
             notification_type=notification_type,
             target_type=target_type,
             target_id=target_id,
-            level=level
+            level=level,
+            image_url=extra_context.get('image_url') if extra_context else None
         )
 
         # 2. Send Push if requested (Implementation for Channels)
@@ -199,7 +200,8 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                     announcement_title=subject,
                     announcement_body=message,
                     posted_by="HR Department",
-                    posted_date="Just Now"
+                    posted_date="Just Now",
+                    image_url=extra_context.get("image_url")
                 )
             except Exception as e:
                 print(f"Failed to route Announcement: {e}")
@@ -399,3 +401,30 @@ def cleanup_read_notifications():
 
 # Late import to avoid circular dependency during registry
 from . import ai_tasks
+
+@shared_task(name="notifications.tasks.broadcast_to_bots")
+def broadcast_to_bots(html_message: str, platforms: list = None, image_url: str = None):
+    """
+    Broadcasts a message to all active users on the specified bot platforms.
+    """
+    from django.contrib.auth import get_user_model
+    from bot_gateway.models import BotSession
+    from notifications.proactive import notify_bot_user
+    
+    User = get_user_model()
+    
+    if not platforms:
+        platforms = [
+            BotSession.PLATFORM_TELEGRAM, 
+            BotSession.PLATFORM_SLACK, 
+            BotSession.PLATFORM_WHATSAPP
+        ]
+        
+    active_users = User.objects.filter(is_active=True)
+    
+    success_count = 0
+    for user in active_users:
+        if notify_bot_user(user.id, html_message, platforms=platforms, image_url=image_url):
+            success_count += 1
+            
+    return f"Broadcast delivered to {success_count} users on bots."

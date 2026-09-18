@@ -441,6 +441,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.tasks.cleanup_read_notifications',
         'schedule': crontab(hour=0, minute=0), # Run every day at midnight
     },
+    'detect-ooo-prompt-leave': {
+        'task': 'leaves.task.detect_ooo_and_prompt_leave',
+        'schedule': crontab(hour=9, minute=0), # Run daily at 9:00 AM
+    },
     'square-off-incomplete-checkouts': {
         'task': 'attendance.tasks.square_off_incomplete_checkouts',
         'schedule': crontab(hour=0, minute=1),  # Run at 00:01 AM daily (Asia/Kolkata)
@@ -452,6 +456,10 @@ CELERY_BEAT_SCHEDULE = {
     'ai-notify-missing-checkout': {
         'task': 'notifications.ai_tasks.notify_missing_checkout',
         'schedule': crontab(hour=9, minute=0),
+    },
+    'detect-missing-checkin-prompt-leave': {
+        'task': 'notifications.ai_tasks.detect_missing_checkin_and_prompt_leave',
+        'schedule': crontab(day_of_week='1-5', hour=10, minute=30),
     },
     'ai-alert-low-attendance': {
         'task': 'notifications.ai_tasks.alert_low_attendance',
