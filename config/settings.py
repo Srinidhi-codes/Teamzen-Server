@@ -130,6 +130,8 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     os.getenv('CLIENT_URL', "http://localhost:3000"),
     "http://localhost:3001",
+    "http://localhost:8081",
+    "http://192.168.31.184:8081",
     "https://teamzen-client.vercel.app",
     "https://teamzen-admin.vercel.app"
 ]
@@ -425,6 +427,11 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Kolkata'
+
+# Worker Memory Optimization for container environments (<= 512MB RAM)
+CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '1'))
+CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.getenv('CELERY_WORKER_PREFETCH_MULTIPLIER', '1'))
+CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv('CELERY_WORKER_MAX_TASKS_PER_CHILD', '10'))
 
 from celery.schedules import crontab
 

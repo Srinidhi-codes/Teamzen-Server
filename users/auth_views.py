@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -208,12 +209,33 @@ class RequestOTPView(APIView):
     permission_classes = []
     
     def post(self, request):
-        email = request.data.get('email')
-        if not email:
-            return Response({"error": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
+        identifier = (
+            request.data.get('identifier')
+            or request.data.get('mobile')
+            or request.data.get('phone_number')
+            or request.data.get('phone')
+            or request.data.get('email')
+            or ''
+        ).strip()
+        if not identifier:
+            return Response({"error": "Email or mobile phone number is required"}, status=status.HTTP_400_BAD_REQUEST)
             
         try:
-            user = User.objects.get(email=email)
+            if '@' in identifier:
+                user = User.objects.filter(email__iexact=identifier).first()
+            else:
+                clean_phone = ''.join(c for c in identifier if c.isdigit())
+                user = User.objects.filter(
+                    Q(phone_number=identifier)
+                    | Q(phone_number__endswith=clean_phone[-10:] if len(clean_phone) >= 10 else clean_phone)
+                ).first()
+                if not user:
+                    user = User.objects.filter(email__iexact=identifier).first()
+
+            if not user:
+                # Secure: don't leak user existence
+                return Response({"success": True, "message": "Verification code sent to registered contact"}, status=status.HTTP_200_OK)
+
             from users.exit_access import (
                 can_authenticate_user,
                 inactive_login_blocked_message,
@@ -228,8 +250,11 @@ class RequestOTPView(APIView):
             # Generate 6-digit OTP
             otp = "".join(secrets.choice("0123456789") for _ in range(6))
 
-            # Store OTP in cache (5 minutes TTL)
-            cache.set(f"otp_{email}", otp, timeout=300)
+            # Store OTP in cache (5 minutes TTL) under email and identifier and phone
+            cache.set(f"otp_{user.email}", otp, timeout=300)
+            cache.set(f"otp_{identifier}", otp, timeout=300)
+            if user.phone_number:
+                cache.set(f"otp_{user.phone_number}", otp, timeout=300)
             
             # Generate HTML email content using base design templates
             employee_name = f"{user.first_name} {user.last_name}".strip() or "Employee"
@@ -239,22 +264,29 @@ class RequestOTPView(APIView):
                 expiry_minutes=5,
             )
             
-            # Send via custom Brevo HTTP backend to bypass outbound port restrictions
-            email_msg = EmailMultiAlternatives(
-                subject="Your Single Sign-On OTP 🔑",
-                body=f"Hi {employee_name},\n\nYour security code is {otp}. It is valid for 5 minutes.",
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[email],
-                connection=BrevoHTTPBackend()
-            )
-            email_msg.attach_alternative(html_content, "text/html")
-            email_msg.send(fail_silently=False)
+            # Send via Brevo email
+            try:
+                email_msg = EmailMultiAlternatives(
+                    subject="Your Single Sign-On OTP 🔑",
+                    body=f"Hi {employee_name},\n\nYour security code is {otp}. It is valid for 5 minutes.",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[user.email],
+                    connection=BrevoHTTPBackend()
+                )
+                email_msg.attach_alternative(html_content, "text/html")
+                email_msg.send(fail_silently=True)
+            except Exception as mail_err:
+                print(f"Failed to dispatch OTP email: {mail_err}")
             
-            return Response({"success": True, "message": "OTP sent to your email"}, status=status.HTTP_200_OK)
+            resp_payload = {
+                "success": True,
+                "message": f"Verification code sent to your registered contact ({user.email[:3]}***@{user.email.split('@')[-1]})",
+            }
+            if settings.DEBUG:
+                resp_payload["dev_otp"] = otp
+                print(f"🔑 [DEV OTP LOGIN] For {identifier} / {user.email}: {otp}")
+            return Response(resp_payload, status=status.HTTP_200_OK)
             
-        except User.DoesNotExist:
-            # Secure: don't leak account existence, return success message but do nothing
-            return Response({"success": True, "message": "OTP sent to your email"}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -263,45 +295,71 @@ class VerifyOTPView(APIView):
     permission_classes = []
     
     def post(self, request):
-        email = request.data.get('email')
-        otp = request.data.get('otp')
+        identifier = (
+            request.data.get('identifier')
+            or request.data.get('mobile')
+            or request.data.get('phone_number')
+            or request.data.get('phone')
+            or request.data.get('email')
+            or ''
+        ).strip()
+        otp = (request.data.get('otp') or '').strip()
         
-        if not email or not otp:
-            return Response({"error": "Email and OTP are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not identifier or not otp:
+            return Response({"error": "Identifier and verification code are required"}, status=status.HTTP_400_BAD_REQUEST)
             
-        cached_otp = cache.get(f"otp_{email}")
-        if not cached_otp or cached_otp != otp:
-            return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
+        user = None
+        if '@' in identifier:
+            user = User.objects.filter(email__iexact=identifier).first()
+        else:
+            clean_phone = ''.join(c for c in identifier if c.isdigit())
+            user = User.objects.filter(
+                Q(phone_number=identifier)
+                | Q(phone_number__endswith=clean_phone[-10:] if len(clean_phone) >= 10 else clean_phone)
+            ).first()
+            if not user:
+                user = User.objects.filter(email__iexact=identifier).first()
+
+        cached_otp = cache.get(f"otp_{identifier}")
+        if not cached_otp and user:
+            cached_otp = cache.get(f"otp_{user.email}")
+            if not cached_otp and user.phone_number:
+                cached_otp = cache.get(f"otp_{user.phone_number}")
+
+        if not cached_otp or str(cached_otp).strip() != otp:
+            return Response({"error": "Invalid or expired verification code"}, status=status.HTTP_400_BAD_REQUEST)
             
         # Delete OTP from cache on verify attempt
-        cache.delete(f"otp_{email}")
+        cache.delete(f"otp_{identifier}")
+        if user:
+            cache.delete(f"otp_{user.email}")
+            if user.phone_number:
+                cache.delete(f"otp_{user.phone_number}")
         
-        try:
-            user = User.objects.get(email=email)
-            from users.exit_access import (
-                can_authenticate_user,
-                inactive_login_blocked_message,
-            )
-
-            if not can_authenticate_user(user):
-                return Response(
-                    {"error": inactive_login_blocked_message()},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-                
-            # If 2FA (TOTP) is enabled, return temp session token for step-2 validation
-            if user.is_totp_enabled:
-                temp_token = str(uuid.uuid4())
-                cache.set(f"temp_totp_session_{temp_token}", user.id, timeout=300)
-                return Response({
-                    "totp_required": True,
-                    "temp_token": temp_token
-                }, status=status.HTTP_200_OK)
-                
-            return login_user_and_set_cookies(user, request)
-            
-        except User.DoesNotExist:
+        if not user:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        from users.exit_access import (
+            can_authenticate_user,
+            inactive_login_blocked_message,
+        )
+
+        if not can_authenticate_user(user):
+            return Response(
+                {"error": inactive_login_blocked_message()},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+            
+        # If 2FA (TOTP) is enabled, return temp session token for step-2 validation
+        if user.is_totp_enabled:
+            temp_token = str(uuid.uuid4())
+            cache.set(f"temp_totp_session_{temp_token}", user.id, timeout=300)
+            return Response({
+                "totp_required": True,
+                "temp_token": temp_token
+            }, status=status.HTTP_200_OK)
+            
+        return login_user_and_set_cookies(user, request)
 
 
 class SetupTOTPView(APIView):

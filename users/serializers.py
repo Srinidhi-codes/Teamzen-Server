@@ -31,9 +31,7 @@ class OrganizationBriefSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        from organizations.plan_entitlements import org_has_feature
-
-        if not org_has_feature(instance, "custom_accent"):
+        if not data.get("accent"):
             data["accent"] = "teal"
         return data
 

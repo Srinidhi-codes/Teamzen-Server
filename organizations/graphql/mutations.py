@@ -169,11 +169,7 @@ class OrganizationMutation:
             valid = {c[0] for c in Organization.ACCENT_CHOICES}
             if input.accent not in valid:
                 raise GraphQLError("Invalid accent color")
-            from organizations.plan_entitlements import org_has_feature
-
-            if org_has_feature(org, "custom_accent"):
-                org.accent = input.accent
-            # Free orgs keep stored accent but it is not applied until they upgrade.
+            org.accent = input.accent
         if input.face_attendance_enabled is not None:
             if input.face_attendance_enabled:
                 from organizations.plan_entitlements import require_feature
