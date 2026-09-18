@@ -125,8 +125,19 @@ class Payslip(models.Model):
     total_deductions = models.DecimalField(max_digits=12, decimal_places=2)
     net_pay = models.DecimalField(max_digits=12, decimal_places=2)
     
+    PDF_SOURCE_CHOICES = [
+        ("generated", "Generated from template"),
+        ("uploaded", "Admin uploaded PDF"),
+    ]
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     payslip_pdf = models.FileField(upload_to='payslips/', null=True, blank=True, storage=RawMediaCloudinaryStorage())
+    pdf_source = models.CharField(
+        max_length=20,
+        choices=PDF_SOURCE_CHOICES,
+        default="generated",
+        help_text="Uploaded PDFs are published as-is and are not regenerated.",
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -257,20 +268,17 @@ class DataImportJob(models.Model):
 
 
 class PayslipTemplate(models.Model):
-    """Payslip visual template: gallery presets + org customs (incl. clone-from-upload)."""
+    """Standard payslip gallery presets and organization defaults."""
 
     SOURCE_CHOICES = [
         ("system", "System gallery"),
         ("custom", "Custom"),
-        ("cloned", "Cloned from upload"),
     ]
     LAYOUT_CHOICES = [
         ("classic", "Classic"),
         ("modern", "Modern"),
         ("compact", "Compact"),
         ("minimal", "Minimal"),
-        ("uploaded", "Uploaded PDF"),
-        ("networth", "Networth-style replica"),
     ]
 
     organization = models.ForeignKey(
@@ -293,17 +301,6 @@ class PayslipTemplate(models.Model):
         help_text="Colors and display flags used by PDF renderer",
     )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="custom")
-    source_file = models.FileField(
-        upload_to="payslip_templates/",
-        null=True,
-        blank=True,
-        storage=RawMediaCloudinaryStorage(),
-    )
-    preview_notes = models.TextField(
-        blank=True,
-        default="",
-        help_text="AI notes from clone-from-upload analysis",
-    )
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(

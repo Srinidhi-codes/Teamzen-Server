@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from payroll.api_views import (
     DataImportUploadView,
-    PayslipTemplateCloneView,
+    PayslipBulkUploadView,
     PayslipTemplateDemoDownloadView,
     PayslipTemplatePreviewView,
     BankPayoutExportView,
@@ -13,9 +13,9 @@ router = DefaultRouter()
 urlpatterns = [
     path("payroll/import/upload/", DataImportUploadView.as_view(), name="payroll-import-upload"),
     path(
-        "payroll/payslip-templates/clone/",
-        PayslipTemplateCloneView.as_view(),
-        name="payroll-payslip-template-clone",
+        "payroll/payslips/bulk-upload/",
+        PayslipBulkUploadView.as_view(),
+        name="payroll-payslip-bulk-upload",
     ),
     path(
         "payroll/payslip-templates/<int:template_id>/demo/",

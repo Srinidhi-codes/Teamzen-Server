@@ -196,6 +196,7 @@ class PayslipType:
     total_deductions: auto
     net_pay: auto
     status: auto
+    pdf_source: auto
 
     @strawberry.field
     def payslip_pdf(self) -> Optional[PayslipPdfType]:
@@ -269,21 +270,13 @@ class PayslipTemplateType:
     layout_key: str
     theme: JSON
     source: str
-    preview_notes: str
     is_default: bool
     is_active: bool
     is_system: bool
     organization_id: Optional[strawberry.ID]
-    source_file_url: Optional[str] = None
 
     @classmethod
     def from_model(cls, tpl) -> "PayslipTemplateType":
-        source_url = None
-        try:
-            if tpl.source_file:
-                source_url = tpl.source_file.url
-        except Exception:
-            source_url = None
         return cls(
             id=strawberry.ID(str(tpl.id)),
             name=tpl.name,
@@ -292,14 +285,12 @@ class PayslipTemplateType:
             layout_key=tpl.layout_key,
             theme=tpl.theme or {},
             source=tpl.source,
-            preview_notes=tpl.preview_notes or "",
             is_default=bool(tpl.is_default),
             is_active=bool(tpl.is_active),
             is_system=tpl.organization_id is None,
             organization_id=strawberry.ID(str(tpl.organization_id))
             if tpl.organization_id
             else None,
-            source_file_url=source_url,
         )
 
 

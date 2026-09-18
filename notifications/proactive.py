@@ -225,6 +225,7 @@ def notify_bot_user(
     user_id: int,
     html_text: str,
     platforms: list[str] | None = None,
+    image_url: str | None = None,
 ) -> bool:
     """
     Fan-out HTML (Telegram) / converted mrkdwn (Slack/WhatsApp) to verified bot sessions.
@@ -261,7 +262,17 @@ def notify_bot_user(
         try:
             adapter = get_adapter(session.platform)
             text = format_for_platform(html_text, session.platform)
-            result = adapter.send_message(session.chat_id, text)
+            
+            if image_url and session.platform == BotSession.PLATFORM_TELEGRAM:
+                if hasattr(adapter, "send_photo"):
+                    result = adapter.send_photo(session.chat_id, image_url, caption=text)
+                else:
+                    result = adapter.send_message(session.chat_id, f"{text}\n{image_url}")
+            elif image_url and session.platform == BotSession.PLATFORM_SLACK:
+                result = adapter.send_message(session.chat_id, text, image_url=image_url)
+            else:
+                result = adapter.send_message(session.chat_id, text)
+                
             if result.get("ok", True):
                 sent = True
         except Exception:

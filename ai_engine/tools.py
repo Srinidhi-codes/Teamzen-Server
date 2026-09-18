@@ -1865,3 +1865,140 @@ def suggest_route(
         f"[ROUTE_CARD] path: {href_safe} | label: {btn} | "
         f"reason: {why} [/ROUTE_CARD]"
     )
+
+@tool
+def simulate_hiring_impact(organization_id: int, role_name: str, count: int, start_date_str: str):
+    """
+    Simulates the HR and Payroll impact of hiring new employees.
+    Given a role_name, number of hires (count), and a start date (YYYY-MM-DD),
+    it computes the projected payroll cost for the remainder of the year and 
+    the estimated leave liability.
+    """
+    from datetime import date
+    from django.db.models import Avg
+    from payroll.models import EmployeeSalaryStructure
+    from django.utils.dateparse import parse_date
+    import decimal
+
+    start_date = parse_date(start_date_str)
+    if not start_date:
+        return f"Error: Invalid start date format '{start_date_str}'. Please use YYYY-MM-DD."
+
+    year_end = date(start_date.year, 12, 31)
+    days_in_year = 365 if start_date.year % 4 != 0 else 366
+    days_remaining = (year_end - start_date).days + 1
+    
+    if days_remaining <= 0:
+        return "Error: Start date must be before the end of the year."
+
+    # Estimate average CTC
+    avg_ctc = EmployeeSalaryStructure.objects.filter(
+        user__organization_id=organization_id,
+        user__designation__name__icontains=role_name,
+        is_active=True
+    ).aggregate(Avg('annual_ctc'))['annual_ctc__avg']
+
+    if not avg_ctc:
+        avg_ctc = decimal.Decimal("80000.00")
+        salary_note = f"No existing '{role_name}' found. Using fallback average CTC of ₹80,000."
+    else:
+        salary_note = f"Based on existing '{role_name}' average CTC of ₹{avg_ctc:,.2f}."
+
+    prorated_ctc_per_person = (avg_ctc / decimal.Decimal(days_in_year)) * decimal.Decimal(days_remaining)
+    total_projected_cost = prorated_ctc_per_person * decimal.Decimal(count)
+
+    # Leave liability projection (assuming 20 days standard annual leave)
+    annual_leave_days = decimal.Decimal("20")
+    prorated_leaves_per_person = (annual_leave_days / decimal.Decimal(days_in_year)) * decimal.Decimal(days_remaining)
+    daily_salary = avg_ctc / decimal.Decimal("260") # 260 typical working days
+    liability_per_person = prorated_leaves_per_person * daily_salary
+    total_leave_liability = liability_per_person * decimal.Decimal(count)
+
+    return (
+        f"### HR Twin Simulation: Hiring {count} {role_name}(s)\n"
+        f"**Start Date:** {start_date.strftime('%b %d, %Y')} (Days remaining in year: {days_remaining})\n\n"
+        f"**Projected Payroll Cost:** ₹{total_projected_cost:,.2f}\n"
+        f"**Projected Leave Liability:** ₹{total_leave_liability:,.2f} (Assuming 20 standard annual leave days pro-rated)\n\n"
+        f"*{salary_note}*"
+    )
+
+@tool
+def run_sensitive_action_debate(organization_id: int, action_description: str):
+    """
+    Spawns three specialized LLM agents (Leave/Operations, Compliance, and Management)
+    to debate a sensitive HR action before returning a synthesized executive summary.
+    Use this tool when a user asks to perform an action that violates standard policy, 
+    requires a major exception, or could have significant compliance/morale implications.
+    """
+    from langchain_core.messages import SystemMessage, HumanMessage
+    from ai_engine.graph import get_llm
+    
+    llm = get_llm(organization_id)
+    
+    leave_prompt = (
+        "You are the Operations & Leaves Agent. Your goal is to evaluate the proposed action "
+        "based purely on operational continuity, standard leave policies, and fairness to other employees. "
+        "Highlight any operational risks or policy violations. Be concise."
+    )
+    compliance_prompt = (
+        "You are the Compliance Agent. Your goal is to evaluate the proposed action "
+        "based purely on legal risk, labor laws, audit compliance, and corporate governance. "
+        "Highlight any compliance violations or legal liabilities. Be concise."
+    )
+    manager_prompt = (
+        "You are the Manager Agent. Your goal is to evaluate the proposed action "
+        "based purely on team productivity, employee morale, and business goals. "
+        "Highlight any positive or negative impacts on the team. Be concise."
+    )
+    
+    leave_response = llm.invoke(
+        [
+            SystemMessage(content=leave_prompt),
+            HumanMessage(content=f"Proposed Action: {action_description}")
+        ],
+        config={"tags": ["hide_stream"]}
+    ).content
+    
+    compliance_response = llm.invoke(
+        [
+            SystemMessage(content=compliance_prompt),
+            HumanMessage(content=f"Proposed Action: {action_description}")
+        ],
+        config={"tags": ["hide_stream"]}
+    ).content
+    
+    manager_response = llm.invoke(
+        [
+            SystemMessage(content=manager_prompt),
+            HumanMessage(content=f"Proposed Action: {action_description}")
+        ],
+        config={"tags": ["hide_stream"]}
+    ).content
+    
+    synthesis_prompt = (
+        "You are the Executive Synthesis Agent. You have received feedback from three specialized agents "
+        "regarding a proposed sensitive HR action. Your job is to synthesize their arguments into a single, "
+        "unified executive summary that outlines the pros, cons, and a final recommended decision. "
+        "Use Markdown formatting. Be decisive but acknowledge the different perspectives."
+    )
+    
+    human_content = (
+        f"Proposed Action: {action_description}\n\n"
+        f"--- Operations & Leaves Feedback ---\n{leave_response}\n\n"
+        f"--- Compliance Feedback ---\n{compliance_response}\n\n"
+        f"--- Management Feedback ---\n{manager_response}\n"
+    )
+    
+    synthesis_response = llm.invoke(
+        [
+            SystemMessage(content=synthesis_prompt),
+            HumanMessage(content=human_content)
+        ],
+        config={"tags": ["hide_stream"]}
+    ).content
+    
+    return (
+        f"### Multi-Agent Debate Output\n\n"
+        f"{synthesis_response}\n\n"
+        f"*(This decision was synthesized after a silent debate between the Compliance, Operations, and Management AI Agents)*"
+    )

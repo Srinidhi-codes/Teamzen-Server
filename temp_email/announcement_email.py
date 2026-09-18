@@ -13,6 +13,7 @@ def get_announcement_email_html(
     logo_url: str = "",
     company_name: str = "Teamzen",
     company_url: str = "#",
+    image_url: str = None,
 ) -> str:
     """Generate the Company Announcement HTML email."""
 
@@ -26,6 +27,12 @@ def get_announcement_email_html(
     config = priority_config.get(priority.lower(), priority_config["normal"])
     accent = config["accent"]
     accent_light = config["bg"]
+
+    image_html = f'''
+        <div style="margin: 20px 0; text-align: center;">
+            <img src="{image_url}" alt="Announcement Image" style="max-width: 100%; border-radius: 8px; border: 1px solid #E2E8F0;" />
+        </div>
+    ''' if image_url else ""
 
     body = f"""
                 <!-- Hero Section -->
@@ -45,6 +52,7 @@ def get_announcement_email_html(
                         <p style="margin: 0; font-size: 16px; color: #334155;">
                             Hi <strong>{employee_name}</strong>,
                         </p>
+                        {image_html}
                         <div style="margin: 16px 0; font-size: 15px; color: #475569; line-height: 1.7; white-space: pre-wrap;">
                             {announcement_body}
                         </div>

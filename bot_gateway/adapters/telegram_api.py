@@ -57,6 +57,26 @@ def send_message(
     return call("sendMessage", payload)
 
 
+def send_photo(
+    chat_id: str | int,
+    photo_url: str,
+    caption: str = "",
+    *,
+    parse_mode: str = "HTML",
+    reply_markup: Optional[dict] = None,
+) -> dict:
+    payload: dict[str, Any] = {
+        "chat_id": chat_id,
+        "photo": photo_url,
+        "caption": caption[:1024],
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    return call("sendPhoto", payload)
+
+
 def answer_callback_query(
     callback_query_id: str,
     text: str = "",

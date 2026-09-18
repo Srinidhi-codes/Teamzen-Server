@@ -28,6 +28,7 @@ class Notification(models.Model):
     verb = models.CharField(max_length=255)  # e.g., "approved", "rejected", "requested"
     target_type = models.CharField(max_length=100, blank=True, null=True)  # e.g., "Leave Request"
     target_id = models.CharField(max_length=255, blank=True, null=True)
+    image_url = models.URLField(max_length=500, blank=True, null=True)
     
     message = models.TextField()
     notification_type = models.CharField(max_length=10, choices=NOTIFICATION_TYPES, default='BOTH')

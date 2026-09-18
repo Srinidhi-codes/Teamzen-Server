@@ -529,6 +529,16 @@ class PayrollService:
             return False
 
     @staticmethod
+    def publish_run_pdfs(payroll_run):
+        """Generate missing template PDFs, but never overwrite admin-uploaded files."""
+        payslips = Payslip.objects.filter(payroll_run=payroll_run)
+        for payslip in payslips:
+            if payslip.pdf_source == "uploaded" and payslip.payslip_pdf:
+                continue
+            PayrollService.generate_payslip_pdf(payslip)
+        payslips.update(status="published")
+
+    @staticmethod
     def generate_payslip_pdf(payslip, *, template_override=None, persist=True):
         """
         Payslip PDF styled like modern Indian payroll slips
@@ -538,28 +548,16 @@ class PayrollService:
         template_override: optional PayslipTemplate to force theme/layout (demo).
         persist: if False, return PDF bytes without uploading to Cloudinary.
 
-        If the org default (or override) is an uploaded PDF template, the slip
-        is filled pin-to-pin on that PDF (original layout, rewritten values).
+        Only the standard Teamzen template gallery is rendered here. Admin-owned
+        PDFs are published unchanged through the bulk-upload flow.
         """
         from payroll.template_services import (
             theme_for_payslip,
             resolve_template_for_org,
-            _template_uses_uploaded_pdf,
         )
 
         org = payslip.payroll_run.organization
         tpl = template_override or resolve_template_for_org(org)
-        layout_key = getattr(tpl, "layout_key", None) if tpl else None
-        theme = (getattr(tpl, "theme", None) or {}) if tpl else {}
-        if (
-            _template_uses_uploaded_pdf(tpl)
-            or layout_key in ("networth", "uploaded")
-            or theme.get("renderer") in ("networth_replica", "pdf_fill", "corporate_replica")
-            or theme.get("fill_in_place")
-        ):
-            return PayrollService._generate_payslip_on_uploaded_template(
-                payslip, tpl, persist=persist
-            )
 
         org_name = org.name
         month_name = calendar.month_name[payslip.payroll_run.month]
@@ -572,6 +570,33 @@ class PayrollService:
         layout_key, theme = theme_for_payslip(
             payslip, template_override=template_override
         )
+        if layout_key in ("classic", "compact", "minimal"):
+            from payroll.standard_payslip_layouts import render_standard_payslip
+
+            pdf_bytes = render_standard_payslip(payslip, layout_key, theme)
+            if not persist:
+                return pdf_bytes
+
+            safe_month = month_name.replace(" ", "_")
+            public_id = (
+                f"payslip_{payslip.user.id}_{safe_month}_{year}_{payslip.id}"
+            )
+            import cloudinary.uploader
+
+            upload_result = cloudinary.uploader.upload(
+                pdf_bytes,
+                public_id=public_id,
+                folder="media/payslips",
+                resource_type="raw",
+                overwrite=True,
+                invalidate=True,
+                format="pdf",
+            )
+            payslip.payslip_pdf.name = upload_result.get("public_id") or public_id
+            payslip.pdf_source = "generated"
+            payslip.save(update_fields=["payslip_pdf", "pdf_source"])
+            return None
+
         c_primary = hex_to_rgb(theme.get("primary"), (33, 37, 41))
         c_muted = hex_to_rgb(theme.get("muted"), (108, 117, 125))
         c_accent = hex_to_rgb(theme.get("accent"), (13, 110, 253))
@@ -927,47 +952,8 @@ class PayrollService:
         )
         # Prefer secure versioned URL path when available
         payslip.payslip_pdf.name = upload_result.get("public_id") or public_id
-        payslip.save(update_fields=["payslip_pdf"])
-        return None
-
-    @staticmethod
-    def _generate_payslip_on_uploaded_template(payslip, template, *, persist=True):
-        """
-        Clean redraw matching the uploaded payslip structure (corporate/Eazy style).
-        Never returns the raw uploaded sample PDF.
-        """
-        from payroll.corporate_layout import render_corporate_style_payslip
-
-        month_name = calendar.month_name[payslip.payroll_run.month]
-        year = payslip.payroll_run.year
-        # Prefer corporate structure replica; Networth only if explicitly themed
-        theme = getattr(template, "theme", None) or {}
-        renderer = theme.get("renderer") or ""
-        if renderer == "networth_replica" and not theme.get("fill_in_place"):
-            from payroll.networth_layout import render_networth_style_payslip
-
-            pdf_bytes = render_networth_style_payslip(payslip)
-        else:
-            pdf_bytes = render_corporate_style_payslip(payslip)
-
-        if not persist:
-            return pdf_bytes
-
-        safe_month = month_name.replace(" ", "_")
-        public_id = f"payslip_{payslip.user.id}_{safe_month}_{year}_{payslip.id}"
-        import cloudinary.uploader
-
-        upload_result = cloudinary.uploader.upload(
-            pdf_bytes,
-            public_id=public_id,
-            folder="media/payslips",
-            resource_type="raw",
-            overwrite=True,
-            invalidate=True,
-            format="pdf",
-        )
-        payslip.payslip_pdf.name = upload_result.get("public_id") or public_id
-        payslip.save(update_fields=["payslip_pdf"])
+        payslip.pdf_source = "generated"
+        payslip.save(update_fields=["payslip_pdf", "pdf_source"])
         return None
 
     @staticmethod

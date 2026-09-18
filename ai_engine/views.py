@@ -445,6 +445,9 @@ class SmartAssistantChatView(APIView):
                                 logger.info(f"[StreamEvent] kind={kind} name={name!r} run_name={run_name!r}")
 
                             if kind == "on_chat_model_stream":
+                                tags = event.get("tags") or []
+                                if "hide_stream" in tags:
+                                    continue
                                 content = _normalize_llm_content(
                                     event["data"]["chunk"].content
                                 )

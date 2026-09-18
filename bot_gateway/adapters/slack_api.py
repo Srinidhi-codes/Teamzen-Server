@@ -58,7 +58,7 @@ def verify_request(body: bytes, timestamp: str, signature: str) -> bool:
         return False
 
 
-def _blocks_with_text(text: str, reply_markup: Optional[dict] = None) -> list:
+def _blocks_with_text(text: str, reply_markup: Optional[dict] = None, image_url: Optional[str] = None) -> list:
     """
     Slack only renders `blocks` when present — top-level `text` is fallback/notification.
     Always put the body in a section block so it appears above action buttons.
@@ -70,6 +70,12 @@ def _blocks_with_text(text: str, reply_markup: Optional[dict] = None) -> list:
             "text": {"type": "mrkdwn", "text": body},
         }
     ]
+    if image_url:
+        blocks.append({
+            "type": "image",
+            "image_url": image_url,
+            "alt_text": "Attached Image"
+        })
     extra = (reply_markup or {}).get("blocks") if isinstance(reply_markup, dict) else None
     if extra:
         # Avoid duplicating if caller already sent a section
@@ -83,6 +89,7 @@ def send_message(
     *,
     parse_mode: str = "mrkdwn",
     reply_markup: Optional[dict] = None,
+    image_url: Optional[str] = None,
     **_kwargs: Any,
 ) -> dict:
     """
@@ -95,8 +102,9 @@ def send_message(
             "channel": str(chat_id),
             "text": (text or "")[:3900],
         }
-        if reply_markup and isinstance(reply_markup, dict) and reply_markup.get("blocks"):
-            kwargs["blocks"] = _blocks_with_text(text, reply_markup)
+        has_blocks = reply_markup and isinstance(reply_markup, dict) and reply_markup.get("blocks")
+        if has_blocks or image_url:
+            kwargs["blocks"] = _blocks_with_text(text, reply_markup, image_url)
         elif reply_markup and isinstance(reply_markup, dict) and reply_markup.get("attachments"):
             kwargs["attachments"] = reply_markup["attachments"]
         result = client.chat_postMessage(**kwargs)
