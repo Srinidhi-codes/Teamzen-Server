@@ -92,7 +92,7 @@ class PolicyProcessingService:
             return self.process_file_content(policy_file, response.content, public_id_with_ext)
             
         except Exception as e:
-            print(f"❌ Error processing policy file {policy_file.id}: {str(e)}")
+            print(f"Error processing policy file {policy_file.id}: {str(e)}")
             policy_file.is_processed = False
             policy_file.processing_error = str(e)
             policy_file.save()

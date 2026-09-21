@@ -16,7 +16,7 @@ def get_otp_email_html(
                 <!-- Hero Section -->
                 <tr>
                     <td class="hero-section" bgcolor="#E0E7FF" style="padding: 40px 40px 28px 40px; text-align: center; background-color: #E0E7FF;">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 12px;">🔑</div>
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #0F172A !important; letter-spacing: -0.5px;">
                             <span style="color: #0F172A; background-color: #E0E7FF;">Your One-Time Password</span>
                         </h1>

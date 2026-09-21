@@ -14,9 +14,9 @@ def get_preboarding_invite_email_html(
 ) -> str:
     details = ""
     if designation:
-        details += info_row_html("Role", designation, "💼")
+        details += info_row_html("Role", designation, "")
     if join_date:
-        details += info_row_html("Joining Date", join_date, "📅")
+        details += info_row_html("Joining Date", join_date, "")
 
     offer_note = ""
     if has_offer_attachment or offer_pdf_url:
@@ -47,8 +47,8 @@ def get_preboarding_invite_email_html(
 
     body = f"""
                 <tr>
-                    <td style="padding: 48px 40px 24px 40px; text-align: center; background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 50%, #A7F3D0 100%);">
-                        <div style="font-size: 48px; margin-bottom: 12px;">🚀</div>
+                    <td style="padding: 48px 40px 24px 40px; text-align: center; ">
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #064E3B;">
                             Let's get you ready for day one
                         </h1>
@@ -99,7 +99,7 @@ def get_document_rejected_email_html(
     body = f"""
                 <tr>
                     <td style="padding: 40px 40px 20px 40px; text-align: center; background: #FEF2F2;">
-                        <div style="font-size: 40px; margin-bottom: 8px;">📄</div>
+                        
                         <h1 style="margin: 0; font-size: 22px; color: #991B1B;">Document needs attention</h1>
                     </td>
                 </tr>

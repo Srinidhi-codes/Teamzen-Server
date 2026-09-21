@@ -315,6 +315,23 @@ class DashboardQuery:
                 days_until=days_until
             ))
 
+        # Upcoming Leaves in next 30 days
+        approved_leaves = LeaveRequest.objects.filter(
+            leave_filter,
+            _status='approved',
+            from_date__range=[today, today + timedelta(days=30)]
+        ).select_related("user")
+        for l in approved_leaves:
+            days_until = (l.from_date - today).days
+            upcoming_events.append(UpcomingEvent(
+                id=f"leave-{l.id}",
+                user=f"{l.user.first_name} {l.user.last_name}",
+                profile_picture=l.user.profile_picture.url if l.user.profile_picture else None,
+                type="leave",
+                date=l.from_date.isoformat(),
+                days_until=days_until
+            ))
+
         # 7. Add anniversaries to activities
         for u in all_users:
             if u.date_of_joining and u.date_of_joining.month == today.month and u.date_of_joining.day == today.day and u.date_of_joining.year < today.year:
@@ -462,6 +479,24 @@ class DashboardQuery:
                     type="optional_holiday" if h.is_optional else "holiday",
                     date=h.holiday_date.isoformat(),
                     days_until=(h.holiday_date - today).days,
+                ))
+
+            # Upcoming Leaves for team members in next 30 days
+            team_leaves = LeaveRequest.objects.filter(
+                user__organization=org,
+                _status='approved',
+                from_date__range=[today, horizon]
+            ).exclude(user=user).select_related("user")
+            
+            for l in team_leaves:
+                days_until = (l.from_date - today).days
+                upcoming_events.append(UpcomingEvent(
+                    id=f"leave-{l.id}",
+                    user=f"{l.user.first_name} {l.user.last_name}",
+                    profile_picture=_picture(l.user),
+                    type="leave",
+                    date=l.from_date.isoformat(),
+                    days_until=days_until,
                 ))
 
         att_qs = AttendanceRecord.objects.filter(user=user)

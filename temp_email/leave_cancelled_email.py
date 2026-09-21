@@ -21,8 +21,8 @@ def get_leave_cancelled_email_html(
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 50%, #FED7AA 100%);">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 20px;">📅</div>
+                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
+                        
                         <div style="margin-bottom: 12px;">
                             {status_badge_html("CANCELLED", "#9A3412", "#FFEDD5")}
                         </div>
@@ -49,13 +49,13 @@ def get_leave_cancelled_email_html(
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
                                     <td style="padding-bottom: 12px; border-bottom: 1px solid #FFEDD5;">
-                                        <p style="margin: 0; font-weight: 700; color: #9A3412; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">📋 Leave Details</p>
+                                        <p style="margin: 0; font-weight: 700; color: #9A3412; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Leave Details</p>
                                     </td>
                                 </tr>
-                                {info_row_html("Employee", employee_name, "👤", accent)}
-                                {info_row_html("Leave Type", leave_type, "🏷️", accent)}
-                                {info_row_html("Dates", f"{start_date} to {end_date}", "📅", accent)}
-                                {info_row_html("Duration", f"{duration} days", "⏱️", accent)}
+                                {info_row_html("Employee", employee_name, "", accent)}
+                                {info_row_html("Leave Type", leave_type, "", accent)}
+                                {info_row_html("Dates", f"{start_date} to {end_date}", "", accent)}
+                                {info_row_html("Duration", f"{duration} days", "", accent)}
                                 {info_row_html("Cancelled By", cancelled_by if cancelled_by else employee_name, "🚫", accent)}
                             </table>
                         </div>

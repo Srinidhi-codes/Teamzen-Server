@@ -3,7 +3,7 @@ def logo_badge_html(accent_color: str) -> str:
     return f"""
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block;">
         <tr>
-            <td align="center" valign="middle" style="width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, {accent_color}, #0EA5E9); color: #FFFFFF; font-size: 28px; font-weight: 800; line-height: 56px; text-align: center; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);">
+            <td align="center" valign="middle" style="width: 48px; height: 48px; border-radius: 8px; background-color: {accent_color}; color: #FFFFFF; font-size: 24px; font-weight: 800; line-height: 48px; text-align: center;">
                 T
             </td>
         </tr>
@@ -53,57 +53,48 @@ def get_base_template(
         <title>{title}</title>
         <style>
             :root {{ color-scheme: light only; supported-color-schemes: light only; }}
-            body {{ background-color: #F4F7FB !important; background: #F4F7FB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; margin: 0; padding: 24px 10px; color: #0F172A !important; }}
-            .shell {{ max-width: 640px; margin: 0 auto; }}
-            .brandbar {{ text-align: center; margin: 0 0 14px 0; }}
-            .brandchip {{ display: inline-block; padding: 7px 14px; border-radius: 999px; background-color: #FFFFFF !important; border: 1px solid #E2E8F0; color: #0F172A !important; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
-            .container {{ background-color: #FFFFFF !important; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08); }}
-            .topline {{ height: 4px; background: linear-gradient(90deg, {accent_color}, #0EA5E9); }}
-            .header {{ padding: 26px 32px 18px 32px; background-color: #EEF2FF !important; background: linear-gradient(180deg, {accent_light}, #FFFFFF 70%); border-bottom: 1px solid #EEF2F7; }}
+            body {{ background-color: #F9FAFB !important; background: #F9FAFB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 40px 20px; color: #111827 !important; }}
+            .shell {{ max-width: 600px; margin: 0 auto; }}
+            .brandbar {{ text-align: center; margin: 0 0 24px 0; }}
+            .container {{ background-color: #FFFFFF !important; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; }}
+            .topline {{ height: 4px; background-color: {accent_color}; }}
+            .header {{ padding: 32px 40px 24px 40px; background-color: #FFFFFF !important; border-bottom: 1px solid #F3F4F6; }}
             .content {{ padding: 0; background-color: #FFFFFF !important; }}
-            .footer {{ padding: 24px 32px 32px 32px; background-color: #FAFBFD !important; border-top: 1px solid #E2E8F0; }}
-            .eyebrow {{ margin: 0 0 8px 0; color: {accent_color} !important; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }}
-            .title {{ margin: 0; color: #0F172A !important; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }}
-            p {{ font-size: 15px; color: #334155 !important; line-height: 1.7; margin: 0 0 16px 0; }}
-            .footer-note {{ color: #475569 !important; font-size: 12px; margin: 0; }}
-            .footer-links a {{ color: {accent_color} !important; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600; }}
-            /* Keep light palette even if the client ignores color-scheme meta */
+            .footer {{ padding: 32px 40px; background-color: #F9FAFB !important; border-top: 1px solid #E5E7EB; text-align: center; }}
+            .eyebrow {{ margin: 0 0 8px 0; color: #6B7280 !important; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }}
+            .title {{ margin: 0; color: #111827 !important; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }}
+            p {{ font-size: 15px; color: #374151 !important; line-height: 1.6; margin: 0 0 16px 0; }}
+            .footer-note {{ color: #6B7280 !important; font-size: 13px; margin: 0 0 16px 0; line-height: 1.5; }}
+            .footer-links a {{ color: {accent_color} !important; text-decoration: none; margin: 0 12px; font-size: 13px; font-weight: 500; }}
+            
+            /* Keep light palette */
             @media (prefers-color-scheme: dark) {{
-                body {{
-                    background-color: #F4F7FB !important;
-                    color: #0F172A !important;
-                }}
-                .container, .content, .header, .footer, .brandchip {{
-                    background-color: #FFFFFF !important;
-                }}
-                .title, h1, .footer-note, p {{
-                    color: #0F172A !important;
-                }}
+                body {{ background-color: #F9FAFB !important; color: #111827 !important; }}
+                .container, .content, .header, .brandchip {{ background-color: #FFFFFF !important; }}
+                .footer {{ background-color: #F9FAFB !important; }}
+                .title, h1, p {{ color: #111827 !important; }}
+                .eyebrow, .footer-note {{ color: #6B7280 !important; }}
             }}
-            @media only screen and (max-width: 640px) {{
-                body {{ padding: 12px 0; }}
-                .header {{ padding: 22px 22px 14px 22px; }}
-                .footer {{ padding: 20px 22px 24px 22px; }}
-                .title {{ font-size: 24px; }}
+            @media only screen and (max-width: 600px) {{
+                body {{ padding: 20px 10px; }}
+                .header, .footer {{ padding: 24px 20px; }}
+                .title {{ font-size: 20px; }}
             }}
         </style>
     </head>
-    <body style="background-color: #F4F7FB; margin: 0; padding: 24px 10px; color: #0F172A;">
+    <body style="background-color: #F9FAFB; margin: 0; padding: 40px 20px; color: #111827;">
         <div class="shell">
-            <div class="brandbar">
-                <span class="brandchip" style="background-color: #FFFFFF; color: #0F172A;">Teamzen Product Update</span>
-            </div>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="container" bgcolor="#FFFFFF" style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="container" bgcolor="#FFFFFF" style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden;">
                 <tr>
                     <td class="topline" bgcolor="{accent_color}" style="height: 4px; background-color: {accent_color}; font-size: 0; line-height: 0;">&nbsp;</td>
                 </tr>
                 <tr>
-                    <td class="header" bgcolor="#EEF2FF" style="padding: 26px 32px 18px 32px; background-color: #EEF2FF; border-bottom: 1px solid #EEF2F7;">
+                    <td class="header" bgcolor="#FFFFFF" style="padding: 32px 40px 24px 40px; background-color: #FFFFFF; border-bottom: 1px solid #F3F4F6;">
                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                             <tr>
                                 <td style="vertical-align: middle;">
-                                    <p class="eyebrow" style="margin: 0 0 8px 0; color: {accent_color}; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">Teamzen HRMS</p>
-                                    <h1 class="title" style="margin: 0; color: #0F172A; font-size: 28px; font-weight: 800; letter-spacing: -0.03em;">{title}</h1>
+                                    <p class="eyebrow" style="margin: 0 0 8px 0; color: #6B7280; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">{footer_text}</p>
+                                    <h1 class="title" style="margin: 0; color: #111827; font-size: 24px; font-weight: 700; letter-spacing: -0.01em;">{title}</h1>
                                 </td>
                                 <td style="width: 132px; text-align: right; vertical-align: middle;">
                                     {logo_html}
@@ -120,11 +111,11 @@ def get_base_template(
                     </td>
                 </tr>
                 <tr>
-                    <td class="footer" bgcolor="#FAFBFD" style="padding: 24px 32px 32px 32px; background-color: #FAFBFD; border-top: 1px solid #E2E8F0;">
-                        <p class="footer-note" style="margin: 0; color: #475569; font-size: 12px;">This notification was generated by {footer_text}. If you did not expect this message, please contact your HR or platform administrator.</p>
-                        <p class="footer-links" style="margin: 12px 0 0 0;">
-                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600;">Open workspace</a>
-                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 8px; font-size: 12px; font-weight: 600;">Visit company portal</a>
+                    <td class="footer" bgcolor="#F9FAFB" style="padding: 32px 40px; background-color: #F9FAFB; border-top: 1px solid #E5E7EB; text-align: center;">
+                        <p class="footer-note" style="margin: 0 0 16px 0; color: #6B7280; font-size: 13px; line-height: 1.5;">This notification was generated securely by {footer_text}. If you did not expect this message, please contact your administrator.</p>
+                        <p class="footer-links" style="margin: 0;">
+                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 12px; font-size: 13px; font-weight: 500;">Open Workspace</a>
+                            <a href="{company_url}" style="color: {accent_color}; text-decoration: none; margin: 0 12px; font-size: 13px; font-weight: 500;">Help Center</a>
                         </p>
                     </td>
                 </tr>
@@ -135,20 +126,20 @@ def get_base_template(
 """
 
 def button_html(text: str, url: str, bg_color: str = "#4F46E5", text_color: str = "#ffffff") -> str:
-    return f'<a href="{url}" style="background: linear-gradient(135deg, {bg_color}, #0EA5E9); color: {text_color}; text-decoration: none; padding: 13px 24px; border-radius: 12px; font-weight: 700; display: inline-block; text-align: center; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);">{text}</a>'
+    return f'<a href="{url}" style="background-color: {bg_color}; color: {text_color}; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block; text-align: center; border: 1px solid rgba(0,0,0,0.1);">{text}</a>'
 
 def info_row_html(label: str, value: str, icon: str = "", accent_color: str = "#4F46E5") -> str:
-    icon_str = f"{icon} " if icon else ""
+    # We ignore the `icon` argument since we are removing emojis
     return f"""
     <tr>
-        <td style="padding: 8px 0;">
-            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.6;">
-                <strong style="display: inline-block; min-width: 118px; color: {accent_color};">{icon_str}{label}</strong>
-                <span style="color: #0F172A; font-weight: 600;">{value}</span>
+        <td style="padding: 10px 0; border-bottom: 1px solid #F3F4F6;">
+            <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.5;">
+                <strong style="display: inline-block; min-width: 140px; color: #6B7280; font-weight: 500;">{label}</strong>
+                <span style="color: #111827; font-weight: 600;">{value}</span>
             </p>
         </td>
     </tr>
     """
 
 def status_badge_html(text: str, text_color: str, bg_color: str) -> str:
-    return f'<span style="background-color: {bg_color}; color: {text_color}; padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;">{text}</span>'
+    return f'<span style="background-color: {bg_color}; color: {text_color}; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;">{text}</span>'

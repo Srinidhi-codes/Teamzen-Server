@@ -158,7 +158,7 @@ class AttendanceMutation:
         if correction.status != "pending":
             raise GraphQLError("This correction has already been processed")
 
-        # ✅ Apply decision
+        # Apply decision
         with transaction.atomic():
             if input.status == "approved":
                 correction.approve(approver, input.approval_comments)

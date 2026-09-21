@@ -36,7 +36,7 @@ def get_login_alert_email_html(
     body = f"""
                 <tr>
                     <td class="hero-section" bgcolor="#CCFBF1" style="padding: 40px 40px 28px 40px; text-align: center; background-color: #CCFBF1;">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 12px;">🔐</div>
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #0F172A !important; letter-spacing: -0.5px;">
                             <span style="color: #0F172A; background-color: #CCFBF1;">{headline}</span>
                         </h1>

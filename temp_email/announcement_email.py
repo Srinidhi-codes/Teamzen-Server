@@ -19,9 +19,9 @@ def get_announcement_email_html(
 
     # Color based on priority
     priority_config = {
-        "normal": {"accent": "#4F46E5", "bg": "#EEF2FF", "icon": "📢", "label": "Announcement"},
-        "high": {"accent": "#EA580C", "bg": "#FFF7ED", "icon": "⚡", "label": "Important"},
-        "urgent": {"accent": "#DC2626", "bg": "#FEF2F2", "icon": "🚨", "label": "Urgent Action Required"},
+        "normal": {"accent": "#4F46E5", "bg": "#EEF2FF", "icon": "", "label": "Announcement"},
+        "high": {"accent": "#EA580C", "bg": "#FFF7ED", "icon": "", "label": "Important"},
+        "urgent": {"accent": "#DC2626", "bg": "#FEF2F2", "icon": "", "label": "Urgent Action Required"},
     }
     
     config = priority_config.get(priority.lower(), priority_config["normal"])
@@ -37,8 +37,8 @@ def get_announcement_email_html(
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; background: linear-gradient(135deg, {accent_light} 0%, #ffffff 100%);">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 20px;">{config["icon"]}</div>
+                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
+                        
                         <div style="margin-bottom: 12px;">
                             {status_badge_html(config["label"], accent, accent_light)}
                         </div>

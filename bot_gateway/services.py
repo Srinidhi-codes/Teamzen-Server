@@ -86,19 +86,19 @@ def _sign_in_hint(platform: str) -> str:
 
 # Reply-keyboard labels → action keys
 MENU_LABELS = {
-    "✅ check-in": "checkin",
+    "check-in": "checkin",
     "check-in": "checkin",
     "checkin": "checkin",
-    "🏁 check-out": "checkout",
+    "check-out": "checkout",
     "check-out": "checkout",
     "checkout": "checkout",
     "🏖 leave balance": "balance",
     "leave balance": "balance",
     "📍 attendance": "attendance",
     "attendance": "attendance",
-    "📝 apply leave": "apply",
     "apply leave": "apply",
-    "📋 my pending leaves": "pending",
+    "apply leave": "apply",
+    "my pending leaves": "pending",
     "my pending leaves": "pending",
     "💰 payslip": "payslip",
     "payslip": "payslip",
@@ -106,7 +106,7 @@ MENU_LABELS = {
     "help": "help",
     "🚪 logout": "logout",
     "logout": "logout",
-    "❌ cancel": "cancel_location",
+    "cancel": "cancel_location",
     "cancel": "cancel_location",
 }
 
@@ -438,7 +438,7 @@ class BotService:
                     user, user.office_location.id, latitude, longitude, now_time
                 )
                 return (
-                    f"✅ <b>Check-in</b> recorded\n"
+                    f"<b>Check-in</b> recorded\n"
                     f"Status: {_escape(str(attendance.status))}\n"
                     f"Time: {now_time}\n"
                     f"Office: {_escape(user.office_location.name)}\n"
@@ -446,7 +446,7 @@ class BotService:
                 )
             attendance, distance = check_out_user(user, latitude, longitude, now_time)
             return (
-                f"🏁 <b>Check-out</b> recorded\n"
+                f"<b>Check-out</b> recorded\n"
                 f"Status: {_escape(str(attendance.status))}\n"
                 f"Time: {now_time}\n"
                 f"Office: {_escape(user.office_location.name)}\n"
@@ -550,7 +550,7 @@ class BotService:
         lines = ["<b>Pending leave requests</b>\n"]
         for r in requests:
             lines.append(
-                f"📋 #{r.id} <b>{_escape(r.leave_type.name)}</b>\n"
+                f"#{r.id} <b>{_escape(r.leave_type.name)}</b>\n"
                 f"{r.from_date} → {r.to_date} ({r.duration_days} days)\n"
                 f"Reason: {_escape(r.reason or '—')}"
             )
@@ -787,7 +787,7 @@ class BotService:
 
         name = _escape((user.first_name or user.email).strip())
         return (
-            f"✅ Verified! Hi {name}, I'm your Teamzen HR Assistant.\n\n"
+            f"Verified! Hi {name}, I'm your Teamzen HR Assistant.\n\n"
             f"{HELP_TEXT}"
         )
 
@@ -856,7 +856,7 @@ class BotService:
         self._notify_employee_bots(
             leave.user_id,
             (
-                f"✅ Your <b>{leave.leave_type.name}</b> leave "
+                f"Your <b>{leave.leave_type.name}</b> leave "
                 f"({leave.from_date} → {leave.to_date}) was approved by {actor.first_name}."
             ),
         )
@@ -892,7 +892,7 @@ class BotService:
         self._notify_employee_bots(
             leave.user_id,
             (
-                f"❌ Your <b>{leave.leave_type.name}</b> leave "
+                f"Your <b>{leave.leave_type.name}</b> leave "
                 f"({leave.from_date} → {leave.to_date}) was rejected by {actor.first_name}."
             ),
         )
@@ -930,7 +930,7 @@ class BotService:
             dept = f" ({leave.user.department.name})"
 
         body = (
-            f"📋 <b>Leave Request</b>\n\n"
+            f"<b>Leave Request</b>\n\n"
             f"From: {leave.user.first_name} {leave.user.last_name}{dept}\n"
             f"Type: {leave.leave_type.name}\n"
             f"Dates: {leave.from_date} → {leave.to_date}\n"

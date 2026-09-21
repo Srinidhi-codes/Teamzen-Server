@@ -21,8 +21,8 @@ def get_leave_approved_email_html(
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 50%, #A7F3D0 100%);">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 20px;">✅</div>
+                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
+                        
                         <div style="margin-bottom: 12px;">
                             {status_badge_html("APPROVED", "#065F46", "#D1FAE5")}
                         </div>
@@ -49,13 +49,13 @@ def get_leave_approved_email_html(
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
                                     <td style="padding-bottom: 12px; border-bottom: 1px solid #D1FAE5;">
-                                        <p style="margin: 0; font-weight: 700; color: #065F46; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">📋 Leave Details</p>
+                                        <p style="margin: 0; font-weight: 700; color: #065F46; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Leave Details</p>
                                     </td>
                                 </tr>
-                                {info_row_html("Leave Type", leave_type, "🏷️", accent)}
-                                {info_row_html("Dates", f"{start_date} to {end_date}", "📅", accent)}
-                                {info_row_html("Duration", f"{duration} days", "⏱️", accent)}
-                                {info_row_html("Approved By", approved_by, "👤", accent) if approved_by else ""}
+                                {info_row_html("Leave Type", leave_type, "", accent)}
+                                {info_row_html("Dates", f"{start_date} to {end_date}", "", accent)}
+                                {info_row_html("Duration", f"{duration} days", "", accent)}
+                                {info_row_html("Approved By", approved_by, "", accent) if approved_by else ""}
                             </table>
                         </div>
                     </td>
@@ -78,7 +78,7 @@ def get_leave_approved_email_html(
                 <tr>
                     <td style="padding: 0 40px 24px 40px;">
                         <div style="background-color: #F0FDF4; border-left: 4px solid {accent}; border-radius: 4px; padding: 16px;">
-                            <p style="margin: 0; font-weight: 700; color: #166534; font-size: 13px; text-transform: uppercase; margin-bottom: 8px;">💬 Approval Remarks</p>
+                            <p style="margin: 0; font-weight: 700; color: #166534; font-size: 13px; text-transform: uppercase; margin-bottom: 8px;">Approval Remarks</p>
                             <p style="margin: 0; font-style: italic; color: #475569; line-height: 1.5;">"{remarks}"</p>
                         </div>
                     </td>
@@ -88,7 +88,7 @@ def get_leave_approved_email_html(
                 <!-- CTA -->
                 <tr>
                     <td style="padding: 0 40px 40px 40px; text-align: center;">
-                        {button_html("🏠 View My Leaves", dashboard_url, "#4F46E5")}
+                        {button_html("View My Leaves", dashboard_url, "#4F46E5")}
                         <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
                             You can revisit the approval details and leave balance anytime from your employee dashboard.
                         </p>
