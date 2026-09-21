@@ -133,7 +133,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
     "http://192.168.31.184:8081",
     "https://teamzen-client.vercel.app",
-    "https://teamzen-admin.vercel.app"
+    "https://teamzen-admin.vercel.app",
+    "https://teamzen-admin-v2-beta.vercel.app"
 ]
 
 CORS_ALLOW_HEADERS = [
