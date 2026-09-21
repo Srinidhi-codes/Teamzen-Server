@@ -5,6 +5,7 @@ from .views import (
     OfficeLocationViewSet,
     DepartmentViewSet,
     DesignationViewSet,
+    TestEmailView,
 )
 
 router = DefaultRouter()
@@ -15,4 +16,5 @@ router.register(r'designations', DesignationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('test-email/', TestEmailView.as_view(), name='test-email'),
 ]
