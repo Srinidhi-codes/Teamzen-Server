@@ -59,7 +59,19 @@ def extract_face_descriptor_from_bytes(image_bytes: bytes) -> Tuple[List[float],
     if img is None:
         raise ValueError("Invalid image file or format.")
 
-    h, w, _ = img.shape
+    # Prevent OOM crashes on low-memory servers (e.g. Render 512MB RAM):
+    # Camera photos from modern phones are often 12MP-24MP (3000x4000).
+    # Processing unscaled images through OpenCV DNN buffers allocates >1.5GB RAM,
+    # causing Linux kernel OOM killer to terminate Daphne with 502 Bad Gateway.
+    MAX_DIM = 640
+    h, w = img.shape[:2]
+    if max(h, w) > MAX_DIM:
+        scale = MAX_DIM / float(max(h, w))
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        h, w = img.shape[:2]
+
     detector, recognizer = _get_models()
 
     # Dynamic input size adaptation
