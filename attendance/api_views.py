@@ -72,11 +72,13 @@ class AttendanceSelfieUploadView(APIView):
         ):
             return Response({"error": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
 
+        filename = f"selfie_{record.id}_{kind}.jpg"
         if kind == "check_in":
-            record.check_in_selfie = selfie_file
+            record.check_in_selfie.save(filename, selfie_file, save=False)
+            record.save(update_fields=["check_in_selfie", "updated_at"])
         else:
-            record.check_out_selfie = selfie_file
-        record.save(update_fields=["check_in_selfie", "check_out_selfie", "updated_at"])
+            record.check_out_selfie.save(filename, selfie_file, save=False)
+            record.save(update_fields=["check_out_selfie", "updated_at"])
 
         url = (
             record.check_in_selfie.url
