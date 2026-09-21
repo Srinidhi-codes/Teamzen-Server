@@ -71,8 +71,8 @@ def get_payroll_email_html(
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 50%, #BBF7D0 100%);">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 12px;">💰</div>
+                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #1E293B; letter-spacing: -0.5px;">
                             Salary Processed
                         </h1>
@@ -85,7 +85,7 @@ def get_payroll_email_html(
                 <!-- Net Salary Highlight -->
                 <tr>
                     <td style="padding: 28px 40px 8px 40px; text-align: center;">
-                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background: linear-gradient(135deg, #065F46, #047857); border-radius: 16px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style=" border-radius: 16px;">
                             <tr>
                                 <td style="padding: 28px 24px; text-align: center;">
                                     <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #A7F3D0; text-transform: uppercase; letter-spacing: 1px;">Net Salary Credited</p>
@@ -143,7 +143,7 @@ def get_payroll_email_html(
                                 <td style="padding: 16px 24px 8px 24px;">
                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                         {info_row_html("Employee ID", employee_id, "🆔") if employee_id else ""}
-                                        {info_row_html("Designation", designation, "💼") if designation else ""}
+                                        {info_row_html("Designation", designation, "") if designation else ""}
                                         {info_row_html("Department", department, "🏢") if department else ""}
                                     </table>
                                 </td>

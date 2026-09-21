@@ -39,8 +39,8 @@ def get_password_reset_email_html(
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 50%, #C7D2FE 100%);">
-                        <div style="font-size: 48px; line-height: 1; margin-bottom: 12px;">🔐</div>
+                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #1E293B; letter-spacing: -0.5px;">
                             Password Reset Request
                         </h1>

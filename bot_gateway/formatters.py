@@ -95,7 +95,7 @@ def format_for_bot(ai_response: str) -> str:
             extra.append(f"Hours: {_escape(f['Hours'])}")
         tail = (" · " + " · ".join(extra)) if extra else ""
         office_bit = f" @ {office}" if office else ""
-        return f"✅ <b>{action}</b>: {status}{office_bit}\n{time_s}{tail}".strip()
+        return f"<b>{action}</b>: {status}{office_bit}\n{time_s}{tail}".strip()
 
     def replace_insight(match: re.Match) -> str:
         f = _parse_fields(match.group(1))
@@ -116,7 +116,7 @@ def format_for_bot(ai_response: str) -> str:
         leave_id = _escape(f.get("id", f.get("ID", "?")))
         leave_type = _escape(f.get("type", f.get("Type", "Leave")))
         dates = _escape(f.get("dates", f.get("Dates", "")))
-        return f"📋 Pending #{leave_id}: <b>{leave_type}</b> {dates}".strip()
+        return f"Pending #{leave_id}: <b>{leave_type}</b> {dates}".strip()
 
     def replace_correction(match: re.Match) -> str:
         f = _parse_fields(match.group(1))

@@ -116,8 +116,8 @@ def leave_approval_keyboard(leave_id: int) -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "✅ Approve", "callback_data": f"lv:{leave_id}:a"},
-                {"text": "❌ Reject", "callback_data": f"lv:{leave_id}:r"},
+                {"text": "Approve", "callback_data": f"lv:{leave_id}:a"},
+                {"text": "Reject", "callback_data": f"lv:{leave_id}:r"},
             ]
         ]
     }
@@ -127,9 +127,9 @@ def main_menu_keyboard() -> dict:
     """Persistent reply keyboard under the chat input."""
     return {
         "keyboard": [
-            [{"text": "✅ Check-in"}, {"text": "🏁 Check-out"}],
+            [{"text": "Check-in"}, {"text": "Check-out"}],
             [{"text": "🏖 Leave Balance"}, {"text": "📍 Attendance"}],
-            [{"text": "📝 Apply Leave"}, {"text": "📋 My Pending Leaves"}],
+            [{"text": "Apply Leave"}, {"text": "My Pending Leaves"}],
             [{"text": "💰 Payslip"}, {"text": "❓ Help"}],
             [{"text": "🚪 Logout"}],
         ],
@@ -143,7 +143,7 @@ def location_request_keyboard() -> dict:
     return {
         "keyboard": [
             [{"text": "📍 Share my location", "request_location": True}],
-            [{"text": "❌ Cancel"}],
+            [{"text": "Cancel"}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": True,
@@ -159,19 +159,19 @@ def quick_actions_inline() -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "✅ Check-in", "callback_data": "menu:checkin"},
-                {"text": "🏁 Check-out", "callback_data": "menu:checkout"},
+                {"text": "Check-in", "callback_data": "menu:checkin"},
+                {"text": "Check-out", "callback_data": "menu:checkout"},
             ],
             [
                 {"text": "🏖 Balance", "callback_data": "menu:balance"},
                 {"text": "📍 Attendance", "callback_data": "menu:attendance"},
             ],
             [
-                {"text": "📝 Apply Leave", "callback_data": "menu:apply"},
+                {"text": "Apply Leave", "callback_data": "menu:apply"},
                 {"text": "💰 Payslip", "callback_data": "menu:payslip"},
             ],
             [
-                {"text": "📋 Pending Leaves", "callback_data": "menu:pending"},
+                {"text": "Pending Leaves", "callback_data": "menu:pending"},
             ],
         ]
     }

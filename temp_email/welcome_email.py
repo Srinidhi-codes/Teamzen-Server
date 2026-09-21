@@ -16,21 +16,21 @@ def get_welcome_email_html(
     """Generate the Welcome/Onboarding HTML email."""
     details_rows = ""
     if designation:
-        details_rows += info_row_html("Designation", designation, "💼")
+        details_rows += info_row_html("Designation", designation, "")
     if department:
         details_rows += info_row_html("Department", department, "🏢")
     if joining_date:
-        details_rows += info_row_html("Joining Date", joining_date, "📅")
+        details_rows += info_row_html("Joining Date", joining_date, "")
     if manager_name:
-        details_rows += info_row_html("Reporting To", manager_name, "👤")
+        details_rows += info_row_html("Reporting To", manager_name, "")
     if employee_email:
         details_rows += info_row_html("Email", employee_email, "✉️")
 
     body = f"""
                 <!-- Hero Section -->
                 <tr>
-                    <td class="hero-section" style="padding: 48px 40px 32px 40px; text-align: center; background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 50%, #C7D2FE 100%);">
-                        <div style="font-size: 56px; line-height: 1; margin-bottom: 16px;">🎉</div>
+                    <td class="hero-section" style="padding: 48px 40px 32px 40px; text-align: center; ">
+                        
                         <h1 style="margin: 0 0 8px 0; font-size: 26px; font-weight: 800; color: #1E293B; letter-spacing: -0.5px;">
                             Welcome to {company_name}!
                         </h1>
@@ -82,7 +82,7 @@ def get_welcome_email_html(
                             <tr>
                                 <td style="padding: 20px 24px 8px 24px;">
                                     <p style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700; color: #4F46E5; text-transform: uppercase; letter-spacing: 1px;">
-                                        📋 Your Details
+                                        Your Details
                                     </p>
                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                         {details_rows}
@@ -119,7 +119,7 @@ def get_welcome_email_html(
                 <!-- CTA Button -->
                 <tr>
                     <td style="padding: 8px 40px 40px 40px; text-align: center;">
-                        {button_html("🚀 Access Your Dashboard", login_url)}
+                        {button_html("Access Your Dashboard", login_url)}
                         <p style="margin: 16px 0 0 0; font-size: 13px; color: #94A3B8;">
                             or copy this link: <a href="{login_url}" style="color: #4F46E5; word-break: break-all;">{login_url}</a>
                         </p>

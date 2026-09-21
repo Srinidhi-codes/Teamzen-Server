@@ -29,8 +29,8 @@ def _process_policy_async(policy_file_id):
         policy_file = PolicyFile.objects.get(id=policy_file_id)
         service = PolicyProcessingService()
         chunks_count = service.process_policy_file(policy_file)
-        print(f"✅ Successfully processed {policy_file.title}: {chunks_count} chunks created")
+        print(f"Successfully processed {policy_file.title}: {chunks_count} chunks created")
     except PolicyFile.DoesNotExist:
-        print(f"❌ PolicyFile {policy_file_id} not found")
+        print(f"PolicyFile {policy_file_id} not found")
     except Exception as e:
-        print(f"❌ Error processing policy file {policy_file_id}: {str(e)}")
+        print(f"Error processing policy file {policy_file_id}: {str(e)}")
