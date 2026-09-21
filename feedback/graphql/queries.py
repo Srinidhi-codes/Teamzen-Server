@@ -58,7 +58,7 @@ class FeedbackQuery:
             qs = qs.filter(organization=org)
 
             if not _is_admin_role(user):
-                qs = qs.filter(Q(author=user) | Q(visibility="org"))
+                qs = qs.filter(author=user)
 
         if status:
             qs = qs.filter(status=status)
@@ -92,7 +92,7 @@ class FeedbackQuery:
             if not visible_to_platform:
                 raise GraphQLError("Not authorized")
 
-        if not _is_admin_role(user) and user.role != "superadmin" and item.author_id != user.id and item.visibility != "org":
+        if not _is_admin_role(user) and user.role != "superadmin" and item.author_id != user.id:
             raise GraphQLError("Not authorized")
 
         return item

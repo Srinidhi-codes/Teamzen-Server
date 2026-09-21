@@ -10,10 +10,10 @@ clients cannot bypass by sending faceVerified=true alone.
 # FaceNet 128-d descriptors from @vladmandic/face-api
 FACE_DESCRIPTOR_DIM = 128
 
-# Euclidean distance threshold. Standard SFace/FaceNet default is 0.60–0.65.
-# 0.65 prevents false rejections from slight head tilts or lighting variations
-# while reliably rejecting impostors (whose distance is typically > 0.90).
-FACE_DISTANCE_THRESHOLD = 0.65
+# Euclidean distance threshold. Lower = stricter.
+# 0.70 allows robust matching even with glasses, camera flash, or lighting shifts,
+# while safely rejecting different individuals (whose distance is typically > 0.90).
+FACE_DISTANCE_THRESHOLD = 0.70
 
-# Stored face_match_score is similarity in [0, 1] for audit display: max(0, 1 - distance)
-FACE_MATCH_THRESHOLD = 0.35  # minimum similarity (= 1 - max distance)
+# Stored face_match_score is similarity in [0, 1] for audit display
+FACE_MATCH_THRESHOLD = 0.30
