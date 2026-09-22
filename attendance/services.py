@@ -48,6 +48,23 @@ def euclidean_distance(a: list[float], b: list[float]) -> float:
     return sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
 
 
+def _get_enrolled_templates(raw) -> list[list[float]]:
+    """Extract list of 128-d descriptor vectors. Supports single vector or multi-appearance list."""
+    if not raw:
+        return []
+    if isinstance(raw, list) and len(raw) > 0 and isinstance(raw[0], list):
+        templates = []
+        for item in raw:
+            vec = _as_float_list(item)
+            if len(vec) == FACE_DESCRIPTOR_DIM:
+                templates.append(vec)
+        return templates
+    vec = _as_float_list(raw)
+    if len(vec) == FACE_DESCRIPTOR_DIM:
+        return [vec]
+    return []
+
+
 def assert_face_attendance_allowed(
     user,
     *,
@@ -57,20 +74,16 @@ def assert_face_attendance_allowed(
 ) -> float:
     """
     Validate face punch. Returns server-computed similarity in [0, 1].
-    Always recomputes Euclidean distance vs enrolled descriptor — client flags alone are not enough.
+    Always recomputes Euclidean distance vs enrolled template(s) — client flags alone are not enough.
+    Supports single template as well as alternative appearances (e.g. with/without glasses).
     """
     if not org_requires_face(user):
         return 0.0
 
-    enrolled = _as_float_list(user.face_descriptor)
-    if not user.face_enrolled_at or not enrolled:
+    templates = _get_enrolled_templates(user.face_descriptor)
+    if not user.face_enrolled_at or not templates:
         raise GraphQLError(
             "Face enrollment required. Enroll your face in Attendance before punching."
-        )
-
-    if len(enrolled) != FACE_DESCRIPTOR_DIM:
-        raise GraphQLError(
-            "Your face enrollment is outdated. Please re-enroll your face, then try again."
         )
 
     live = _as_float_list(face_descriptor)
@@ -79,17 +92,19 @@ def assert_face_attendance_allowed(
             "Face verification data missing or invalid. Update the app and retry with camera."
         )
 
-    distance = euclidean_distance(enrolled, live)
-    if distance > FACE_DISTANCE_THRESHOLD:
+    # Find closest match among enrolled appearances (e.g., with vs without specs)
+    best_distance = min(euclidean_distance(t, live) for t in templates)
+    if best_distance > FACE_DISTANCE_THRESHOLD:
         raise GraphQLError(
-            f"Face did not match (distance {distance:.2f}; need ≤ {FACE_DISTANCE_THRESHOLD:.2f}). "
+            f"Face did not match (distance {best_distance:.2f}; need ≤ {FACE_DISTANCE_THRESHOLD:.2f}). "
             "Use the enrolled person's face and try again."
         )
 
     if face_verified is False:
         raise GraphQLError("Face verification failed. Please try again with a clear selfie.")
 
-    similarity = max(0.0, 1.0 - distance)
+    # Mathematical cosine similarity for L2-normalized unit vectors: 1 - (d^2)/2
+    similarity = max(0.0, min(1.0, 1.0 - (best_distance ** 2) / 2.0))
     if similarity < FACE_MATCH_THRESHOLD:
         raise GraphQLError(
             f"Face match score too low ({similarity:.2f}). Required ≥ {FACE_MATCH_THRESHOLD:.2f}."
