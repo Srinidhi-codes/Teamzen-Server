@@ -58,25 +58,25 @@ def extract_face_descriptor_from_bytes(image_bytes: bytes) -> Tuple[List[float],
     Returns:
         (descriptor: List[float], detection_confidence: float)
     """
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Invalid image file or format.")
-
-    # Prevent OOM crashes on low-memory servers (e.g. Render 512MB RAM):
-    # Camera photos from modern phones are often 12MP-24MP (3000x4000).
-    # Processing unscaled images through OpenCV DNN buffers allocates >1.5GB RAM,
-    # causing Linux kernel OOM killer to terminate Daphne with 502 Bad Gateway.
-    MAX_DIM = 320
-    h, w = img.shape[:2]
-    if max(h, w) > MAX_DIM:
-        scale = MAX_DIM / float(max(h, w))
-        new_w = max(1, int(w * scale))
-        new_h = max(1, int(h * scale))
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        h, w = img.shape[:2]
-
     with _model_lock:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Invalid image file or format.")
+
+        # Prevent OOM crashes on low-memory servers (e.g. Render 512MB RAM):
+        # Camera photos from modern phones are often 12MP-24MP (3000x4000).
+        # Processing unscaled images through OpenCV DNN buffers allocates >1.5GB RAM,
+        # causing Linux kernel OOM killer to terminate Daphne with 502 Bad Gateway.
+        MAX_DIM = 320
+        h, w = img.shape[:2]
+        if max(h, w) > MAX_DIM:
+            scale = MAX_DIM / float(max(h, w))
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            h, w = img.shape[:2]
+
         detector, recognizer = _get_models()
     
         # Dynamic input size adaptation
@@ -90,39 +90,38 @@ def extract_face_descriptor_from_bytes(image_bytes: bytes) -> Tuple[List[float],
             if faces is not None and len(faces) > 0:
                 img = enhanced_img
 
-    if faces is None or len(faces) == 0:
-        raise ValueError("No face detected in the photo. Please face the camera and try again.")
+        if faces is None or len(faces) == 0:
+            raise ValueError("No face detected in the photo. Please face the camera and try again.")
 
-    if len(faces) > 1:
-        # Filter secondary background faces
-        high_conf_faces = [f for f in faces if f[-1] >= 0.6]
-        if len(high_conf_faces) > 1:
-            raise ValueError("Multiple faces detected in photo. Only one person should be in frame.")
+        if len(faces) > 1:
+            # Filter secondary background faces
+            high_conf_faces = [f for f in faces if f[-1] >= 0.6]
+            if len(high_conf_faces) > 1:
+                raise ValueError("Multiple faces detected in photo. Only one person should be in frame.")
 
-    face = faces[0]
-    confidence = float(face[-1])
+        face = faces[0]
+        confidence = float(face[-1])
 
-    with _model_lock:
         # Crop and align face
         aligned_face = recognizer.alignCrop(img, face)
     
         # Extract 128-d feature
         feature = recognizer.feature(aligned_face)
 
-    # L2 normalize feature
-    norm_feature = feature[0]
-    norm = np.linalg.norm(norm_feature)
-    if norm > 0:
-        norm_feature = norm_feature / norm
+        # L2 normalize feature
+        norm_feature = feature[0]
+        norm = np.linalg.norm(norm_feature)
+        if norm > 0:
+            norm_feature = norm_feature / norm
 
-    # Force cleanup to prevent memory spikes between requests
-    del img
-    del nparr
-    del aligned_face
-    gc.collect()
+        # Force cleanup to prevent memory spikes between requests
+        del img
+        del nparr
+        del aligned_face
+        gc.collect()
 
+        return [float(x) for x in norm_feature], confidence
 
-    return [float(x) for x in norm_feature], confidence
 
 
 def match_faces(desc1: List[float], desc2: Any) -> Tuple[float, float, bool]:
