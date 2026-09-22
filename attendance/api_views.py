@@ -72,11 +72,13 @@ class AttendanceSelfieUploadView(APIView):
         ):
             return Response({"error": "Not authorized"}, status=status.HTTP_403_FORBIDDEN)
 
+        filename = f"selfie_{record.id}_{kind}.jpg"
         if kind == "check_in":
-            record.check_in_selfie = selfie_file
+            record.check_in_selfie.save(filename, selfie_file, save=False)
+            record.save(update_fields=["check_in_selfie", "updated_at"])
         else:
-            record.check_out_selfie = selfie_file
-        record.save(update_fields=["check_in_selfie", "check_out_selfie", "updated_at"])
+            record.check_out_selfie.save(filename, selfie_file, save=False)
+            record.save(update_fields=["check_out_selfie", "updated_at"])
 
         url = (
             record.check_in_selfie.url
@@ -120,7 +122,18 @@ class FaceExtractView(APIView):
         user = request.user
 
         if should_enroll:
-            user.face_descriptor = descriptor
+            append_appearance = str(request.data.get("append", "")).lower() in ("true", "1", "yes")
+            if append_appearance and user.face_descriptor:
+                existing = user.face_descriptor
+                if isinstance(existing, list) and len(existing) > 0 and isinstance(existing[0], list):
+                    user.face_descriptor = existing + [descriptor]
+                elif isinstance(existing, list) and len(existing) == 128:
+                    user.face_descriptor = [existing, descriptor]
+                else:
+                    user.face_descriptor = descriptor
+            else:
+                user.face_descriptor = descriptor
+
             user.face_enrolled_at = timezone.now()
             # Save enrollment image
             if photo_file:
@@ -138,12 +151,18 @@ class FaceExtractView(APIView):
         distance = 0.0
 
         if should_verify:
-            if not user.face_descriptor or len(user.face_descriptor) != 128:
+            if not user.face_descriptor:
                 return Response(
                     {"error": "User has not enrolled a face yet. Please enroll first."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            distance, match_score, is_match = match_faces(descriptor, user.face_descriptor)
+            try:
+                distance, match_score, is_match = match_faces(descriptor, user.face_descriptor)
+            except Exception as e:
+                return Response(
+                    {"error": f"Invalid face enrollment data: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             verified = is_match
             if not is_match:
                 return Response({
