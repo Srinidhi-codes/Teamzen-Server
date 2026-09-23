@@ -225,7 +225,7 @@ class SlackWebhookView(View):
                 "service": "teamzen-slack-bot",
                 "configured": slack_api.is_configured(),
                 "status": "ok",
-                "request_url": "https://teamzen-server.onrender.com/api/bot/slack/",
+                "request_url": request.build_absolute_uri(),
                 "scopes": [
                     "chat:write",
                     "commands",

@@ -438,11 +438,11 @@ from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
     'run-monthly-accruals': {
-        'task': 'leaves.task.run_monthly_leave_accrual',
+        'task': 'leaves.tasks.run_monthly_leave_accrual',
         'schedule': crontab(day_of_month='1', hour=0, minute=0),  # Run at midnight on the 1st of every month
     },
     'run-yearly-carry-forward': {
-        'task': 'leaves.task.run_yearly_carry_forward',
+        'task': 'leaves.tasks.run_yearly_carry_forward',
         'schedule': crontab(day_of_month='1', month_of_year='1', hour=0, minute=0), # Run at midnight on Jan 1st
     },
     'cleanup-read-notifications': {
@@ -450,7 +450,7 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=0, minute=0), # Run every day at midnight
     },
     'detect-ooo-prompt-leave': {
-        'task': 'leaves.task.detect_ooo_and_prompt_leave',
+        'task': 'leaves.tasks.detect_ooo_and_prompt_leave',
         'schedule': crontab(hour=9, minute=0), # Run daily at 9:00 AM
     },
     'square-off-incomplete-checkouts': {
