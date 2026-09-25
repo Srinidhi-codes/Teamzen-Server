@@ -1,6 +1,6 @@
 import strawberry
 from typing import List, Optional
-from datetime import date, time
+from datetime import date as dt_date, time
 from django.db.models import Q
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from attendance.graphql.types import AttendanceRecordType, AttendanceCorrectionType
@@ -13,8 +13,8 @@ from users.graphql.types import UserType
 
 @strawberry.input
 class AttendanceInput:
-    start_date: Optional[date]
-    end_date: Optional[date]
+    start_date: Optional[dt_date] = None
+    end_date: Optional[dt_date] = None
 
 @strawberry.input
 class AttendanceCorrectionSortInput:
@@ -29,9 +29,9 @@ class AttendanceCorrectionFilterInput:
 
 @strawberry.input
 class OrgAttendanceFilterInput:
-    date: Optional[date] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    date: Optional[dt_date] = None
+    start_date: Optional[dt_date] = None
+    end_date: Optional[dt_date] = None
     search: Optional[str] = None
     status: Optional[str] = None
     roaming_only: Optional[bool] = None
