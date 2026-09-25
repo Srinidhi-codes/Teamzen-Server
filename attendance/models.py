@@ -17,6 +17,13 @@ class AttendanceRecord(models.Model):
         ('holiday', 'Holiday'),
     ]
 
+    APPROVAL_CHOICES = [
+        ('auto_approved', 'Auto Approved'),
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     office_location = models.ForeignKey(OfficeLocation, on_delete=models.CASCADE)
     attendance_date = models.DateField()
@@ -58,6 +65,20 @@ class AttendanceRecord(models.Model):
 
     remarks = models.TextField(blank=True)
     is_verified = models.BooleanField(default=False)
+
+    # Shift Window & Weekend/Holiday Manager Approval
+    is_weekend_work = models.BooleanField(default=False)
+    is_off_hours = models.BooleanField(default=False)
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_CHOICES, default='auto_approved')
+    approved_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='approved_attendances'
+    )
+    approval_remarks = models.CharField(max_length=255, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -99,7 +120,7 @@ class AttendanceRecord(models.Model):
         """
         Main logic for status determination based on shift times, duration, and verified presence.
         """
-        if not self.login_time:
+        if not self.login_time or self.approval_status == 'rejected':
             self.status = 'absent'
             return
 

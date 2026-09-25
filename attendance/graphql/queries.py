@@ -35,6 +35,9 @@ class OrgAttendanceFilterInput:
     search: Optional[str] = None
     status: Optional[str] = None
     roaming_only: Optional[bool] = None
+    approval_status: Optional[str] = None
+    is_weekend_work: Optional[bool] = None
+    is_off_hours: Optional[bool] = None
     organization_id: Optional[strawberry.ID] = None
 
 # =====================================================
@@ -329,6 +332,15 @@ class AttendanceQuery:
 
             if filters.roaming_only:
                 qs = qs.filter(roaming_anomaly_detected=True)
+
+            if filters.approval_status:
+                qs = qs.filter(approval_status=filters.approval_status)
+
+            if filters.is_weekend_work is not None:
+                qs = qs.filter(is_weekend_work=filters.is_weekend_work)
+
+            if filters.is_off_hours is not None:
+                qs = qs.filter(is_off_hours=filters.is_off_hours)
 
             if filters.search:
                 s = filters.search.strip()

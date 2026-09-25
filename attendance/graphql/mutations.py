@@ -43,6 +43,18 @@ class ApproveAttendanceCorrectionInput:
     status: str
     approval_comments: Optional[str] = None
 
+@strawberry.input
+class ApproveOffHoursAttendanceInput:
+    record_id: strawberry.ID
+    status: str
+    approval_remarks: Optional[str] = None
+
+@strawberry.type
+class ApproveOffHoursAttendancePayload:
+    success: bool
+    record: Optional[AttendanceRecordType] = None
+    message: str = ""
+
 
 @strawberry.type
 class AttendanceMutation:
@@ -198,3 +210,25 @@ class AttendanceMutation:
         correction.save()
 
         return correction
+
+    @strawberry.mutation
+    def approve_or_reject_off_hours_attendance(
+        self, info, input: ApproveOffHoursAttendanceInput
+    ) -> ApproveOffHoursAttendancePayload:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ["admin", "hr", "manager", "superadmin"]:
+            raise GraphQLError("You do not have permission to approve attendance.")
+
+        from attendance.services import approve_or_reject_attendance_record
+        record = approve_or_reject_attendance_record(
+            record_id=int(input.record_id),
+            action=input.status,
+            manager_user=user,
+            remarks=input.approval_remarks or ""
+        )
+
+        return ApproveOffHoursAttendancePayload(
+            success=True,
+            record=record,
+            message=f"Attendance record has been successfully {input.status}."
+        )
