@@ -3,7 +3,7 @@
 
 def require_auth(user):
     if not user or not user.is_authenticated:
-        raise Exception("Unauthorized")
+        raise Exception("Unauthenticated")
 
 
 def require_hr(user):

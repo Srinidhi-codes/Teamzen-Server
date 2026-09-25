@@ -34,7 +34,10 @@ from onboarding.graphql.types import (
     UpdateLetterTemplateInput,
     UpdateOnboardingTemplateInput,
     UpdatePreboardingProfileInput,
+    UpdatePreboardingProfileInput,
     UpsertTaskDefinitionInput,
+    DeletePreboardingDocumentInput,
+    DeletePreboardingDocumentPayload,
 )
 from onboarding.models import (
     DocumentLetterTemplate,
@@ -66,7 +69,7 @@ def _client_ip(request) -> Optional[str]:
     return request.META.get("REMOTE_ADDR")
 
 
-def _notify_preboarding_invite(onboarding, raw_token: str, actor=None):
+def _notify_preboarding_invite(onboarding, raw_token: str, actor=None, expiry_hours: int = 24):
     from notifications.utils import notify_user
 
     url = preboarding_portal_url(raw_token)
@@ -92,7 +95,7 @@ def _notify_preboarding_invite(onboarding, raw_token: str, actor=None):
         verb="Complete your preboarding",
         message=(
             f"Welcome! Complete your documents and offer acceptance before day one. "
-            f"Portal: {url}"
+            f"Portal: {url} (Link valid for {expiry_hours} hours)"
         ),
         actor_id=getattr(actor, "id", None),
         target_type="PreboardingInvite",
@@ -176,13 +179,14 @@ class OnboardingMutation:
                 letter_template_id=input.letter_template_id,
                 include_ctc_annexure=input.include_ctc_annexure,
                 annual_ctc=input.annual_ctc,
+                invite_expiry_hours=input.invite_expiry_hours,
             )
             if input.send_invite and raw_token:
                 try:
                     onboarding = EmployeeOnboarding.objects.select_related(
                         "user", "offer_letter", "organization"
                     ).get(id=onboarding.id)
-                    _notify_preboarding_invite(onboarding, raw_token, actor=user)
+                    _notify_preboarding_invite(onboarding, raw_token, actor=user, expiry_hours=input.invite_expiry_hours)
                 except Exception:
                     import traceback
 
@@ -237,13 +241,14 @@ class OnboardingMutation:
                 include_ctc_annexure=input.include_ctc_annexure,
                 annual_ctc=input.annual_ctc,
                 send_invite=input.send_invite,
+                invite_expiry_hours=input.invite_expiry_hours,
             )
             if input.send_invite and raw_token:
                 try:
                     onboarding = EmployeeOnboarding.objects.select_related(
                         "user", "offer_letter", "organization"
                     ).get(id=onboarding.id)
-                    _notify_preboarding_invite(onboarding, raw_token, actor=user)
+                    _notify_preboarding_invite(onboarding, raw_token, actor=user, expiry_hours=input.invite_expiry_hours)
                 except Exception:
                     import traceback
 
@@ -618,6 +623,7 @@ class OnboardingMutation:
                     requires_document_category=t.requires_document_category or "",
                     is_required=t.is_required,
                     sort_order=t.sort_order,
+                    default_assignee_id=t.default_assignee_id,
                 )
         return _template_type(
             OnboardingTemplate.objects.prefetch_related("task_definitions").get(id=tpl.id)
@@ -674,6 +680,7 @@ class OnboardingMutation:
         d.requires_document_category = input.requires_document_category or ""
         d.is_required = input.is_required
         d.sort_order = input.sort_order
+        d.default_assignee_id = input.default_assignee_id
         d.save()
         return _task_def_type(d)
 
@@ -853,3 +860,56 @@ class OnboardingMutation:
             return PolishOfferLetterPayload(success=True, body_html=body)
         except Exception as e:
             return PolishOfferLetterPayload(success=False, error=str(e), body_html="")
+
+    @strawberry.mutation
+    def delete_preboarding_document(
+        self, info: Info, input: DeletePreboardingDocumentInput
+    ) -> DeletePreboardingDocumentPayload:
+        from onboarding.services import get_invite_by_token
+
+        invite = get_invite_by_token(input.invite_token)
+        if not invite:
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Invalid or expired invite"
+            )
+
+        doc = EmployeeDocument.objects.filter(
+            id=input.document_id, onboarding=invite.onboarding
+        ).first()
+
+        if not doc:
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Document not found"
+            )
+
+        if doc.verification_status != "pending":
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Cannot delete verified or rejected documents"
+            )
+
+        doc.delete()
+        return DeletePreboardingDocumentPayload(success=True)
+
+    @strawberry.mutation
+    def delete_employee_document(
+        self, info: Info, document_id: strawberry.ID
+    ) -> DeletePreboardingDocumentPayload:
+        user = info.context.request.user
+        require_auth(user)
+        doc = EmployeeDocument.objects.filter(
+            id=document_id, user=user, source="onboarding"
+        ).first()
+
+        if not doc:
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Document not found"
+            )
+
+        if doc.verification_status != "pending":
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Cannot delete verified or rejected documents"
+            )
+
+        doc.delete()
+        return DeletePreboardingDocumentPayload(success=True)
+

@@ -180,3 +180,72 @@ class FaceExtractView(APIView):
             "distance": round(distance, 3),
             "match_score": round(match_score, 3),
         })
+
+
+class AttendanceHeartbeatView(APIView):
+    """
+    Accepts periodic background location heartbeats from mobile/web clients.
+    Expected payload:
+    {
+        "latitude": 12.9716,
+        "longitude": 77.5946,
+        "accuracy": 15.2,          // optional float (meters)
+        "is_mocked": false,        // optional boolean (GPS spoof detector)
+        "battery_level": 0.85      // optional float (0.0 to 1.0)
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from attendance.services import record_attendance_heartbeat
+
+        data = request.data
+        latitude = data.get("latitude")
+        longitude = data.get("longitude")
+
+        if latitude is None or longitude is None:
+            return Response(
+                {"error": "latitude and longitude are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            lat = float(latitude)
+            lon = float(longitude)
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "latitude and longitude must be valid floating point numbers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        accuracy = data.get("accuracy")
+        if accuracy is not None:
+            try:
+                accuracy = float(accuracy)
+            except (ValueError, TypeError):
+                accuracy = None
+
+        battery = data.get("battery_level")
+        if battery is not None:
+            try:
+                battery = float(battery)
+            except (ValueError, TypeError):
+                battery = None
+
+        is_mocked = bool(data.get("is_mocked", False))
+
+        try:
+            result = record_attendance_heartbeat(
+                user=request.user,
+                latitude=lat,
+                longitude=lon,
+                accuracy_meters=accuracy,
+                is_mocked=is_mocked,
+                battery_level=battery,
+            )
+            return Response(result, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

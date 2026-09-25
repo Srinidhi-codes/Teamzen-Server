@@ -3,7 +3,7 @@ from datetime import date, datetime, time as time_type
 from django.shortcuts import get_object_or_404
 from graphql import GraphQLError
 
-from attendance.models import AttendanceRecord
+from attendance.models import AttendanceRecord, AttendanceHeartbeat
 from attendance.face_constants import (
     FACE_DESCRIPTOR_DIM,
     FACE_DISTANCE_THRESHOLD,
@@ -148,7 +148,12 @@ def check_in_user(
     attendance, _ = AttendanceRecord.objects.get_or_create(
         user=user,
         attendance_date=date.today(),
-        defaults={"office_location": office},
+        defaults={
+            "office_location": office,
+            "total_heartbeats": 0,
+            "valid_heartbeats": 0,
+            "out_of_fence_heartbeats": 0,
+        },
     )
     if attendance.office_location_id != office.id:
         attendance.office_location = office
@@ -225,3 +230,101 @@ def normalize_time(value):
     if isinstance(value, str):
         return datetime.strptime(value, "%H:%M:%S").time()
     raise ValueError("Invalid time format")
+
+
+def record_attendance_heartbeat(
+    user,
+    latitude,
+    longitude,
+    *,
+    accuracy_meters: float | None = None,
+    is_mocked: bool = False,
+    battery_level: float | None = None,
+):
+    """
+    Record periodic background geolocation heartbeat for today's active shift.
+    Validates against office geofence and updates attendance metrics & anomaly alerts.
+    """
+    today = date.today()
+    try:
+        attendance = AttendanceRecord.objects.get(user=user, attendance_date=today)
+    except AttendanceRecord.DoesNotExist:
+        return {
+            "status": "no_record",
+            "message": "No attendance record found for today. Please clock in first.",
+            "should_stop": True,
+        }
+
+    if not attendance.login_time:
+        return {
+            "status": "not_clocked_in",
+            "message": "User has not clocked in yet today.",
+            "should_stop": True,
+        }
+
+    if attendance.logout_time:
+        return {
+            "status": "shift_ended",
+            "message": "User has already clocked out for the day.",
+            "should_stop": True,
+        }
+
+    office = attendance.office_location
+    if not office or office.latitude is None or office.longitude is None:
+        raise GraphQLError("Office location has no coordinates configured.")
+
+    distance = calculate_distance(
+        latitude, longitude, office.latitude, office.longitude
+    )
+    dist_int = int(distance)
+    is_within = (dist_int <= office.geo_radius_meters) and not is_mocked
+
+    heartbeat = AttendanceHeartbeat.objects.create(
+        attendance_record=attendance,
+        latitude=latitude,
+        longitude=longitude,
+        distance_meters=dist_int,
+        is_within_geofence=is_within,
+        accuracy_meters=accuracy_meters,
+        is_mocked=is_mocked,
+        battery_level=battery_level,
+    )
+
+    # Update summary aggregates on attendance record
+    all_hb = list(attendance.heartbeats.all().order_by("timestamp"))
+    total_count = len(all_hb)
+    valid_count = sum(1 for hb in all_hb if hb.is_within_geofence)
+    out_of_fence_count = total_count - valid_count
+
+    attendance.total_heartbeats = total_count
+    attendance.valid_heartbeats = valid_count
+    attendance.out_of_fence_heartbeats = out_of_fence_count
+
+    # Check for roaming anomalies (e.g. 2 consecutive out-of-fence pings or mock GPS)
+    consecutive_out = 0
+    max_consecutive_out = 0
+    for hb in all_hb:
+        if not hb.is_within_geofence:
+            consecutive_out += 1
+            if consecutive_out > max_consecutive_out:
+                max_consecutive_out = consecutive_out
+        else:
+            consecutive_out = 0
+
+    if is_mocked:
+        attendance.roaming_anomaly_detected = True
+        attendance.roaming_notes = "Mock GPS / location spoofing provider detected"
+    elif max_consecutive_out >= 2:
+        attendance.roaming_anomaly_detected = True
+        attendance.roaming_notes = f"Extended absence detected: {out_of_fence_count} out-of-fence pings"
+
+    attendance.save()
+
+    return {
+        "status": "success",
+        "heartbeat_id": heartbeat.id,
+        "is_within_geofence": is_within,
+        "distance_meters": dist_int,
+        "should_stop": False,
+        "roaming_flag": attendance.roaming_anomaly_detected,
+    }

@@ -5,7 +5,7 @@ from organizations.plan_entitlements import require_feature
 
 def require_performance_access(user, *, allow_employee: bool = True):
     if not user.is_authenticated:
-        raise Exception("Unauthorized")
+        raise Exception("Unauthenticated")
     allowed = ["superadmin", "admin", "hr", "manager"]
     if allow_employee:
         allowed.append("employee")

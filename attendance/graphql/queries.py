@@ -27,6 +27,16 @@ class AttendanceCorrectionFilterInput:
     status: Optional[str] = None
     organization_id: Optional[strawberry.ID] = None
 
+@strawberry.input
+class OrgAttendanceFilterInput:
+    date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    search: Optional[str] = None
+    status: Optional[str] = None
+    roaming_only: Optional[bool] = None
+    organization_id: Optional[strawberry.ID] = None
+
 # =====================================================
 # RESPONSE TYPES
 # =====================================================
@@ -34,6 +44,13 @@ class AttendanceCorrectionFilterInput:
 @strawberry.type
 class PaginatedAttendanceCorrectionResponse:
     results: List[AttendanceCorrectionType]
+    total: int
+    page: int
+    page_size: int
+
+@strawberry.type
+class PaginatedAttendanceRecordResponse:
+    results: List[AttendanceRecordType]
     total: int
     page: int
     page_size: int
@@ -274,3 +291,53 @@ class AttendanceQuery:
         paginated = get_paginated_results(qs, page, page_size, sort)
 
         return PaginatedAttendanceCorrectionResponse(**paginated)
+
+    # -------------------------
+    # ORG ATTENDANCE RECORDS (PRESENCE & HEARTBEATS)
+    # -------------------------
+    @strawberry.field
+    def org_attendance_records(
+        self,
+        info,
+        page: int = 1,
+        page_size: int = 10,
+        filters: Optional[OrgAttendanceFilterInput] = None,
+    ) -> PaginatedAttendanceRecordResponse:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ["admin", "hr", "manager", "superadmin"]:
+            raise Exception("Not authorized")
+
+        qs = AttendanceRecord.objects.select_related("user", "office_location").prefetch_related("heartbeats")
+
+        if user.role != "superadmin":
+            qs = qs.filter(user__organization_id=user.organization_id)
+        elif filters and filters.organization_id:
+            qs = qs.filter(user__organization_id=filters.organization_id)
+
+        if filters:
+            if filters.date:
+                qs = qs.filter(attendance_date=filters.date)
+            elif filters.start_date and filters.end_date:
+                qs = qs.filter(attendance_date__range=(filters.start_date, filters.end_date))
+            elif filters.start_date:
+                qs = qs.filter(attendance_date__gte=filters.start_date)
+            elif filters.end_date:
+                qs = qs.filter(attendance_date__lte=filters.end_date)
+
+            if filters.status:
+                qs = qs.filter(status=filters.status)
+
+            if filters.roaming_only:
+                qs = qs.filter(roaming_anomaly_detected=True)
+
+            if filters.search:
+                s = filters.search.strip()
+                qs = qs.filter(
+                    Q(user__first_name__icontains=s) |
+                    Q(user__last_name__icontains=s) |
+                    Q(user__email__icontains=s)
+                )
+
+        from graphql_utils.pagination import get_paginated_results
+        paginated = get_paginated_results(qs.order_by("-attendance_date", "-login_time"), page, page_size)
+        return PaginatedAttendanceRecordResponse(**paginated)

@@ -140,3 +140,55 @@ class DocumentRequest(models.Model):
 
     def __str__(self):
         return f"Request {self.title} ({self.status})"
+
+class EmployeeDocumentRequest(models.Model):
+    """Employee asks HR for a specific document (e.g., bonafide, visa letter)."""
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("issued", "Issued"),
+        ("rejected", "Rejected"),
+    ]
+    CATEGORY_CHOICES = [
+        ("bonafide", "Bonafide Certificate"),
+        ("visa", "Visa Letter"),
+        ("address_proof", "Address Proof"),
+        ("experience", "Experience Letter"),
+        ("salary_certificate", "Salary Certificate"),
+        ("other", "Other"),
+    ]
+
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="employee_document_requests",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="employee_document_requests",
+    )
+    category = models.CharField(max_length=32, choices=CATEGORY_CHOICES, default="other")
+    custom_title = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    
+    issued_document = models.ForeignKey(
+        IssuedDocument,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fulfills_employee_requests",
+    )
+    issued_at = models.DateTimeField(null=True, blank=True)
+    rejected_reason = models.TextField(blank=True, default="")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        title = self.custom_title if self.category == "other" else self.get_category_display()
+        return f"{self.user.email} requests {title} ({self.status})"

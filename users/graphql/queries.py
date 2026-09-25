@@ -96,7 +96,7 @@ class UserQuery:
         # AUTHORIZATION
         # -------------------------
         if not user.is_authenticated:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
 
         if user.role not in ["superadmin", "admin", "hr", "manager"]:
             raise Exception("Unauthorized")
@@ -168,7 +168,7 @@ class UserQuery:
     def team_hierarchy(self, info: Info, user_id: Optional[strawberry.ID] = None) -> TeamHierarchyResponse:
         current_user = info.context.request.user
         if not current_user.is_authenticated:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
             
         target_id = user_id if user_id else current_user.pk
         
@@ -220,7 +220,7 @@ class UserQuery:
     ) -> PaginatedLoginHistoryResponse:
         user = info.context.request.user
         if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
 
         qs = UserLoginHistory.objects.select_related('user', 'user__organization').order_by('-login_time')
 
@@ -257,7 +257,7 @@ class UserQuery:
     def my_security_logs(self, info: Info, page: int = 1, page_size: int = 10) -> PaginatedLoginHistoryResponse:
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
         
         qs = UserLoginHistory.objects.filter(user=user).order_by('-login_time')
         total = qs.count()

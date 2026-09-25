@@ -5,9 +5,9 @@ from organizations.plan_entitlements import require_feature
 
 def require_reports_access(user):
     if not user.is_authenticated:
-        raise Exception("Unauthorized")
+        raise Exception("Unauthenticated")
     if user.role not in ("superadmin", "admin", "hr"):
-        raise Exception("Unauthorized")
+        raise Exception("Unauthenticated")
 
 
 def resolve_report_org(user, organization_id=None):

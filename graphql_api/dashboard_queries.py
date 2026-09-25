@@ -118,7 +118,7 @@ class DashboardQuery:
     def admin_dashboard_stats(self, info) -> AdminDashboardStats:
         user = info.context.request.user
         if not user.is_authenticated or user.role not in ['superadmin', 'admin', 'hr', 'manager']:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
 
         # 0. Define scope filters based on role to prevent hierarchy leakage
         # Superadmin (no org required) sees all orgs; HR/Admin see their org; Managers see department
@@ -390,7 +390,7 @@ class DashboardQuery:
     def user_dashboard_stats(self, info) -> UserDashboardStats:
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
 
         from organizations.workweek import get_weekend_days
 

@@ -1,11 +1,23 @@
-from typing import Optional
+from typing import Optional, List
 import strawberry
 import strawberry.django
 from strawberry import auto
 
-from attendance.models import AttendanceRecord, AttendanceCorrection
+from attendance.models import AttendanceRecord, AttendanceCorrection, AttendanceHeartbeat
 from users.graphql.types import UserType
 from organizations.graphql.types import OfficeLocationType
+
+@strawberry.django.type(AttendanceHeartbeat)
+class AttendanceHeartbeatType:
+    id: strawberry.ID
+    timestamp: auto
+    latitude: auto
+    longitude: auto
+    distance_meters: auto
+    is_within_geofence: auto
+    accuracy_meters: auto
+    is_mocked: auto
+    battery_level: auto
 
 @strawberry.django.type(AttendanceRecord)
 class AttendanceRecordType:
@@ -28,6 +40,12 @@ class AttendanceRecordType:
     face_match_score: auto
     status: auto
     worked_hours: auto
+    effective_worked_hours: auto
+    total_heartbeats: auto
+    valid_heartbeats: auto
+    out_of_fence_heartbeats: auto
+    roaming_anomaly_detected: auto
+    roaming_notes: auto
     remarks: auto
     is_verified: auto
 
@@ -36,6 +54,10 @@ class AttendanceRecordType:
 
     created_at: auto
     updated_at: auto
+
+    @strawberry.field
+    def heartbeats(self) -> List[AttendanceHeartbeatType]:
+        return list(self.heartbeats.all().order_by("timestamp"))
 
     @strawberry.field
     def check_in_selfie_url(self) -> Optional[str]:

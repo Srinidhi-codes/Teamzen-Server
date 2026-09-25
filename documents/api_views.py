@@ -6,8 +6,8 @@ from rest_framework import status
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 
-from documents.models import DocumentRequest, IssuedDocument
-from documents.services import fulfill_document_request, publish_issued_document
+from documents.models import DocumentRequest, IssuedDocument, EmployeeDocumentRequest
+from documents.services import fulfill_document_request, publish_issued_document, issue_employee_document_request
 from onboarding.models import EmployeeDocument
 
 
@@ -160,6 +160,7 @@ class PublishIssuedDocumentView(APIView):
         category = (request.data.get("category") or "other").strip()
         financial_year = (request.data.get("financial_year") or "").strip()
         notes = (request.data.get("notes") or "").strip()
+        employee_request_id = request.data.get("employee_request_id")
 
         if not user_id:
             return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -196,6 +197,12 @@ class PublishIssuedDocumentView(APIView):
                 file_url=(request.data.get("file_url") or "").strip(),
                 notes=notes,
             )
+            
+            if employee_request_id:
+                req = EmployeeDocumentRequest.objects.filter(id=employee_request_id).first()
+                if req:
+                    issue_employee_document_request(req, doc)
+                    
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

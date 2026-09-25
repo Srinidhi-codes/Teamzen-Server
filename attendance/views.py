@@ -61,7 +61,12 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         attendance, created = AttendanceRecord.objects.get_or_create(
             user=request.user,
             attendance_date=timezone.now().date(),
-            office_location=office
+            defaults={
+                "office_location": office,
+                "total_heartbeats": 0,
+                "valid_heartbeats": 0,
+                "out_of_fence_heartbeats": 0,
+            }
         )
 
         attendance.login_time = timezone.now()

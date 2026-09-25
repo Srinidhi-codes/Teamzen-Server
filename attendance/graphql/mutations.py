@@ -56,7 +56,7 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Not authenticated")
+            raise Exception("Unauthenticated")
 
         attendance, _ = check_in_user(
             user=user,
@@ -80,7 +80,7 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Not authenticated")
+            raise Exception("Unauthenticated")
 
         attendance, _ = check_out_user(
             user=user,
@@ -104,7 +104,7 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Not authenticated")
+            raise Exception("Unauthenticated")
 
         record = AttendanceRecord.objects.get(id=input.attendance_record_id)
 

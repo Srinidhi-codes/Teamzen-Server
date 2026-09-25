@@ -5,11 +5,12 @@ from typing import List, Optional
 import strawberry
 from strawberry.types import Info
 
-from documents.models import DocumentRequest, IssuedDocument
+from documents.models import DocumentRequest, IssuedDocument, EmployeeDocumentRequest
 from documents.graphql.types import (
     DocumentRequestType,
     IssuedDocumentType,
     VaultEmployeeDocumentType,
+    EmployeeDocumentRequestType,
 )
 from onboarding.auth import require_auth, require_hr, resolve_org
 from onboarding.models import EmployeeDocument
@@ -61,6 +62,29 @@ def _request_type(r: DocumentRequest) -> DocumentRequestType:
             if r.fulfilled_document_id
             else None
         ),
+    )
+
+
+def _employee_request_type(r: EmployeeDocumentRequest) -> EmployeeDocumentRequestType:
+    user = r.user
+    doc_url = None
+    if r.issued_document_id:
+        doc_url = r.issued_document.download_url
+    
+    return EmployeeDocumentRequestType(
+        id=strawberry.ID(str(r.id)),
+        category=r.category,
+        custom_title=r.custom_title,
+        reason=r.reason,
+        status=r.status,
+        issued_document_url=doc_url,
+        issued_document_id=strawberry.ID(str(r.issued_document_id)) if r.issued_document_id else None,
+        issued_at=r.issued_at,
+        rejected_reason=r.rejected_reason,
+        created_at=r.created_at,
+        user_id=strawberry.ID(str(r.user_id)),
+        user_name=f"{user.first_name} {user.last_name}".strip() or user.email,
+        user_email=user.email,
     )
 
 
@@ -160,3 +184,28 @@ class DocumentsQuery:
         if status:
             qs = qs.filter(status=status)
         return [_request_type(r) for r in qs.order_by("-created_at")[:200]]
+
+    @strawberry.field
+    def my_employee_document_requests(
+        self, info: Info, status: Optional[str] = None
+    ) -> List[EmployeeDocumentRequestType]:
+        user = info.context.request.user
+        require_auth(user)
+        qs = EmployeeDocumentRequest.objects.filter(user=user).select_related("user", "issued_document")
+        if status:
+            qs = qs.filter(status=status)
+        return [_employee_request_type(r) for r in qs]
+
+    @strawberry.field
+    def org_employee_document_requests(
+        self, info: Info, status: Optional[str] = None
+    ) -> List[EmployeeDocumentRequestType]:
+        user = info.context.request.user
+        require_hr(user)
+        org = resolve_org(user)
+        qs = EmployeeDocumentRequest.objects.select_related("user", "issued_document")
+        if user.role != "superadmin":
+            qs = qs.filter(organization=org)
+        if status:
+            qs = qs.filter(status=status)
+        return [_employee_request_type(r) for r in qs.order_by("-created_at")]
