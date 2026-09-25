@@ -26,6 +26,8 @@ class OnboardingTaskDefinitionType:
     requires_document_category: str
     is_required: bool
     sort_order: int
+    default_assignee_id: Optional[strawberry.ID] = None
+    default_assignee_name: Optional[str] = None
 
 
 @strawberry.type
@@ -92,6 +94,18 @@ class OfferLetterType:
     accepted_name: str
     accepted_at: Optional[datetime]
     updated_at: Optional[datetime] = None
+
+
+@strawberry.input
+class DeletePreboardingDocumentInput:
+    invite_token: str
+    document_id: strawberry.ID
+
+
+@strawberry.type
+class DeletePreboardingDocumentPayload:
+    success: bool
+    error: Optional[str] = None
 
 
 @strawberry.input
@@ -177,6 +191,7 @@ class StartPreboardingInput:
     include_ctc_annexure: bool = False
     annual_ctc: Optional[float] = None
     send_invite: bool = True
+    invite_expiry_hours: int = 24
 
 
 @strawberry.input
@@ -190,6 +205,7 @@ class StartOnboardingForEmployeeInput:
     include_ctc_annexure: bool = False
     annual_ctc: Optional[float] = None
     send_invite: bool = False
+    invite_expiry_hours: int = 24
 
 
 @strawberry.input
@@ -202,6 +218,7 @@ class TaskDefinitionInput:
     requires_document_category: str = ""
     is_required: bool = True
     sort_order: int = 0
+    default_assignee_id: Optional[strawberry.ID] = None
 
 
 @strawberry.input
@@ -241,6 +258,7 @@ class UpsertTaskDefinitionInput:
     requires_document_category: str = ""
     is_required: bool = True
     sort_order: int = 0
+    default_assignee_id: Optional[strawberry.ID] = None
 
 
 @strawberry.input

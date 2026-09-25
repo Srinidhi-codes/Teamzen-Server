@@ -48,6 +48,14 @@ class AttendanceRecord(models.Model):
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='absent')
     worked_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Background geo-heartbeat audit fields
+    total_heartbeats = models.PositiveIntegerField(default=0, null=True, blank=True)
+    valid_heartbeats = models.PositiveIntegerField(default=0, null=True, blank=True)
+    out_of_fence_heartbeats = models.PositiveIntegerField(default=0, null=True, blank=True)
+    effective_worked_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    roaming_anomaly_detected = models.BooleanField(default=False)
+    roaming_notes = models.CharField(max_length=255, blank=True)
+
     remarks = models.TextField(blank=True)
     is_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -59,7 +67,7 @@ class AttendanceRecord(models.Model):
 
     def recalculate_worked_hours(self):
         """
-        Recalculate worked hours from login & logout time
+        Recalculate worked hours from login & logout time, adjusting for roaming/out-of-fence gaps.
         """
         if self.login_time and self.logout_time:
             start = datetime.combine(self.attendance_date, self.login_time)
@@ -74,12 +82,22 @@ class AttendanceRecord(models.Model):
                 (end - start).total_seconds() / 3600,
                 2
             )
+            # Factor in out-of-fence heartbeats (e.g. roaming outside office)
+            out_count = self.out_of_fence_heartbeats or 0
+            if out_count > 0:
+                # 20 min interval assumed per ping, 1.0 hour grace break allowance
+                roaming_hours = round(out_count * 0.33, 2)
+                excess_roaming = max(0.0, roaming_hours - 1.0)
+                self.effective_worked_hours = round(max(0.0, float(self.worked_hours) - excess_roaming), 2)
+            else:
+                self.effective_worked_hours = self.worked_hours
         else:
             self.worked_hours = None
+            self.effective_worked_hours = None
 
     def recalculate_status(self):
         """
-        Main logic for status determination based on shift times and duration.
+        Main logic for status determination based on shift times, duration, and verified presence.
         """
         if not self.login_time:
             self.status = 'absent'
@@ -100,9 +118,8 @@ class AttendanceRecord(models.Model):
         # 2. Logout Violation
         is_early = self.logout_time < office.logout_time
         
-        # 3. Duration-based overrides
-        # worked_hours is calculated in save() before this
-        hours = float(self.worked_hours or 0)
+        # 3. Duration-based overrides (use effective_worked_hours if presence tracked)
+        hours = float(self.effective_worked_hours if self.effective_worked_hours is not None else (self.worked_hours or 0))
         
         if hours < 1.0:
             self.status = 'absent'
@@ -125,6 +142,33 @@ class AttendanceRecord(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.attendance_date} ({self.status})"
+
+
+class AttendanceHeartbeat(models.Model):
+    """Periodic background geolocation breadcrumb during a shift."""
+    attendance_record = models.ForeignKey(
+        AttendanceRecord,
+        on_delete=models.CASCADE,
+        related_name='heartbeats',
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8)
+    distance_meters = models.IntegerField(help_text="Calculated distance in meters from assigned office")
+    is_within_geofence = models.BooleanField(default=False)
+    accuracy_meters = models.FloatField(null=True, blank=True)
+    is_mocked = models.BooleanField(default=False, help_text="Detected fake GPS / mock provider")
+    battery_level = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['attendance_record', 'timestamp']),
+        ]
+
+    def __str__(self):
+        fence_str = 'inside' if self.is_within_geofence else 'outside'
+        return f"Heartbeat {self.attendance_record.user} @ {self.timestamp} ({fence_str}, {self.distance_meters}m)"
 
 class AttendanceCorrection(models.Model):
     STATUS_CHOICES = [

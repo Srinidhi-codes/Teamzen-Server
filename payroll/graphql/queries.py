@@ -91,7 +91,7 @@ class PayrollQuery:
     def my_payslips(self, info: Info) -> List[PayslipType]:
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthorized")
+            raise Exception("Unauthenticated")
         return Payslip.objects.filter(
             user=user, status__in=["published", "paid"]
         ).order_by("-payroll_run__year", "-payroll_run__month")

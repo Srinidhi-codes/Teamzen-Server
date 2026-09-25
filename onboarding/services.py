@@ -177,7 +177,8 @@ full-time member of {{company_name}}. We welcome you on board!</p>
 <strong>Department:</strong> {{department}}<br/>
 <strong>Date of Joining:</strong> {{join_date}}</p>
 <p>Please review this offer carefully, complete your preboarding formalities
-in the portal, and accept the offer to confirm your joining.</p>
+in the portal, and accept the offer to confirm your joining. 
+Please note that your onboarding link will be active for {{invite_expiry_hours}} hours only.</p>
 <p>Looking forward to working together with you.<br/>
 For {{company_name}}<br/>
 HR / People Team</p>
@@ -273,7 +274,9 @@ def resolve_template(
     return ensure_default_template(organization)
 
 
-def resolve_assignee(onboarding: EmployeeOnboarding, role: str):
+def resolve_assignee(onboarding: EmployeeOnboarding, role: str, definition=None):
+    if definition and definition.default_assignee_id:
+        return definition.default_assignee
     user = onboarding.user
     if role == "hire":
         return user
@@ -301,6 +304,21 @@ def resolve_assignee(onboarding: EmployeeOnboarding, role: str):
             .order_by("id")
             .first()
         )
+    if role.startswith("dept_"):
+        try:
+            dept_id = int(role.replace("dept_", ""))
+            return (
+                User.objects.filter(
+                    organization_id=onboarding.organization_id,
+                    department_id=dept_id,
+                    is_active=True,
+                )
+                .order_by("id")
+                .first()
+            )
+        except (ValueError, TypeError):
+            pass
+
     return None
 
 
@@ -338,13 +356,35 @@ def instantiate_tasks(
             description=d.description,
             assignee_role=d.assignee_role,
             phase=d.phase,
-            assignee=resolve_assignee(onboarding, d.assignee_role),
+            assignee=resolve_assignee(onboarding, d.assignee_role, d),
             due_at=_due_date(onboarding.join_date, d.due_offset_days),
             is_required=d.is_required,
             requires_document_category=d.requires_document_category or "",
             sort_order=d.sort_order,
         )
         created.append(inst)
+        
+        # Notify the specific assignee (if not the new hire themselves)
+        if inst.assignee_id and inst.assignee_id != onboarding.user_id:
+            try:
+                from notifications.utils import notify_user
+                
+                notify_user(
+                    recipient_id=inst.assignee_id,
+                    verb="Onboarding task assigned",
+                    message=(
+                        f"You have been assigned a task: '{inst.title}' "
+                        f"for {onboarding.user.first_name} {onboarding.user.last_name}'s onboarding."
+                    ),
+                    actor_id=None,
+                    target_type="OnboardingTaskInstance",
+                    target_id=str(inst.id),
+                    level="personal",
+                )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Failed to notify assignee for task %s", inst.id)
+                
     recompute_progress(onboarding)
     return created
 
@@ -429,6 +469,7 @@ def start_preboarding(
     letter_template_id=None,
     include_ctc_annexure: bool = False,
     annual_ctc=None,
+    invite_expiry_hours: int = 24,
 ) -> tuple[EmployeeOnboarding, str | None]:
     """
     Create pending inactive user + onboarding + preboarding tasks.
@@ -480,7 +521,7 @@ def start_preboarding(
         started_at=timezone.now(),
     )
 
-    instantiate_tasks(onboarding, phases=["preboarding"])
+    instantiate_tasks(onboarding, phases=None)
 
     if generate_offer:
         generate_offer_letter(
@@ -489,9 +530,10 @@ def start_preboarding(
             letter_template_id=letter_template_id,
             include_ctc_annexure=include_ctc_annexure,
             annual_ctc=annual_ctc,
+            invite_expiry_hours=invite_expiry_hours,
         )
 
-    raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor)
+    raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor, expires_hours=invite_expiry_hours)
     onboarding.status = "preboarding"
     onboarding.save(update_fields=["status", "updated_at"])
 
@@ -509,6 +551,7 @@ def start_onboarding_for_existing_user(
     include_ctc_annexure: bool = False,
     annual_ctc=None,
     send_invite: bool = False,
+    invite_expiry_hours: int = 24,
 ) -> tuple[EmployeeOnboarding, str | None]:
     """
     Attach an onboarding record + checklist to an existing employee.
@@ -527,6 +570,17 @@ def start_onboarding_for_existing_user(
             f"Open it from the Onboarding board."
         )
 
+    try:
+        from offboarding.models import EmployeeOffboarding
+        active_offboarding = EmployeeOffboarding.objects.filter(user_id=user.id).exclude(status="cancelled")
+        if active_offboarding.exists():
+            raise ValueError(
+                "Employee is currently undergoing offboarding. "
+                "Cancel their offboarding before starting onboarding."
+            )
+    except ImportError:
+        pass
+
     template = resolve_template(
         user.organization,
         template_id=template_id,
@@ -535,8 +589,6 @@ def start_onboarding_for_existing_user(
         employment_type=user.employment_type or "full_time",
     )
 
-    # Already-active staff: run full checklist; inactive hires: preboarding first
-    phases = None if user.is_active else ["preboarding"]
     status = "in_progress" if user.is_active else "preboarding"
 
     if existing and existing.status == "cancelled":
@@ -568,7 +620,7 @@ def start_onboarding_for_existing_user(
             notes="Started from existing employee",
         )
 
-    instantiate_tasks(onboarding, phases=phases)
+    instantiate_tasks(onboarding, phases=None)
 
     if generate_offer:
         generate_offer_letter(
@@ -577,11 +629,12 @@ def start_onboarding_for_existing_user(
             letter_template_id=letter_template_id,
             include_ctc_annexure=include_ctc_annexure,
             annual_ctc=annual_ctc,
+            invite_expiry_hours=invite_expiry_hours,
         )
 
     raw_token = None
     if send_invite:
-        raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor)
+        raw_token, _invite = create_preboarding_invite(onboarding, created_by=actor, expires_hours=invite_expiry_hours)
         if onboarding.status == "invited":
             onboarding.status = "preboarding"
             onboarding.save(update_fields=["status", "updated_at"])
@@ -593,13 +646,13 @@ def create_preboarding_invite(
     onboarding: EmployeeOnboarding,
     *,
     created_by=None,
-    expires_days: int = 14,
+    expires_hours: int = 24,
 ) -> tuple[str, PreboardingInvite]:
     raw = secrets.token_urlsafe(32)
     invite = PreboardingInvite.objects.create(
         onboarding=onboarding,
         token_hash=hash_invite_token(raw),
-        expires_at=timezone.now() + timedelta(days=expires_days),
+        expires_at=timezone.now() + timedelta(hours=expires_hours),
         created_by=created_by,
     )
     return raw, invite
@@ -627,7 +680,7 @@ def preboarding_portal_url(raw_token: str) -> str:
     return f"{base}/preboarding/{raw_token}"
 
 
-def merge_letter_fields(onboarding: EmployeeOnboarding, text: str) -> str:
+def merge_letter_fields(onboarding: EmployeeOnboarding, text: str, invite_expiry_hours: int = 24) -> str:
     """Replace {{merge_fields}} in letter subject/body with hire values."""
     user = onboarding.user
     org = onboarding.organization
@@ -650,6 +703,7 @@ def merge_letter_fields(onboarding: EmployeeOnboarding, text: str) -> str:
             if user.manager_id
             else ""
         ),
+        "invite_expiry_hours": invite_expiry_hours,
     }
     # Aliases HR sometimes types
     mapping["employee"] = mapping["employee_name"]
@@ -677,6 +731,7 @@ def generate_offer_letter(
     include_ctc_annexure: bool = False,
     annual_ctc=None,
     ctc_components: list | None = None,
+    invite_expiry_hours: int = 24,
 ) -> OfferLetter:
     onboarding = (
         EmployeeOnboarding.objects.select_related(
@@ -715,8 +770,8 @@ def generate_offer_letter(
         tpl.body_html = DEFAULT_OFFER_BODY.strip()
         tpl.save(update_fields=["subject", "body_html", "updated_at"])
 
-    subject = merge_letter_fields(onboarding, tpl.subject)
-    body = merge_letter_fields(onboarding, tpl.body_html)
+    subject = merge_letter_fields(onboarding, tpl.subject, invite_expiry_hours=invite_expiry_hours)
+    body = merge_letter_fields(onboarding, tpl.body_html, invite_expiry_hours=invite_expiry_hours)
 
     from onboarding.offer_pdf import resolve_ctc_snapshot, render_offer_pdf_url
 
@@ -814,6 +869,9 @@ def attach_uploaded_offer_letter(
             "source": "uploaded",
             "status": "sent",
             "include_ctc_annexure": False,
+            "annual_ctc": None,
+            "ctc_snapshot": None,
+            "letter_template": None,
             "created_by": actor,
         },
     )

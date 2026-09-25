@@ -90,6 +90,13 @@ class OnboardingTaskDefinition(models.Model):
     assignee_role = models.CharField(
         max_length=20, choices=ASSIGNEE_ROLE_CHOICES, default="hire"
     )
+    default_assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_onboarding_tasks",
+    )
     phase = models.CharField(
         max_length=20, choices=PHASE_CHOICES, default="preboarding"
     )

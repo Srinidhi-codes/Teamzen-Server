@@ -6,7 +6,7 @@ def require_payroll_admin(user, *, allow_hr: bool = False):
     if allow_hr:
         allowed.append("hr")
     if not user.is_authenticated or user.role not in allowed:
-        raise Exception("Unauthorized")
+        raise Exception("Unauthenticated")
 
 
 def require_org(user, organization_id=None):

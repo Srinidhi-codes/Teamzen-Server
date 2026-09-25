@@ -143,6 +143,7 @@ class OfficeLocation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        ordering = ['id']
         indexes = [
             models.Index(fields=["city"]),
             models.Index(fields=["state"]),
@@ -163,6 +164,7 @@ class Department(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        ordering = ['id']
         unique_together = ('organization', 'name')
 
     def __str__(self):
@@ -178,6 +180,7 @@ class Designation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        ordering = ['id']
         unique_together = ('organization', 'name')
 
     def __str__(self):

@@ -56,3 +56,19 @@ class VaultEmployeeDocumentType:
     rejection_reason: str
     source: str
     created_at: datetime
+
+@strawberry.type
+class EmployeeDocumentRequestType:
+    id: strawberry.ID
+    category: str
+    custom_title: str
+    reason: str
+    status: str
+    issued_document_url: Optional[str] = None
+    issued_document_id: Optional[strawberry.ID] = None
+    issued_at: Optional[datetime] = None
+    rejected_reason: str
+    created_at: datetime
+    user_id: strawberry.ID
+    user_name: str
+    user_email: str

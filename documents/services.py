@@ -1,6 +1,6 @@
 from django.utils import timezone
 
-from documents.models import DocumentRequest, IssuedDocument
+from documents.models import DocumentRequest, IssuedDocument, EmployeeDocumentRequest
 
 
 def publish_issued_document(
@@ -147,5 +147,95 @@ def fulfill_document_request(req: DocumentRequest, document, *, actor=None) -> D
         logging.getLogger(__name__).exception(
             "Document fulfill notify failed req_id=%s", req.id
         )
+
+    return req
+
+def create_employee_document_request(
+    *,
+    user,
+    organization,
+    category: str,
+    custom_title: str = "",
+    reason: str = "",
+) -> EmployeeDocumentRequest:
+    req = EmployeeDocumentRequest.objects.create(
+        organization=organization,
+        user=user,
+        category=category,
+        custom_title=custom_title,
+        reason=reason,
+        status="pending",
+    )
+    
+    # Notify HR/Admins
+    try:
+        from notifications.utils import notify_management
+        emp_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+        title = custom_title if category == "other" else req.get_category_display()
+        notify_management(
+            user,
+            verb="Document requested",
+            message=f'{emp_name} requested a {title}.',
+            target_type="EmployeeDocumentRequest",
+            target_id=str(req.id),
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify management of employee document request")
+        
+    return req
+
+def issue_employee_document_request(
+    req: EmployeeDocumentRequest,
+    issued_document: IssuedDocument,
+) -> EmployeeDocumentRequest:
+    req.issued_document = issued_document
+    req.issued_at = timezone.now()
+    req.status = "issued"
+    req.save(update_fields=["issued_document", "issued_at", "status", "updated_at"])
+    
+    # Notify Employee
+    try:
+        from notifications.utils import notify_user
+        title = req.custom_title if req.category == "other" else req.get_category_display()
+        notify_user(
+            recipient_id=req.user_id,
+            verb="Document issued",
+            message=f'Your requested {title} has been issued and is ready to download.',
+            target_type="EmployeeDocumentRequest",
+            target_id=str(req.id),
+            level="personal",
+            notification_type="BOTH",
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify user of issued document")
+
+    return req
+
+def reject_employee_document_request(
+    req: EmployeeDocumentRequest,
+    reason: str,
+) -> EmployeeDocumentRequest:
+    req.status = "rejected"
+    req.rejected_reason = reason
+    req.save(update_fields=["status", "rejected_reason", "updated_at"])
+    
+    # Notify Employee
+    try:
+        from notifications.utils import notify_user
+        title = req.custom_title if req.category == "other" else req.get_category_display()
+        notify_user(
+            recipient_id=req.user_id,
+            verb="Document request rejected",
+            message=f'Your request for {title} was rejected: {reason}',
+            target_type="EmployeeDocumentRequest",
+            target_id=str(req.id),
+            level="personal",
+            notification_type="BOTH",
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify user of rejected document request")
 
     return req

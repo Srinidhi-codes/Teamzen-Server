@@ -30,6 +30,12 @@ from onboarding.services import ensure_default_template, get_invite_by_token
 
 
 def _task_def_type(d) -> OnboardingTaskDefinitionType:
+    assignee_name = None
+    if d.default_assignee_id:
+        assignee_name = (
+            f"{d.default_assignee.first_name} {d.default_assignee.last_name}".strip()
+            or d.default_assignee.email
+        )
     return OnboardingTaskDefinitionType(
         id=strawberry.ID(str(d.id)),
         title=d.title,
@@ -40,6 +46,8 @@ def _task_def_type(d) -> OnboardingTaskDefinitionType:
         requires_document_category=d.requires_document_category or "",
         is_required=d.is_required,
         sort_order=d.sort_order,
+        default_assignee_id=strawberry.ID(str(d.default_assignee_id)) if d.default_assignee_id else None,
+        default_assignee_name=assignee_name,
     )
 
 
