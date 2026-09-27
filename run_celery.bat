@@ -1,0 +1,3 @@
+@echo off
+echo Starting Celery Worker (Optimized for Upstash limits)...
+celery -A config worker -l info --without-mingle --without-gossip --without-heartbeat

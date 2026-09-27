@@ -245,6 +245,8 @@ if os.getenv("DATABASE_URL"):
             'HOST': tmpPostgres.hostname,
             'PORT': 5432,
             'OPTIONS': dict(parse_qsl(tmpPostgres.query)),
+            'CONN_MAX_AGE': int(os.getenv('CONN_MAX_AGE', 0)),
+            'CONN_HEALTH_CHECKS': os.getenv('CONN_HEALTH_CHECKS', 'True') == 'True',
         }
     }
 else:
@@ -256,6 +258,8 @@ else:
             "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
             "HOST": os.getenv("DB_HOST", "localhost"),
             "PORT": os.getenv("DB_PORT", "5432"),
+            "CONN_MAX_AGE": int(os.getenv('CONN_MAX_AGE', 0)),
+            "CONN_HEALTH_CHECKS": os.getenv('CONN_HEALTH_CHECKS', 'True') == 'True',
         }
     }
 
