@@ -61,7 +61,7 @@ class AttendanceRecord(models.Model):
     out_of_fence_heartbeats = models.PositiveIntegerField(default=0, null=True, blank=True)
     effective_worked_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     roaming_anomaly_detected = models.BooleanField(default=False)
-    roaming_notes = models.CharField(max_length=255, blank=True)
+    roaming_notes = models.CharField(max_length=255, blank=True, default='')
 
     remarks = models.TextField(blank=True)
     is_verified = models.BooleanField(default=False)
@@ -77,7 +77,7 @@ class AttendanceRecord(models.Model):
         on_delete=models.SET_NULL,
         related_name='approved_attendances'
     )
-    approval_remarks = models.CharField(max_length=255, blank=True)
+    approval_remarks = models.CharField(max_length=255, blank=True, default='')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
