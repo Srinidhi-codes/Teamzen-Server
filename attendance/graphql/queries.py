@@ -95,7 +95,7 @@ class AttendanceQuery:
         qs = AttendanceRecord.objects.filter(user=user)
 
         if not input:
-            return qs.filter(attendance_date=date.today())
+            return qs.filter(attendance_date=dt_date.today())
 
         if input.start_date and input.end_date:
             qs = qs.filter(
@@ -107,7 +107,7 @@ class AttendanceQuery:
         elif input.end_date:
             qs = qs.filter(attendance_date__lte=input.end_date)
         else:
-            qs = qs.filter(attendance_date=date.today())
+            qs = qs.filter(attendance_date=dt_date.today())
 
         return qs
 
@@ -155,7 +155,7 @@ class AttendanceQuery:
         if not user.is_authenticated:
             return []
 
-        today = date.today()
+        today = dt_date.today()
 
         member_ids = {user.pk}
         if user.manager_id:
