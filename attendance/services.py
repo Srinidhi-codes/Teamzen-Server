@@ -10,6 +10,8 @@ from attendance.face_constants import (
     FACE_MATCH_THRESHOLD,
 )
 from organizations.models import OfficeLocation
+from organizations.workweek import is_org_weekend
+from leaves.models import CompanyHoliday
 
 
 def calculate_distance(lat1, lon1, lat2, lon2):
@@ -114,6 +116,56 @@ def assert_face_attendance_allowed(
     return similarity
 
 
+def evaluate_shift_and_calendar_window(attendance: AttendanceRecord, office: OfficeLocation, user, checkin_time: time_type):
+    """
+    Evaluates whether check-in is during a weekend/company holiday or outside the allowed shift window.
+    Standard window: 1 hr before office.login_time to 2 hrs before office.logout_time.
+    Tags attendance with is_weekend_work / is_off_hours and approval_status='pending' if outside window.
+    """
+    today = attendance.attendance_date or date.today()
+    org = getattr(user, "organization", None)
+
+    is_weekend = False
+    is_holiday = False
+    if org:
+        is_weekend = is_org_weekend(today, org)
+        is_holiday = CompanyHoliday.objects.filter(organization=org, holiday_date=today).exists()
+
+    if is_weekend or is_holiday:
+        attendance.is_weekend_work = True
+        attendance.approval_status = "pending"
+        attendance.approval_remarks = "Holiday check-in (pending approval)" if is_holiday else "Weekend check-in (pending approval)"
+        return
+
+    # Evaluate shift window (only if office has login & logout times)
+    if office and office.login_time and office.logout_time and checkin_time:
+        checkin_min = checkin_time.hour * 60 + checkin_time.minute
+        shift_start_min = office.login_time.hour * 60 + office.login_time.minute
+        shift_end_min = office.logout_time.hour * 60 + office.logout_time.minute
+
+        # Earliest = 1 hour before shift start, Latest = 2 hours before shift end
+        earliest_min = max(0, shift_start_min - 60)
+        latest_min = max(0, shift_end_min - 120)
+
+        # Off-hours check (e.g. midnight, early morning < earliest_min, or after latest_min)
+        if checkin_min < earliest_min or checkin_min > latest_min:
+            attendance.is_off_hours = True
+            attendance.approval_status = "pending"
+            earliest_t = time_type(earliest_min // 60, earliest_min % 60)
+            latest_t = time_type(latest_min // 60, latest_min % 60)
+            attendance.approval_remarks = (
+                f"Off-hours check-in at {checkin_time.strftime('%I:%M %p')} "
+                f"(Allowed window: {earliest_t.strftime('%I:%M %p')} - {latest_t.strftime('%I:%M %p')})"
+            )
+            return
+
+    # Normal shift on regular working day
+    if attendance.approval_status not in ["approved", "rejected"]:
+        attendance.is_weekend_work = False
+        attendance.is_off_hours = False
+        attendance.approval_status = "auto_approved"
+
+
 def check_in_user(
     user,
     office_id,
@@ -167,6 +219,9 @@ def check_in_user(
     if face_mode:
         attendance.face_verified = True
         attendance.face_match_score = server_face_score
+
+    # Evaluate shift window & weekend/holiday constraints
+    evaluate_shift_and_calendar_window(attendance, office, user, attendance.login_time)
     attendance.save()
 
     return attendance, distance
@@ -328,3 +383,23 @@ def record_attendance_heartbeat(
         "should_stop": False,
         "roaming_flag": attendance.roaming_anomaly_detected,
     }
+
+
+def approve_or_reject_attendance_record(
+    record_id: int,
+    action: str,  # "approved" | "rejected"
+    manager_user,
+    remarks: str = ""
+) -> AttendanceRecord:
+    record = get_object_or_404(AttendanceRecord, id=record_id)
+    if action not in ["approved", "rejected"]:
+        raise GraphQLError("Action must be either 'approved' or 'rejected'.")
+
+    record.approval_status = action
+    record.approved_by = manager_user
+    if remarks:
+        record.approval_remarks = remarks
+
+    # Recalculate status and save (if rejected, recalculate_status sets status='absent')
+    record.save()
+    return record

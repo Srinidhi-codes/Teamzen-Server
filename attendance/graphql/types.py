@@ -49,6 +49,12 @@ class AttendanceRecordType:
     remarks: auto
     is_verified: auto
 
+    is_weekend_work: auto
+    is_off_hours: auto
+    approval_status: auto
+    approval_remarks: auto
+    approved_by: Optional[UserType]
+
     user: UserType
     office_location: OfficeLocationType
 
