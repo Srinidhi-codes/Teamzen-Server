@@ -1,6 +1,6 @@
 import strawberry
 from typing import List, Optional
-from datetime import date, time
+from datetime import date as dt_date, time
 from django.db.models import Q
 from attendance.models import AttendanceRecord, AttendanceCorrection
 from attendance.graphql.types import AttendanceRecordType, AttendanceCorrectionType
@@ -13,8 +13,8 @@ from users.graphql.types import UserType
 
 @strawberry.input
 class AttendanceInput:
-    start_date: Optional[date]
-    end_date: Optional[date]
+    start_date: Optional[dt_date] = None
+    end_date: Optional[dt_date] = None
 
 @strawberry.input
 class AttendanceCorrectionSortInput:
@@ -29,12 +29,15 @@ class AttendanceCorrectionFilterInput:
 
 @strawberry.input
 class OrgAttendanceFilterInput:
-    date: Optional[date] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    date: Optional[dt_date] = None
+    start_date: Optional[dt_date] = None
+    end_date: Optional[dt_date] = None
     search: Optional[str] = None
     status: Optional[str] = None
     roaming_only: Optional[bool] = None
+    approval_status: Optional[str] = None
+    is_weekend_work: Optional[bool] = None
+    is_off_hours: Optional[bool] = None
     organization_id: Optional[strawberry.ID] = None
 
 # =====================================================
@@ -92,7 +95,7 @@ class AttendanceQuery:
         qs = AttendanceRecord.objects.filter(user=user)
 
         if not input:
-            return qs.filter(attendance_date=date.today())
+            return qs.filter(attendance_date=dt_date.today())
 
         if input.start_date and input.end_date:
             qs = qs.filter(
@@ -104,7 +107,7 @@ class AttendanceQuery:
         elif input.end_date:
             qs = qs.filter(attendance_date__lte=input.end_date)
         else:
-            qs = qs.filter(attendance_date=date.today())
+            qs = qs.filter(attendance_date=dt_date.today())
 
         return qs
 
@@ -152,7 +155,7 @@ class AttendanceQuery:
         if not user.is_authenticated:
             return []
 
-        today = date.today()
+        today = dt_date.today()
 
         member_ids = {user.pk}
         if user.manager_id:
@@ -329,6 +332,15 @@ class AttendanceQuery:
 
             if filters.roaming_only:
                 qs = qs.filter(roaming_anomaly_detected=True)
+
+            if filters.approval_status:
+                qs = qs.filter(approval_status=filters.approval_status)
+
+            if filters.is_weekend_work is not None:
+                qs = qs.filter(is_weekend_work=filters.is_weekend_work)
+
+            if filters.is_off_hours is not None:
+                qs = qs.filter(is_off_hours=filters.is_off_hours)
 
             if filters.search:
                 s = filters.search.strip()
