@@ -12,7 +12,7 @@ class AuthPayload:
 @strawberry.type
 class Mutation:
     @strawberry.mutation
-    def login(self, info, email: str, password: str) -> AuthPayload:
+    def login(self, info, email: str, password: str, remember_me: bool = False) -> AuthPayload:
         user = authenticate(username=email, password=password)
         if not user:
             raise Exception("Invalid credentials")
