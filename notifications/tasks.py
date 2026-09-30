@@ -194,12 +194,26 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 print(f"Failed to route Leave Request {target_id}: {e}")
         
         elif target_type == "Announcement":
+            import json
+            announcement_title = subject
+            announcement_body = message
+            try:
+                data = json.loads(message)
+                if isinstance(data, dict):
+                    announcement_title = data.get("title") or subject
+                    announcement_body = data.get("body", message)
+                    footer = data.get("footer", "")
+                    if footer:
+                        announcement_body += f"<br><br><i>{footer}</i>"
+            except Exception:
+                pass
+                
             try:
                 from temp_email.announcement_email import get_announcement_email_html
                 html_content = get_announcement_email_html(
                     employee_name=f"{recipient.first_name} {recipient.last_name}",
-                    announcement_title=subject,
-                    announcement_body=message,
+                    announcement_title=announcement_title,
+                    announcement_body=announcement_body,
                     posted_by="HR Department",
                     posted_date="Just Now",
                     image_url=extra_context.get("image_url")

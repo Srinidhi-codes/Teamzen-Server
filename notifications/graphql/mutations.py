@@ -132,13 +132,31 @@ class NotificationMutation:
                 message=message,
                 actor_id=user.id,
                 notification_type=notification_type,
+                target_type="Announcement" if verb == "announcement" else None,
                 level='personal',
                 extra_context={"image_url": image_url} if image_url else None
             )
             
         if send_to_bots:
             from notifications.tasks import broadcast_to_bots
-            html_message = f"<b>{verb.title()}</b>\n\n{message}"
+            import json
+            
+            bot_title = verb.title()
+            bot_body = message
+            bot_footer = ""
+            try:
+                data = json.loads(message)
+                if isinstance(data, dict):
+                    bot_title = data.get("title") or bot_title
+                    bot_body = data.get("body", message)
+                    bot_footer = data.get("footer", "")
+            except Exception:
+                pass
+                
+            html_message = f"<b>{bot_title}</b>\n\n{bot_body}"
+            if bot_footer:
+                html_message += f"\n\n_ {bot_footer} _"
+                
             broadcast_to_bots.delay(html_message=html_message, image_url=image_url)
             
         return True
