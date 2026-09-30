@@ -2,7 +2,7 @@
 from rest_framework import viewsets, status, generics, parsers
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, UntypedToken
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
@@ -14,6 +14,9 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import EmailMultiAlternatives
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from datetime import timedelta
+import time
 from notifications.email_backends import BrevoHTTPBackend
 from temp_email.password_reset_email import get_password_reset_email_html
 
@@ -241,26 +244,70 @@ class CookieTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
         # Get refresh token from cookie or body
         data = {}
+        raw_token = None
         if 'refresh' in request.data:
-            data['refresh'] = request.data['refresh']
+            raw_token = request.data['refresh']
+            data['refresh'] = raw_token
         elif 'refresh_token' in request.COOKIES:
-            data['refresh'] = request.COOKIES['refresh_token']
+            raw_token = request.COOKIES['refresh_token']
+            data['refresh'] = raw_token
         else:
             return Response(
                 {'error': 'Refresh token not found'}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
+        # 1. Extract JTI and expiration from the incoming refresh token
+        old_jti = None
+        is_long_lived = False
+        if raw_token:
+            try:
+                untyped = UntypedToken(raw_token)
+                old_jti = untyped.get("jti")
+                exp = untyped.get("exp")
+                if exp and (exp - time.time()) > 86400 * 2:
+                    is_long_lived = True
+            except Exception:
+                pass
+
+        # 2. Check rotation grace period (60 seconds)
+        # If multiple concurrent requests (e.g. Apollo + Axios + Next.js middleware)
+        # try to refresh with the same token around the same time, return the cached result.
+        if old_jti:
+            cached_data = cache.get(f"rotated_refresh_{old_jti}")
+            if cached_data:
+                response = Response(cached_data, status=status.HTTP_200_OK)
+                set_auth_cookies(
+                    response,
+                    access=cached_data.get("access"),
+                    refresh=cached_data.get("refresh"),
+                    remember=True,
+                )
+                return response
+
         serializer = self.get_serializer(data=data)
         
         try:
             serializer.is_valid(raise_exception=True)
         except Exception as e:
+            # Check once more if another thread completed rotation while this request was waiting
+            if old_jti:
+                cached_data = cache.get(f"rotated_refresh_{old_jti}")
+                if cached_data:
+                    response = Response(cached_data, status=status.HTTP_200_OK)
+                    set_auth_cookies(
+                        response,
+                        access=cached_data.get("access"),
+                        refresh=cached_data.get("refresh"),
+                        remember=True,
+                    )
+                    return response
+
             response = Response(
                 {'error': 'Invalid or expired refresh token'}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
-            # Clear invalid cookies
+            # Clear invalid cookies only when genuinely invalid
             response.delete_cookie('access_token', path='/')
             response.delete_cookie('refresh_token', path='/')
             response.delete_cookie('session_can_refresh', path='/')
@@ -268,17 +315,46 @@ class CookieTokenRefreshView(TokenRefreshView):
             return response
             
         token_data = serializer.validated_data
-        
-        response = Response({
-            'access': token_data.get('access'),
-            'refresh': token_data.get('refresh'),
-        }, status=status.HTTP_200_OK)
+        new_access = token_data.get('access')
+        new_refresh = token_data.get('refresh')
+
+        remember = wants_remember_me(request) or is_long_lived
+
+        # Ensure the rotated refresh token retains 30 days if remember is true
+        if remember and new_refresh:
+            try:
+                ref_obj = RefreshToken(new_refresh)
+                ref_obj.set_exp(lifetime=timedelta(days=30))
+                new_refresh = str(ref_obj)
+            except Exception:
+                pass
+
+        # Keep UserDeviceSession bound to new JTI
+        if new_refresh and old_jti:
+            try:
+                new_untyped = UntypedToken(new_refresh)
+                new_jti = new_untyped.get("jti")
+                if new_jti:
+                    from users.models import UserDeviceSession
+                    UserDeviceSession.objects.filter(jti=old_jti).update(jti=new_jti)
+            except Exception:
+                pass
+
+        rotation_payload = {
+            'access': new_access,
+            'refresh': new_refresh,
+        }
+        # Cache rotation result for 60 seconds grace period
+        if old_jti:
+            cache.set(f"rotated_refresh_{old_jti}", rotation_payload, timeout=60)
+
+        response = Response(rotation_payload, status=status.HTTP_200_OK)
 
         set_auth_cookies(
             response,
-            access=token_data.get("access"),
-            refresh=token_data.get("refresh"),
-            remember=wants_remember_me(request),
+            access=new_access,
+            refresh=new_refresh,
+            remember=remember,
         )
             
         return response
