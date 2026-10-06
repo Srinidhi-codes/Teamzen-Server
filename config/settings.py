@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     "onboarding.apps.OnboardingConfig",
     "documents.apps.DocumentsConfig",
     "offboarding.apps.OffboardingConfig",
+    "feed.apps.FeedConfig",
     "graphql",
     "notifications",
     "channels",

@@ -16,6 +16,10 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                     self.group_name,
                     self.channel_name
                 )
+                await self.channel_layer.group_add(
+                    'global_feed',
+                    self.channel_name
+                )
             except Exception as e:
                 # Don't tear down the socket if Redis/channel layer is down
                 print(f"[notifications] channel layer unavailable: {e}")
@@ -28,6 +32,10 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             try:
                 await self.channel_layer.group_discard(
                     self.group_name,
+                    self.channel_name
+                )
+                await self.channel_layer.group_discard(
+                    'global_feed',
                     self.channel_name
                 )
             except Exception:
