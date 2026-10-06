@@ -161,6 +161,27 @@ class UserQuery:
         
         return PaginatedUserResponse(**paginated)
 
+    @strawberry.field
+    def directory_users(self, info: Info, search: Optional[str] = None) -> List[UserType]:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return []
+        
+        qs = CustomUser.objects.filter(
+            organization=user.organization,
+            is_active=True
+        ).exclude(role__in=["admin", "superadmin"])
+        
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search)
+            )
+            
+        return qs.order_by('first_name', 'last_name')[:20]
+
     # -------------------------
     # TEAM HIERARCHY
     # -------------------------

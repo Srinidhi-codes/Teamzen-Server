@@ -25,6 +25,8 @@ from documents.graphql.mutations import DocumentsMutation
 from offboarding.graphql.queries import OffboardingQuery
 from offboarding.graphql.mutations import OffboardingMutation
 from ai_engine.graphql_queries import AiQuery
+from feed.graphql.queries import FeedQuery
+from feed.graphql.mutations import FeedMutation
 
 @strawberry.type
 class Query(
@@ -42,6 +44,7 @@ class Query(
     DocumentsQuery,
     OffboardingQuery,
     AiQuery,
+    FeedQuery,
 ):
     """Root Query including onboarding, documents, offboarding and AI helpers."""
 
@@ -60,6 +63,7 @@ class Mutation(
     OnboardingMutation,
     DocumentsMutation,
     OffboardingMutation,
+    FeedMutation,
 ):
     """Root Mutation including onboarding, documents and offboarding."""
     pass
