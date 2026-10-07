@@ -280,3 +280,12 @@ class FeedMutation:
             comment.save(update_fields=['likes_count'])
             broadcast_feed_update("toggle_comment_like", str(comment.post.id))
             return True
+
+    @strawberry.mutation
+    def view_post(self, info: Info, post_id: str) -> bool:
+        post = Post.objects.filter(id=post_id).first()
+        if not post:
+            return False
+        post.views_count += 1
+        post.save(update_fields=['views_count'])
+        return True

@@ -292,16 +292,19 @@ class CookieTokenRefreshView(TokenRefreshView):
         except Exception as e:
             # Check once more if another thread completed rotation while this request was waiting
             if old_jti:
-                cached_data = cache.get(f"rotated_refresh_{old_jti}")
-                if cached_data:
-                    response = Response(cached_data, status=status.HTTP_200_OK)
-                    set_auth_cookies(
-                        response,
-                        access=cached_data.get("access"),
-                        refresh=cached_data.get("refresh"),
-                        remember=True,
-                    )
-                    return response
+                import time
+                for _ in range(4):
+                    time.sleep(0.5)
+                    cached_data = cache.get(f"rotated_refresh_{old_jti}")
+                    if cached_data:
+                        response = Response(cached_data, status=status.HTTP_200_OK)
+                        set_auth_cookies(
+                            response,
+                            access=cached_data.get("access"),
+                            refresh=cached_data.get("refresh"),
+                            remember=True,
+                        )
+                        return response
 
             response = Response(
                 {'error': 'Invalid or expired refresh token'}, 

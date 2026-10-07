@@ -13,6 +13,7 @@ class PostType:
     media_urls: auto
     likes_count: auto
     comments_count: auto
+    views_count: auto
     created_at: auto
     updated_at: auto
     
