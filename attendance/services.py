@@ -224,6 +224,29 @@ def check_in_user(
     evaluate_shift_and_calendar_window(attendance, office, user, attendance.login_time)
     attendance.save()
 
+    # Automatically record initial check-in breadcrumb / heartbeat
+    AttendanceHeartbeat.objects.create(
+        attendance_record=attendance,
+        latitude=latitude,
+        longitude=longitude,
+        distance_meters=int(distance),
+        is_within_geofence=is_within,
+    )
+    all_hb = list(attendance.heartbeats.all().order_by("timestamp"))
+    total_count = len(all_hb)
+    valid_count = sum(1 for hb in all_hb if hb.is_within_geofence)
+    out_of_fence_count = total_count - valid_count
+
+    attendance.total_heartbeats = total_count
+    attendance.valid_heartbeats = valid_count
+    attendance.out_of_fence_heartbeats = out_of_fence_count
+    if not is_within:
+        attendance.roaming_anomaly_detected = True
+        attendance.roaming_notes = (
+            f"Checked in {int(distance)}m outside office geofence ({round(distance / 1000, 2)}km away)"
+        )
+    attendance.save()
+
     return attendance, distance
 
 
@@ -250,6 +273,7 @@ def check_out_user(
     distance = calculate_distance(
         latitude, longitude, office.latitude, office.longitude
     )
+    is_out_within = distance <= office.geo_radius_meters
     face_mode = org_requires_face(user)
     server_face_score = None
 
@@ -268,7 +292,7 @@ def check_out_user(
     attendance.logout_longitude = longitude
     attendance.logout_distance = int(distance)
 
-    if distance > office.geo_radius_meters:
+    if not is_out_within:
         attendance.is_within_geofence = False
 
     if face_mode:
@@ -276,6 +300,25 @@ def check_out_user(
         attendance.face_match_score = server_face_score
 
     attendance.save()
+
+    # Automatically record check-out breadcrumb / heartbeat
+    AttendanceHeartbeat.objects.create(
+        attendance_record=attendance,
+        latitude=latitude,
+        longitude=longitude,
+        distance_meters=int(distance),
+        is_within_geofence=is_out_within,
+    )
+    all_hb = list(attendance.heartbeats.all().order_by("timestamp"))
+    total_count = len(all_hb)
+    valid_count = sum(1 for hb in all_hb if hb.is_within_geofence)
+    out_of_fence_count = total_count - valid_count
+
+    attendance.total_heartbeats = total_count
+    attendance.valid_heartbeats = valid_count
+    attendance.out_of_fence_heartbeats = out_of_fence_count
+    attendance.save()
+
     return attendance, distance
 
 
