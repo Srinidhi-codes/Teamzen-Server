@@ -102,7 +102,9 @@ class LeaveQuery:
         search: Optional[str] = None,
     ) -> List[LeaveRequestType]:
         user = info.context.request.user
-        queryset = LeaveRequest.objects.all()
+        queryset = LeaveRequest.objects.select_related(
+            "user", "user__organization", "user__department", "user__designation", "leave_type"
+        ).all()
 
         if not user.is_authenticated:
             return LeaveRequest.objects.none()
@@ -193,7 +195,9 @@ class LeaveQuery:
             return []
         
         # Get approved or pending leaves for users in the same department AND organization, excluding current user
-        return LeaveRequest.objects.filter(
+        return LeaveRequest.objects.select_related(
+            "user", "user__department", "user__designation", "user__organization", "leave_type"
+        ).filter(
             user__organization_id=user.organization_id,
             user__department=user.department,
             _status__in=['approved', 'pending'],
