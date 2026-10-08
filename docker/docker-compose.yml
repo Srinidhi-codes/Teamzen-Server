@@ -7,11 +7,11 @@ services:
     image: pgvector/pgvector:pg16
     container_name: payroll_postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_DB: payroll
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 123
+      POSTGRES_PASSWORD: "123"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -81,7 +81,7 @@ services:
       DB_PORT: "5432"
       DB_NAME: payroll
       DB_USER: postgres
-      DB_PASSWORD: 123
+      DB_PASSWORD: "123"
       # Local Redis (same machine, ~0ms latency)
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
