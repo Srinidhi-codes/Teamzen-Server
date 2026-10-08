@@ -55,6 +55,8 @@ def run_cmd(cmd, env=None, stdin_data=None):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print("=" * 60)
     print("  Neon → Local Postgres Migration")
     print("=" * 60)
@@ -76,7 +78,7 @@ def main():
     # Step 1: Dump from Neon
     print("\n[1/3] Dumping data from Neon Postgres...")
     if has_pg_dump:
-        dump_env = {"PGPASSWORD": NEON_PASSWORD}
+        dump_env = {"PGPASSWORD": NEON_PASSWORD, "PGSSLMODE": "require"}
         dump_cmd = [
             "pg_dump",
             f"--host={NEON_HOST}",
@@ -89,15 +91,15 @@ def main():
             "--clean",
             "--if-exists",
             f"--file={DUMP_FILE}",
-            "sslmode=require",
         ]
         ok, _, _ = run_cmd(dump_cmd, dump_env)
     else:
-        print("  (Using postgres:16-alpine container for pg_dump)")
+        print("  (Using postgres:17-alpine container for pg_dump)")
         dump_cmd = [
             "docker", "run", "--rm",
             "-e", f"PGPASSWORD={NEON_PASSWORD}",
-            "pgvector/pgvector:pg16",
+            "-e", "PGSSLMODE=require",
+            "postgres:17-alpine",
             "pg_dump",
             "-h", NEON_HOST,
             "-p", NEON_PORT,
@@ -108,7 +110,6 @@ def main():
             "--format=plain",
             "--clean",
             "--if-exists",
-            "sslmode=require",
         ]
         ok, stdout, _ = run_cmd(dump_cmd)
         if ok:

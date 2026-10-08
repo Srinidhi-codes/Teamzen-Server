@@ -121,8 +121,9 @@ def _contacts(user) -> dict[str, Any]:
         )
     return {
         "manager_name": (
-            f"{manager.first_name or ''} {manager.last_name or ''}".strip()
-            or (manager.email if manager else None)
+            f"{manager.first_name or ''} {manager.last_name or ''}".strip() or manager.email
+            if manager
+            else None
         ),
         "manager_email": manager.email if manager else None,
         "hr_name": (
@@ -140,6 +141,9 @@ def build_first_day_wizard(user) -> dict[str, Any]:
     Build ordered wizard steps with answers + deep-links.
     should_show: not seen AI onboarding OR hire checklist still incomplete.
     """
+    User = get_user_model()
+    user = User.objects.select_related("manager", "department", "designation", "organization").get(id=user.id)
+    
     incomplete_ob, onboarding = _incomplete_onboarding(user)
     has_seen = bool(getattr(user, "has_seen_ai_onboarding", False))
     should_show = (not has_seen) or incomplete_ob
