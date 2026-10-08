@@ -1,0 +1,323 @@
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL — Local database (~1ms queries vs ~200ms to Neon)
+  # Data persisted in postgres_data volume. Neon kept as cloud backup.
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: payroll_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: payroll
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis — Cache, Celery Broker, Channel Layer, Session Store
+  # Single Redis handles everything (no need for RabbitMQ)
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: payroll_redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --save 300 100
+      --appendonly yes
+      --tcp-keepalive 60
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+        reservations:
+          memory: 128M
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Django Backend — Gunicorn + Uvicorn workers for multi-core utilization
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: payroll_backend
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             python manage.py migrate &&
+             python manage.py shell -c \"from django.contrib.auth import get_user_model; import os; User = get_user_model(); User.objects.filter(username='admin').exists() or User.objects.create_superuser('admin', 'admin@tech.com', os.environ.get('SUPERUSER_PASSWORD', 'admin123'))\" &&
+             gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker -c /app/config/gunicorn.conf.py"
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: "django-insecure-dev-key-change-in-production"
+      # Local Postgres (same machine, ~1ms latency)
+      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: payroll
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      # Local Redis (same machine, ~0ms latency)
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      # Force real Redis for channels/cache (not in-memory)
+      USE_INMEMORY_CHANNELS: "False"
+      FORCE_REDIS: "True"
+      CELERY_TASK_ALWAYS_EAGER: "False"
+      # Connection pooling
+      CONN_MAX_AGE: "600"
+      CONN_HEALTH_CHECKS: "True"
+      SUPERUSER_PASSWORD: admin123
+      MCP_SERVER_URL: "http://host.docker.internal:8001/mcp"
+      MCP_INTERNAL_SECRET: "dev-internal-secret"
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MCP facade (teamzen-hr)
+  # ─────────────────────────────────────────────────────────────────────────────
+  mcp-hr:
+    build: ./backend
+    container_name: payroll_mcp_hr
+    command: python mcp_servers/teamzen_server.py
+    env_file:
+      - ./backend/.env
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: "django-insecure-dev-key-change-in-production"
+      MCP_SERVER_PORT: "8001"
+      MCP_AUTH_REQUIRED: "false"
+      MCP_INTERNAL_SECRET: "dev-internal-secret"
+      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      USE_INMEMORY_CHANNELS: "False"
+      FORCE_REDIS: "True"
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Celery Worker — Real async task processing via Redis broker
+  # ─────────────────────────────────────────────────────────────────────────────
+  celery:
+    build: ./backend
+    container_name: payroll_celery
+    command: >
+      celery -A config worker
+      -l info
+      -c 2
+      --max-tasks-per-child=100
+      --without-mingle
+      --without-gossip
+      --without-heartbeat
+    env_file:
+      - ./backend/.env
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: "django-insecure-dev-key-change-in-production"
+      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      USE_INMEMORY_CHANNELS: "False"
+      FORCE_REDIS: "True"
+      CELERY_TASK_ALWAYS_EAGER: "False"
+      MCP_SERVER_URL: "http://host.docker.internal:8001/mcp"
+      MCP_INTERNAL_SECRET: "dev-internal-secret"
+      CONN_MAX_AGE: "600"
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Celery Beat — Scheduled task scheduler
+  # ─────────────────────────────────────────────────────────────────────────────
+  celery-beat:
+    build: ./backend
+    container_name: payroll_celery_beat
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - ./backend/.env
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: "django-insecure-dev-key-change-in-production"
+      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      USE_INMEMORY_CHANNELS: "False"
+      FORCE_REDIS: "True"
+      CELERY_TASK_ALWAYS_EAGER: "False"
+      CONN_MAX_AGE: "600"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Next.js Frontend
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: payroll_frontend
+    ports:
+      - "3000:3000"
+    command: npx next dev --webpack
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql/
+      - INTERNAL_API_URL=http://backend:8000/api
+      - INTERNAL_GRAPHQL_URL=http://backend:8000/graphql/
+      - REDIS_URL=redis://redis:6379/0
+      - WATCHPACK_POLLING=1000
+      - CHOKIDAR_USEPOLLING=true
+      - NEXT_WATCHPACK_WATCHER_LIMIT=0
+    depends_on:
+      - backend
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Next.js Admin Frontend
+  # ─────────────────────────────────────────────────────────────────────────────
+  admin:
+    build: ./admin
+    container_name: payroll_admin
+    ports:
+      - "3001:3000"
+    command: npx next dev --webpack
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8000/graphql/
+      - INTERNAL_API_URL=http://backend:8000/api
+      - INTERNAL_GRAPHQL_URL=http://backend:8000/graphql/
+      - REDIS_URL=redis://redis:6379/0
+      - WATCHPACK_POLLING=1000
+      - CHOKIDAR_USEPOLLING=true
+      - NEXT_WATCHPACK_WATCHER_LIMIT=0
+    depends_on:
+      - backend
+    networks:
+      - payroll_network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Nginx Reverse Proxy — Gzip, caching, rate limiting, security headers
+  # ─────────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: payroll_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/app/staticfiles:ro
+    depends_on:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - payroll_network
+
+volumes:
+  static_volume:
+  postgres_data:    # Persistent local database storage
+  redis_data:       # Persistent Redis cache/broker storage
+
+
+networks:
+  payroll_network:
+    driver: bridge
