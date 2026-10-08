@@ -20,6 +20,7 @@ class CheckInInput:
     face_verified: Optional[bool] = None
     face_match_score: Optional[float] = None
     face_descriptor: Optional[list[float]] = None
+    selfie_base64: Optional[str] = None
 
 @strawberry.input
 class CheckOutInput:
@@ -29,6 +30,7 @@ class CheckOutInput:
     face_verified: Optional[bool] = None
     face_match_score: Optional[float] = None
     face_descriptor: Optional[list[float]] = None
+    selfie_base64: Optional[str] = None
  
 @strawberry.input
 class AttendanceCorrectionInput:
@@ -79,6 +81,7 @@ class AttendanceMutation:
             face_verified=input.face_verified,
             face_match_score=input.face_match_score,
             face_descriptor=input.face_descriptor,
+            selfie_base64=input.selfie_base64,
         )
 
         return attendance
@@ -102,6 +105,7 @@ class AttendanceMutation:
             face_verified=input.face_verified,
             face_match_score=input.face_match_score,
             face_descriptor=input.face_descriptor,
+            selfie_base64=input.selfie_base64,
         )
 
         return attendance
