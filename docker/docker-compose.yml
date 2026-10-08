@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_DB: payroll
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_PASSWORD: 123
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -76,12 +76,12 @@ services:
       DEBUG: "False"
       SECRET_KEY: "django-insecure-dev-key-change-in-production"
       # Local Postgres (same machine, ~1ms latency)
-      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      DATABASE_URL: "postgresql://postgres:123@postgres:5432/payroll"
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: payroll
       DB_USER: postgres
-      DB_PASSWORD: postgres123
+      DB_PASSWORD: 123
       # Local Redis (same machine, ~0ms latency)
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -134,7 +134,7 @@ services:
       MCP_SERVER_PORT: "8001"
       MCP_AUTH_REQUIRED: "false"
       MCP_INTERNAL_SECRET: "dev-internal-secret"
-      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      DATABASE_URL: "postgresql://postgres:123@postgres:5432/payroll"
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       REDIS_URL: redis://redis:6379/2
@@ -175,7 +175,7 @@ services:
     environment:
       DEBUG: "False"
       SECRET_KEY: "django-insecure-dev-key-change-in-production"
-      DATABASE_URL: "postgresql://postgres:postgres123@postgres:5432/payroll"
+      DATABASE_URL: "postgresql://postgres:123@postgres:5432/payroll"
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       REDIS_URL: redis://redis:6379/2
