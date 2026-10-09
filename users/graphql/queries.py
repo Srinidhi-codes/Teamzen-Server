@@ -78,6 +78,21 @@ class UserQuery:
         ).get(pk=user.pk)
 
     # -------------------------
+    # PUBLIC USER PROFILE
+    # -------------------------
+    @strawberry.field
+    def public_profile(self, info: Info, id: strawberry.ID) -> Optional[UserType]:
+        try:
+            return CustomUser.objects.select_related(
+                "organization",
+                "designation",
+                "department",
+                "office_location",
+            ).get(pk=id, is_active=True)
+        except CustomUser.DoesNotExist:
+            return None
+
+    # -------------------------
     # ALL USERS (FILTER + SORT + PAGINATION)
     # -------------------------
     @strawberry.field

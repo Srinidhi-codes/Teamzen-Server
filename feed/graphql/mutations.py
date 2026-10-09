@@ -116,7 +116,11 @@ class FeedMutation:
         if not user.is_authenticated:
             return False
             
-        post = Post.objects.filter(id=id, author=user).first()
+        if user.role in ['admin', 'superadmin']:
+            post = Post.objects.filter(id=id).first()
+        else:
+            post = Post.objects.filter(id=id, author=user).first()
+            
         if post:
             post_id = str(post.id)
             post.delete()
@@ -288,4 +292,34 @@ class FeedMutation:
             return False
         post.views_count += 1
         post.save(update_fields=['views_count'])
+        return True
+
+    @strawberry.mutation
+    def report_post(self, info: Info, post_id: str, reason: str) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        post = Post.objects.filter(id=post_id).first()
+        if not post:
+            return False
+        
+        post.is_reported = True
+        post.report_reason = reason
+        post.reported_by = user
+        post.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
+        return True
+
+    @strawberry.mutation
+    def dismiss_report(self, info: Info, post_id: str) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized")
+        post = Post.objects.filter(id=post_id).first()
+        if not post:
+            return False
+            
+        post.is_reported = False
+        post.report_reason = None
+        post.reported_by = None
+        post.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
         return True

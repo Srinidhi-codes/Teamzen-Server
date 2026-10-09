@@ -32,3 +32,18 @@ class FeedQuery:
         if not user.is_authenticated:
             return None
         return Post.objects.filter(id=id).first()
+
+    @strawberry.field
+    def reported_posts(
+        self,
+        info: Info,
+        page: int = 1,
+        page_size: int = 10
+    ) -> PaginatedPostResponse:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            return PaginatedPostResponse(results=[], total=0, page=page, page_size=page_size)
+            
+        queryset = Post.objects.filter(is_reported=True).order_by('-updated_at')
+        paginated = get_paginated_results(queryset, page, page_size)
+        return PaginatedPostResponse(**paginated)
