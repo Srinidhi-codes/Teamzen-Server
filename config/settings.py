@@ -617,4 +617,6 @@ GOOGLE_CALENDAR_REDIRECT_URI = os.getenv(
     "http://localhost:8000/api/integrations/google/calendar/callback/",
 )
 FRONTEND_URL = os.getenv("FRONTEND_URL", os.getenv("CLIENT_URL", "http://localhost:3000"))
- 
+
+# Increase max payload size for large GraphQL requests (e.g. face descriptors or files)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50 MB
