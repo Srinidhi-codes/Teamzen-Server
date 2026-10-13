@@ -29,7 +29,7 @@ LOCAL_CONTAINER = "payroll_postgres"
 LOCAL_HOST = "localhost"
 LOCAL_DB = "payroll"
 LOCAL_USER = "postgres"
-LOCAL_PASSWORD = "postgres123"
+LOCAL_PASSWORD = os.getenv("DB_PASSWORD", "123")
 LOCAL_PORT = "5432"
 
 DUMP_FILE = "neon_backup.sql"
@@ -61,13 +61,19 @@ def main():
     print("  Neon → Local Postgres Migration")
     print("=" * 60)
 
-    has_pg_dump = shutil.which("pg_dump") is not None
-    has_psql = shutil.which("psql") is not None
+    import glob
+    def find_bin(n):
+        return shutil.which(n) or (glob.glob(rf"C:\Program Files\PostgreSQL\*\bin\{n}.exe") or [None])[0]
+
+    pg_dump_bin = find_bin("pg_dump")
+    psql_bin = find_bin("psql")
+    has_pg_dump = pg_dump_bin is not None
+    has_psql = psql_bin is not None
     has_docker = shutil.which("docker") is not None
 
     print(f"  Environment detection:")
-    print(f"    - Local pg_dump: {'Available' if has_pg_dump else 'Not found'}")
-    print(f"    - Local psql:    {'Available' if has_psql else 'Not found'}")
+    print(f"    - Local pg_dump: {'Available (' + pg_dump_bin + ')' if has_pg_dump else 'Not found'}")
+    print(f"    - Local psql:    {'Available (' + psql_bin + ')' if has_psql else 'Not found'}")
     print(f"    - Docker:        {'Available' if has_docker else 'Not found'}")
 
     if not has_pg_dump and not has_docker:
@@ -80,7 +86,7 @@ def main():
     if has_pg_dump:
         dump_env = {"PGPASSWORD": NEON_PASSWORD, "PGSSLMODE": "require"}
         dump_cmd = [
-            "pg_dump",
+            pg_dump_bin,
             f"--host={NEON_HOST}",
             f"--port={NEON_PORT}",
             f"--username={NEON_USER}",
@@ -131,7 +137,7 @@ def main():
     if has_psql:
         restore_env = {"PGPASSWORD": LOCAL_PASSWORD}
         restore_cmd = [
-            "psql",
+            psql_bin,
             f"--host={LOCAL_HOST}",
             f"--port={LOCAL_PORT}",
             f"--username={LOCAL_USER}",
@@ -160,7 +166,7 @@ def main():
     if has_psql:
         verify_env = {"PGPASSWORD": LOCAL_PASSWORD}
         verify_cmd = [
-            "psql",
+            psql_bin,
             f"--host={LOCAL_HOST}",
             f"--port={LOCAL_PORT}",
             f"--username={LOCAL_USER}",
