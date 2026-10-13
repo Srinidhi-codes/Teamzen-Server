@@ -1,4 +1,4 @@
-from .base_template import get_base_template
+from .base_template import get_base_template, sanitize_portal_url
 
 
 def get_login_alert_email_html(
@@ -11,11 +11,14 @@ def get_login_alert_email_html(
     device: str = "Unknown",
     organization_name: str = "",
     is_own_login: bool = True,
-    security_url: str = "https://teamzen-admin.vercel.app/settings/security",
+    security_url: str = "",
     logo_url: str = "",
     company_name: str = "Teamzen",
+    company_url: str = "",
 ) -> str:
     """Generate HTML for a login activity security alert."""
+    safe_security_url = sanitize_portal_url(security_url, "settings/security", is_admin=True)
+    safe_company_url = sanitize_portal_url(company_url, is_admin=True)
 
     accent = "#0F766E"  # Teal
     headline = "New sign-in to your account" if is_own_login else "Login activity alert"
@@ -93,7 +96,7 @@ def get_login_alert_email_html(
 
                 <tr>
                     <td bgcolor="#FFFFFF" style="padding: 0 40px 40px 40px; background-color: #FFFFFF; text-align: center;">
-                        <a href="{security_url}" style="display: inline-block; padding: 12px 24px; background-color: {accent}; color: #FFFFFF; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 700;">
+                        <a href="{safe_security_url}" style="display: inline-block; padding: 12px 24px; background-color: {accent}; color: #FFFFFF; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 700;">
                             Review security settings
                         </a>
                         <p style="margin: 20px 0 0 0; font-size: 13px; color: #991B1B; line-height: 1.6;">
@@ -110,4 +113,7 @@ def get_login_alert_email_html(
         accent_light="#CCFBF1",
         logo_url=logo_url,
         footer_text=company_name,
+        company_url=safe_company_url,
+        show_header_title=False,
     )
+

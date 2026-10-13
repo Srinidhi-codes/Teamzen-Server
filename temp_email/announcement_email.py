@@ -1,119 +1,100 @@
-from .base_template import get_base_template, button_html, info_row_html, status_badge_html
+from .base_template import (
+    get_base_template,
+    button_html,
+    status_badge_html,
+    card_table_html,
+    alert_box_html,
+    hero_section_html,
+    sanitize_portal_url,
+)
+
 
 def get_announcement_email_html(
     employee_name: str = "",
     announcement_title: str = "",
     announcement_body: str = "",
     category: str = "General",
-    posted_by: str = "",
+    posted_by: str = "HR Department",
     posted_date: str = "",
-    action_url: str = "https://teamzen-client.vercel.app/notifications",
-    action_text: str = "View Details",
+    action_url: str = "",
+    action_text: str = "View in Workspace",
     priority: str = "normal",  # normal, high, urgent
     logo_url: str = "",
     company_name: str = "Teamzen",
-    company_url: str = "#",
+    company_url: str = "",
     image_url: str = None,
 ) -> str:
-    """Generate the Company Announcement HTML email."""
-
-    # Color based on priority
-    priority_config = {
-        "normal": {"accent": "#4F46E5", "bg": "#EEF2FF", "icon": "", "label": "Announcement"},
-        "high": {"accent": "#EA580C", "bg": "#FFF7ED", "icon": "", "label": "Important"},
-        "urgent": {"accent": "#DC2626", "bg": "#FEF2F2", "icon": "", "label": "Urgent Action Required"},
+    """Generate the Company Announcement HTML email with clean corporate styling."""
+    safe_action_url = sanitize_portal_url(action_url, "notifications")
+    safe_company_url = sanitize_portal_url(company_url)
+    priority_configs = {
+        "normal": {"accent": "#4F46E5", "hero_bg": "#EEF2FF", "badge_color": "#4338CA", "badge_bg": "#E0E7FF", "label": "COMPANY ANNOUNCEMENT"},
+        "high": {"accent": "#EA580C", "hero_bg": "#FFF7ED", "badge_color": "#C2410C", "badge_bg": "#FFEDD5", "label": "IMPORTANT NOTICE"},
+        "urgent": {"accent": "#DC2626", "hero_bg": "#FEF2F2", "badge_color": "#B91C1C", "badge_bg": "#FECACA", "label": "URGENT ANNOUNCEMENT"},
     }
-    
-    config = priority_config.get(priority.lower(), priority_config["normal"])
-    accent = config["accent"]
-    accent_light = config["bg"]
 
-    image_html = f'''
+    cfg = priority_configs.get(str(priority).lower(), priority_configs["normal"])
+    accent = cfg["accent"]
+    hero_bg = cfg["hero_bg"]
+    clean_title = announcement_title or "Company Announcement"
+
+    image_html = ""
+    if image_url:
+        image_html = f"""
         <div style="margin: 20px 0; text-align: center;">
-            <img src="{image_url}" alt="Announcement Image" style="max-width: 100%; border-radius: 8px; border: 1px solid #E2E8F0;" />
+            <img src="{image_url}" alt="Announcement Attachment" style="max-width: 100%; border-radius: 10px; border: 1px solid #E2E8F0;" />
         </div>
-    ''' if image_url else ""
+        """
+
+    rows = [
+        ("Category", category),
+    ]
+    if posted_by:
+        rows.append(("Posted By", posted_by))
+    if posted_date:
+        rows.append(("Date Posted", posted_date))
 
     body = f"""
-                <!-- Hero Section -->
-                <tr>
-                    <td class="hero-section" style="padding: 40px 40px 28px 40px; text-align: center; ">
-                        
-                        <div style="margin-bottom: 12px;">
-                            {status_badge_html(config["label"], accent, accent_light)}
-                        </div>
-                        <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #1E293B; letter-spacing: -0.02em;">{announcement_title or "Company Announcement"}</h1>
-                    </td>
-                </tr>
+        {hero_section_html(
+            headline=clean_title,
+            badge_label=cfg["label"],
+            badge_color=cfg["badge_color"],
+            badge_bg=cfg["badge_bg"],
+            hero_bg=hero_bg,
+        )}
 
-                <!-- Message Area -->
-                <tr>
-                    <td style="padding: 32px 40px 24px 40px;">
-                        <p style="margin: 0; font-size: 16px; color: #334155;">
-                            Hi <strong>{employee_name}</strong>,
-                        </p>
-                        {image_html}
-                        <div style="margin: 16px 0; font-size: 15px; color: #475569; line-height: 1.7; white-space: pre-wrap;">
-                            {announcement_body}
-                        </div>
-                    </td>
-                </tr>
+        <tr>
+            <td class="content-block" bgcolor="#FFFFFF" style="padding: 28px 36px 16px 36px; background-color: #FFFFFF;">
+                <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155; line-height: 1.7;">
+                    Hi <strong style="color: #0F172A;">{employee_name or 'there'}</strong>,
+                </p>
+                {image_html}
+                <div style="margin: 0 0 20px 0; font-size: 15px; color: #334155; line-height: 1.7; white-space: pre-wrap;">
+                    {announcement_body}
+                </div>
+            </td>
+        </tr>
 
-                <!-- Announcement Focus -->
-                <tr>
-                    <td style="padding: 0 40px 24px 40px;">
-                        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 18px 20px;">
-                            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 800; color: {accent}; text-transform: uppercase; letter-spacing: 0.08em;">
-                                Action summary
-                            </p>
-                            <p style="margin: 0; font-size: 14px; color: #475569; line-height: 1.7;">
-                                Category: <strong style="color: #0F172A;">{category}</strong>
-                                {f' · Posted by <strong style="color: #0F172A;">{posted_by}</strong>' if posted_by else ""}
-                                {f' · {posted_date}' if posted_date else ""}
-                            </p>
-                        </div>
-                    </td>
-                </tr>
+        <tr>
+            <td bgcolor="#FFFFFF" style="padding: 0 36px 28px 36px; background-color: #FFFFFF;">
+                {card_table_html(rows, card_title="Announcement Overview")}
+            </td>
+        </tr>
 
-                <!-- Meta Details -->
-                <tr>
-                    <td style="padding: 0 40px 32px 40px;">
-                        <div style="border-top: 1px solid #E2E8F0; padding-top: 16px;">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                <tr>
-                                    <td>
-                                        <p style="margin: 0; font-size: 13px; color: #64748B;">
-                                            <strong>Posted By:</strong> {posted_by}
-                                        </p>
-                                    </td>
-                                    <td style="text-align: right;">
-                                        <p style="margin: 0; font-size: 13px; color: #64748B;">
-                                            {posted_date}
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                    </td>
-                </tr>
-
-                <!-- CTA -->
-                <tr>
-                    <td style="padding: 0 40px 40px 40px; text-align: center;">
-                        {button_html(action_text, action_url, accent)}
-                        <p style="margin: 14px 0 0 0; font-size: 13px; color: #94A3B8;">
-                            Open Teamzen to read the full update and respond if action is required.
-                        </p>
-                    </td>
-                </tr>
+        <tr>
+            <td bgcolor="#FFFFFF" style="padding: 4px 36px 36px 36px; background-color: #FFFFFF; text-align: center;">
+                {button_html(action_text, safe_action_url, accent)}
+            </td>
+        </tr>
     """
 
     return get_base_template(
-        title=announcement_title or "Announcement",
+        title=clean_title,
         body_content=body,
         accent_color=accent,
-        accent_light=accent_light,
+        accent_light=hero_bg,
         logo_url=logo_url,
         footer_text=f"{company_name} HRMS",
-        company_url=company_url
+        company_url=safe_company_url,
+        show_header_title=False,
     )

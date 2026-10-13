@@ -67,6 +67,8 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
 CLIENT_URL = os.getenv('CLIENT_URL', 'http://localhost:3000')
+FRONTEND_URL = os.getenv('FRONTEND_URL', CLIENT_URL)
+FRONTEND_ADMIN_URL = os.getenv('FRONTEND_ADMIN_URL', os.getenv('ADMIN_FRONTEND_URL', 'http://localhost:3001'))
 
 
 # Application definition
