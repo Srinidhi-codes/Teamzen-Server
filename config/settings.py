@@ -45,8 +45,9 @@ def get_redis_url_with_db(url: str, db_index: int) -> str:
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Always load backend/.env (not CWD-dependent)
-load_dotenv(BASE_DIR / ".env", override=True)
+# Load root .env if present, then backend/.env (override=False to preserve container/system environment variables)
+load_dotenv(BASE_DIR.parent / ".env", override=False)
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 # Quick-start development settings - unsuitable for production
@@ -58,7 +59,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key-for-build-purp
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
 # Proxy settings for Docker/Nginx
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -66,6 +67,8 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
 CLIENT_URL = os.getenv('CLIENT_URL', 'http://localhost:3000')
+FRONTEND_URL = os.getenv('FRONTEND_URL', CLIENT_URL)
+FRONTEND_ADMIN_URL = os.getenv('FRONTEND_ADMIN_URL', os.getenv('ADMIN_FRONTEND_URL', 'http://localhost:3001'))
 
 
 # Application definition
@@ -115,11 +118,16 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # Cache middleware — caches anonymous GET responses (huge speedup for public pages)
+    "django.middleware.cache.UpdateCacheMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.cache.FetchFromCacheMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Performance monitoring — logs slow requests & N+1 queries
+    "middleware.performance.PerformanceMiddleware",
 ]
 
 
@@ -244,9 +252,9 @@ if os.getenv("DATABASE_URL"):
             'USER': tmpPostgres.username,
             'PASSWORD': tmpPostgres.password,
             'HOST': tmpPostgres.hostname,
-            'PORT': 5432,
+            'PORT': tmpPostgres.port or 5432,
             'OPTIONS': dict(parse_qsl(tmpPostgres.query)),
-            'CONN_MAX_AGE': int(os.getenv('CONN_MAX_AGE', 0)),
+            'CONN_MAX_AGE': int(os.getenv('CONN_MAX_AGE', 600)),
             'CONN_HEALTH_CHECKS': os.getenv('CONN_HEALTH_CHECKS', 'True') == 'True',
         }
     }
@@ -259,7 +267,7 @@ else:
             "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
             "HOST": os.getenv("DB_HOST", "localhost"),
             "PORT": os.getenv("DB_PORT", "5432"),
-            "CONN_MAX_AGE": int(os.getenv('CONN_MAX_AGE', 0)),
+            "CONN_MAX_AGE": int(os.getenv('CONN_MAX_AGE', 600)),
             "CONN_HEALTH_CHECKS": os.getenv('CONN_HEALTH_CHECKS', 'True') == 'True',
         }
     }
@@ -390,6 +398,10 @@ CLOUDINARY_STORAGE = {
     'RESOURCE_TYPE': 'auto',
     'PRESERVE_EXTENSIONS': True,
 }
+
+# Max payload and file upload size (50MB) to allow document & photo attachments
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
+FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800
 
 # Hosted Teamzen mark for transactional emails (override with EMAIL_LOGO_URL if needed)
 _CLOUDINARY_CLOUD_NAME = CLOUDINARY_STORAGE.get('CLOUD_NAME') or ''
@@ -538,6 +550,45 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ── Performance Monitoring ──────────────────────────────────────────────────
+SLOW_REQUEST_THRESHOLD = float(os.getenv('SLOW_REQUEST_THRESHOLD', '1.0'))  # seconds
+MAX_QUERIES_WARNING = int(os.getenv('MAX_QUERIES_WARNING', '10'))
+
+# Cache middleware settings (for anonymous page caching)
+CACHE_MIDDLEWARE_ALIAS = 'default'
+CACHE_MIDDLEWARE_SECONDS = 60          # Cache anonymous pages for 60 seconds
+CACHE_MIDDLEWARE_KEY_PREFIX = 'teamzen'
+
+# ── Logging — Slow query detection & structured request logging ─────────────
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'teamzen.performance': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',     # Set to DEBUG to see all SQL queries
+            'propagate': False,
+        },
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Telegram Bot Gateway (Sequence 1 — Conversational HR)
 # ---------------------------------------------------------------------------
@@ -570,4 +621,6 @@ GOOGLE_CALENDAR_REDIRECT_URI = os.getenv(
     "http://localhost:8000/api/integrations/google/calendar/callback/",
 )
 FRONTEND_URL = os.getenv("FRONTEND_URL", os.getenv("CLIENT_URL", "http://localhost:3000"))
- 
+
+# Increase max payload size for large GraphQL requests (e.g. face descriptors or files)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50 MB

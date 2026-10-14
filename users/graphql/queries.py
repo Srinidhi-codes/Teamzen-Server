@@ -78,6 +78,21 @@ class UserQuery:
         ).get(pk=user.pk)
 
     # -------------------------
+    # PUBLIC USER PROFILE
+    # -------------------------
+    @strawberry.field
+    def public_profile(self, info: Info, id: strawberry.ID) -> Optional[UserType]:
+        try:
+            return CustomUser.objects.select_related(
+                "organization",
+                "designation",
+                "department",
+                "office_location",
+            ).get(pk=id, is_active=True)
+        except CustomUser.DoesNotExist:
+            return None
+
+    # -------------------------
     # ALL USERS (FILTER + SORT + PAGINATION)
     # -------------------------
     @strawberry.field
@@ -199,7 +214,8 @@ class UserQuery:
         # Employees can only see themselves.
         
         target_user = CustomUser.objects.select_related(
-            "manager", "designation", "department", "organization"
+            "manager", "manager__designation", "manager__department", "manager__organization",
+            "designation", "department", "organization"
         ).get(pk=target_id)
         
         if str(target_id) != str(current_user.pk):
@@ -210,18 +226,14 @@ class UserQuery:
                  raise Exception("Unauthorized to view other organization")
             
             if current_user.role == "manager":
-                # Check if target_user is in reporting line of current_user
-                # Simple check for now: is target_user a subordinate of current_user (at any level)
-                # For brevity, we'll allow managers to see anyone for now if they are managers, 
-                # but ideally we check reporting line.
                 pass
             
         manager = target_user.manager
-        subordinates = list(target_user.subordinates.all().select_related("designation", "department"))
+        subordinates = list(target_user.subordinates.all().select_related("designation", "department", "organization"))
         
         peers = []
         if manager:
-            peers = list(CustomUser.objects.filter(manager=manager).exclude(pk=target_user.pk).select_related("designation", "department"))
+            peers = list(CustomUser.objects.filter(manager=manager).exclude(pk=target_user.pk).select_related("designation", "department", "organization"))
             
         return TeamHierarchyResponse(
             manager=manager,

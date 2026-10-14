@@ -16,10 +16,16 @@ class PostType:
     views_count: auto
     created_at: auto
     updated_at: auto
+    is_reported: auto
+    report_reason: auto
     
     @strawberry.field
     def author(self) -> UserType:
         return self.author
+
+    @strawberry.field
+    def reported_by(self) -> Optional[UserType]:
+        return self.reported_by
 
     @strawberry.field
     def has_liked(self, info) -> bool:

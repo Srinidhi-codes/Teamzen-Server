@@ -201,7 +201,9 @@ class AttendanceQuery:
             record = records.get(member.pk)
             if member.pk in on_leave_ids or (record and record.status == "leave"):
                 status = "leave"
-            elif record and (record.login_time or record.status in PRESENT_STATUSES):
+            elif record and record.status:
+                status = record.status
+            elif record and record.login_time:
                 status = "present"
             else:
                 status = "absent"
@@ -216,7 +218,7 @@ class AttendanceQuery:
                 )
             )
 
-        order = {"present": 0, "leave": 1, "absent": 2}
+        order = {"present": 0, "late_login": 1, "early_logout": 2, "half_day": 3, "leave": 4, "absent": 5}
         results.sort(key=lambda item: (order.get(item.status, 9), item.user.first_name or ""))
         return results
 

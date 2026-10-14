@@ -132,7 +132,8 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 end_date = req.to_date.strftime('%b %d, %Y')
                 duration_str = str(req.duration_days).rstrip('0').rstrip('.') if '.' in str(req.duration_days) else str(req.duration_days)
                 leave_type = req.leave_type.name
-                dashboard_url = "https://teamzen-client.vercel.app/leaves" if recipient.role == 'employee' else "https://teamzen-admin.vercel.app/leaves"
+                from temp_email.base_template import resolve_portal_url
+                dashboard_url = resolve_portal_url("leaves") if recipient.role == 'employee' else resolve_portal_url("leaves", is_admin=True)
                 
                 actor_name = ""
                 if actor_id:
@@ -240,10 +241,8 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             if recipient.date_of_joining:
                 joining_date = recipient.date_of_joining.strftime("%b %d, %Y")
 
-            login_base = getattr(settings, "FRONTEND_URL", None) or getattr(
-                settings, "CLIENT_URL", "https://teamzen-client.vercel.app"
-            )
-            login_url = f"{login_base.rstrip('/')}/login"
+            from temp_email.base_template import resolve_portal_url
+            login_url = resolve_portal_url("login")
 
             html_content = get_welcome_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}".strip(),
@@ -263,6 +262,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
 
         elif target_type == "PreboardingInvite":
             from temp_email.onboarding_email import get_preboarding_invite_email_html
+            from temp_email.base_template import resolve_portal_url
 
             join_date = ""
             if recipient.date_of_joining:
@@ -280,7 +280,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                     else "Teamzen"
                 ),
                 join_date=join_date,
-                invite_url=extra_context.get("invite_url", "#"),
+                invite_url=extra_context.get("invite_url") or resolve_portal_url("preboarding"),
                 designation=designation,
                 has_offer_attachment=bool(offer_pdf_url_ctx),
                 offer_pdf_url=offer_pdf_url_ctx,
@@ -288,15 +288,15 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
 
         elif target_type == "EmployeeDocument":
             from temp_email.onboarding_email import get_document_rejected_email_html
-            from django.conf import settings as dj_settings
+            from temp_email.base_template import resolve_portal_url
 
-            portal = getattr(dj_settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+            portal = resolve_portal_url()
             html_content = get_document_rejected_email_html(
                 employee_name=f"{recipient.first_name} {recipient.last_name}".strip()
                 or recipient.email,
                 category=extra_context.get("category", "document"),
                 reason=extra_context.get("rejection_reason", ""),
-                action_url=f"{portal}/onboarding",
+                action_url=extra_context.get("action_url") or f"{portal}/onboarding",
                 company_name=(
                     recipient.organization.name
                     if recipient.organization_id and recipient.organization
@@ -306,26 +306,32 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             
         elif target_type == "Password Reset":
             from temp_email.password_reset_email import get_password_reset_email_html
+            from temp_email.base_template import resolve_portal_url
+            reset_url = (
+                resolve_portal_url(f"reset-password?token={target_id}")
+                if target_id
+                else resolve_portal_url("reset-password")
+            )
             html_content = get_password_reset_email_html(
-                employee_name=f"{recipient.first_name} {recipient.last_name}",
-                reset_url=f"https://teamzen-client.vercel.app/reset-password?token={target_id}" if target_id else "#",
+                employee_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                reset_url=reset_url,
             )
             
         elif target_type == "Payroll":
             from temp_email.payroll_email import get_payroll_email_html
+            from temp_email.base_template import resolve_portal_url
             html_content = get_payroll_email_html(
-                employee_name=f"{recipient.first_name} {recipient.last_name}",
+                employee_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
                 month=target_id if target_id else "Current Month",
                 net_salary="Confidential", 
-                payslip_url="https://teamzen-client.vercel.app/payslips",
+                payslip_url=resolve_portal_url("payslips"),
             )
 
         elif target_type == "Login Alert":
             from temp_email.login_alert_email import get_login_alert_email_html
+            from temp_email.base_template import resolve_portal_url
             subject = "Security alert: Login activity"
-            security_base = getattr(settings, "ADMIN_URL", None) or getattr(
-                settings, "FRONTEND_ADMIN_URL", "https://teamzen-admin.vercel.app"
-            )
+            security_url = resolve_portal_url("settings/security", is_admin=True)
             html_content = get_login_alert_email_html(
                 recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
                 actor_name=extra_context.get("actor_name", "Unknown user"),
@@ -336,7 +342,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 device=extra_context.get("device", "Unknown"),
                 organization_name=extra_context.get("organization_name", ""),
                 is_own_login=bool(extra_context.get("is_own_login", True)),
-                security_url=f"{str(security_base).rstrip('/')}/settings/security",
+                security_url=security_url,
                 company_name=(
                     recipient.organization.name
                     if recipient.organization_id and recipient.organization
@@ -344,7 +350,134 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 ),
             )
 
-        # 2. Build and send the email
+        elif target_type in ["Onboarding", "OnboardingTaskInstance"] or ("onboarding" in str(subject).lower()) or ("onboarding" in str(target_type or "").lower()):
+            from temp_email.onboarding_email import get_onboarding_task_reminder_email_html
+            import re
+            
+            task_title = extra_context.get("task_title", "")
+            hire_name = extra_context.get("hire_name", "")
+            days_overdue = int(extra_context.get("days_overdue", 0))
+            
+            if not task_title and message:
+                match = re.search(r'"([^"]+)"\s+(?:for\s+([^,]+?)\s+)?is\s+(\d+)\s+day\(s\)\s+overdue', message)
+                if match:
+                    task_title = match.group(1)
+                    hire_name = match.group(2) or hire_name
+                    days_overdue = int(match.group(3))
+                else:
+                    match_assigned = re.search(r"assigned a task:\s*'([^']+)'(?:\s+for\s+([^']+))?", message)
+                    if match_assigned:
+                        task_title = match_assigned.group(1)
+                        hire_name = match_assigned.group(2) or hire_name
+
+            from temp_email.base_template import resolve_portal_url
+            portal = resolve_portal_url()
+            html_content = get_onboarding_task_reminder_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                task_title=task_title or "Onboarding Task",
+                hire_name=hire_name,
+                days_overdue=days_overdue,
+                message=message,
+                is_overdue=days_overdue > 0 or "overdue" in str(subject).lower(),
+                action_url=extra_context.get("action_url") or f"{portal}/onboarding",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
+
+        elif target_type in ["Attendance", "Attendance Correction", "AttendanceCorrection"] or ("attendance" in str(subject).lower()) or ("checkout" in str(subject).lower()) or ("clock" in str(subject).lower()):
+            from temp_email.attendance_alert_email import get_attendance_alert_email_html
+            from temp_email.base_template import resolve_portal_url
+            import re
+            
+            recorded_att = extra_context.get("recorded_attendance", "")
+            if not recorded_att and message:
+                att_match = re.search(r'(\d+/\d+)\s*days', message)
+                if att_match:
+                    recorded_att = f"{att_match.group(1)} days"
+            
+            portal = resolve_portal_url()
+            html_content = get_attendance_alert_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                alert_title=subject or "Attendance Notice",
+                message=message,
+                period=extra_context.get("period", "Last Week"),
+                recorded_attendance=recorded_att,
+                required_threshold=extra_context.get("required_threshold", "80% (4/5 days)"),
+                action_url=extra_context.get("action_url") or f"{portal}/attendance",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
+
+        elif target_type in ["Document", "EmployeeDocument"] or ("document" in str(subject).lower()):
+            from temp_email.document_email import get_document_notification_email_html
+            from temp_email.base_template import resolve_portal_url
+            portal = resolve_portal_url()
+            html_content = get_document_notification_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                title=subject or "Document Notification",
+                message=message,
+                document_name=extra_context.get("document_name", ""),
+                document_category=extra_context.get("category", ""),
+                status=extra_context.get("status", "Action Required"),
+                action_url=extra_context.get("action_url") or f"{portal}/documents",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
+
+        elif target_type == "Offboarding" or ("offboarding" in str(subject).lower()):
+            from temp_email.offboarding_email import get_offboarding_email_html
+            from temp_email.base_template import resolve_portal_url
+            portal = resolve_portal_url()
+            html_content = get_offboarding_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                title=subject or "Offboarding Update",
+                message=message,
+                employee_name=extra_context.get("employee_name", ""),
+                last_working_day=extra_context.get("last_working_day", ""),
+                clearance_status=extra_context.get("clearance_status", "In Progress"),
+                action_url=extra_context.get("action_url") or f"{portal}/offboarding",
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+            )
+
+        # 1.1 Universal Fallback: Guarantee rich HTML email for ANY notification in the system
+        if not html_content:
+            from temp_email.general_notification_email import get_general_notification_email_html
+            from temp_email.base_template import resolve_portal_url
+            clean_title = (subject or "HRMS Notification").strip()
+            if clean_title.lower().startswith("notification:"):
+                clean_title = clean_title[13:].strip()
+
+            portal = resolve_portal_url()
+            html_content = get_general_notification_email_html(
+                recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                title=clean_title,
+                message=message,
+                category=str(target_type or "Notification"),
+                details=extra_context.get("details"),
+                action_url=extra_context.get("action_url") or portal,
+                action_text=extra_context.get("action_text") or "Open Workspace",
+                priority=extra_context.get("priority", "normal"),
+                company_name=(
+                    recipient.organization.name
+                    if recipient.organization_id and recipient.organization
+                    else "Teamzen"
+                ),
+                company_url=portal,
+            )
+
         email = EmailMultiAlternatives(
             subject=subject,
             body=message, # Plain text fallback

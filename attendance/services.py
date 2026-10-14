@@ -1,5 +1,8 @@
 from math import radians, sin, cos, sqrt, atan2
 from datetime import date, datetime, time as time_type
+import base64
+import re
+from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
 from graphql import GraphQLError
 
@@ -12,6 +15,23 @@ from attendance.face_constants import (
 from organizations.models import OfficeLocation
 from organizations.workweek import is_org_weekend
 from leaves.models import CompanyHoliday
+
+
+def save_selfie_base64_to_field(image_field, base64_str: str | None, filename: str):
+    if not base64_str or not isinstance(base64_str, str) or len(base64_str) < 50:
+        return
+    match = re.match(r"^data:image/(png|jpeg|jpg|webp);base64,(.+)$", base64_str, re.I | re.S)
+    if match:
+        ext = "jpg" if match.group(1).lower() in ("jpeg", "jpg") else match.group(1).lower()
+        b64_data = match.group(2)
+    else:
+        ext = "jpg"
+        b64_data = base64_str
+    try:
+        img_bytes = base64.b64decode(b64_data)
+        image_field.save(f"{filename}.{ext}", ContentFile(img_bytes), save=False)
+    except Exception:
+        pass
 
 
 def calculate_distance(lat1, lon1, lat2, lon2):
@@ -176,6 +196,7 @@ def check_in_user(
     face_verified: bool | None = None,
     face_match_score: float | None = None,
     face_descriptor: list[float] | None = None,
+    selfie_base64: str | None = None,
 ):
     office = get_object_or_404(OfficeLocation, id=office_id)
 
@@ -220,8 +241,38 @@ def check_in_user(
         attendance.face_verified = True
         attendance.face_match_score = server_face_score
 
+    if selfie_base64:
+        save_selfie_base64_to_field(
+            attendance.check_in_selfie,
+            selfie_base64,
+            f"selfie_{attendance.id}_check_in",
+        )
+
     # Evaluate shift window & weekend/holiday constraints
     evaluate_shift_and_calendar_window(attendance, office, user, attendance.login_time)
+    attendance.save()
+
+    # Automatically record initial check-in breadcrumb / heartbeat
+    AttendanceHeartbeat.objects.create(
+        attendance_record=attendance,
+        latitude=latitude,
+        longitude=longitude,
+        distance_meters=int(distance),
+        is_within_geofence=is_within,
+    )
+    all_hb = list(attendance.heartbeats.all().order_by("timestamp"))
+    total_count = len(all_hb)
+    valid_count = sum(1 for hb in all_hb if hb.is_within_geofence)
+    out_of_fence_count = total_count - valid_count
+
+    attendance.total_heartbeats = total_count
+    attendance.valid_heartbeats = valid_count
+    attendance.out_of_fence_heartbeats = out_of_fence_count
+    if not is_within:
+        attendance.roaming_anomaly_detected = True
+        attendance.roaming_notes = (
+            f"Checked in {int(distance)}m outside office geofence ({round(distance / 1000, 2)}km away)"
+        )
     attendance.save()
 
     return attendance, distance
@@ -236,6 +287,7 @@ def check_out_user(
     face_verified: bool | None = None,
     face_match_score: float | None = None,
     face_descriptor: list[float] | None = None,
+    selfie_base64: str | None = None,
 ):
     attendance = get_object_or_404(
         AttendanceRecord,
@@ -250,6 +302,7 @@ def check_out_user(
     distance = calculate_distance(
         latitude, longitude, office.latitude, office.longitude
     )
+    is_out_within = distance <= office.geo_radius_meters
     face_mode = org_requires_face(user)
     server_face_score = None
 
@@ -268,14 +321,40 @@ def check_out_user(
     attendance.logout_longitude = longitude
     attendance.logout_distance = int(distance)
 
-    if distance > office.geo_radius_meters:
+    if not is_out_within:
         attendance.is_within_geofence = False
 
     if face_mode:
         attendance.face_verified = True
         attendance.face_match_score = server_face_score
 
+    if selfie_base64:
+        save_selfie_base64_to_field(
+            attendance.check_out_selfie,
+            selfie_base64,
+            f"selfie_{attendance.id}_check_out",
+        )
+
     attendance.save()
+
+    # Automatically record check-out breadcrumb / heartbeat
+    AttendanceHeartbeat.objects.create(
+        attendance_record=attendance,
+        latitude=latitude,
+        longitude=longitude,
+        distance_meters=int(distance),
+        is_within_geofence=is_out_within,
+    )
+    all_hb = list(attendance.heartbeats.all().order_by("timestamp"))
+    total_count = len(all_hb)
+    valid_count = sum(1 for hb in all_hb if hb.is_within_geofence)
+    out_of_fence_count = total_count - valid_count
+
+    attendance.total_heartbeats = total_count
+    attendance.valid_heartbeats = valid_count
+    attendance.out_of_fence_heartbeats = out_of_fence_count
+    attendance.save()
+
     return attendance, distance
 
 

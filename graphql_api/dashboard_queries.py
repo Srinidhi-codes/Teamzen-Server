@@ -585,7 +585,7 @@ class DashboardQuery:
                 status = "weekend"
             rec_status = week_records.get(d)
             if rec_status in attendance_statuses:
-                status = "present"
+                status = rec_status
             elif rec_status == "leave":
                 status = "leave"
             elif d in holiday_dates:
@@ -594,7 +594,7 @@ class DashboardQuery:
                 status = "not_started"
             if status in ("absent", "not_started", "leave") and d in pending_corr_dates:
                 status = "pending"
-            if status not in ("present", "pending") and d in leave_days:
+            if status not in attendance_statuses and status != "pending" and d in leave_days:
                 status = "leave"
             last_7_days.append(DayStatus(date=str(d.day), day_str=d.strftime("%a"), status=status))
 

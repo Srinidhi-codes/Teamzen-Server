@@ -267,7 +267,7 @@ class RequestOTPView(APIView):
             # Send via Brevo email
             try:
                 email_msg = EmailMultiAlternatives(
-                    subject="Your Single Sign-On OTP 🔑",
+                    subject="Your Single Sign-On Verification Code",
                     body=f"Hi {employee_name},\n\nYour security code is {otp}. It is valid for 5 minutes.",
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     to=[user.email],

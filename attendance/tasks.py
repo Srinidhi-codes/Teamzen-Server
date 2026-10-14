@@ -67,13 +67,12 @@ def square_off_incomplete_checkouts():
 
         suggested = _suggested_logout_time(record.user)
 
-        # 1. Auto square-off: set logout to 23:59 so worked_hours aren't null
+        # 1. Auto square-off: set logout to 23:59 so worked_hours and status are finalized
         record.logout_time = eod
-        record.recalculate_worked_hours()
         record.remarks = (
             f"{record.remarks}\n[Auto square-off at 23:59 — checkout not recorded.]"
         ).strip()
-        record.save(update_fields=['logout_time', 'worked_hours', 'remarks'])
+        record.save()
 
         # 2. Create a pending AttendanceCorrection with AI/system suggested logout
         AttendanceCorrection.objects.create(
