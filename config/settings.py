@@ -399,6 +399,10 @@ CLOUDINARY_STORAGE = {
     'PRESERVE_EXTENSIONS': True,
 }
 
+# Max payload and file upload size (50MB) to allow document & photo attachments
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
+FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800
+
 # Hosted Teamzen mark for transactional emails (override with EMAIL_LOGO_URL if needed)
 _CLOUDINARY_CLOUD_NAME = CLOUDINARY_STORAGE.get('CLOUD_NAME') or ''
 EMAIL_LOGO_URL = os.getenv(

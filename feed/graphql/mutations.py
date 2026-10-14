@@ -75,30 +75,46 @@ class FeedMutation:
             import cloudinary.uploader
             
             for raw_b64 in media_b64:
-                match = re.match(r"^data:image/(png|jpeg|jpg|webp|gif);base64,(.+)$", raw_b64, re.I | re.S)
+                match = re.match(r"^data:([^;]+);base64,(.+)$", raw_b64, re.I | re.S)
                 if match:
-                    ext = "jpg" if match.group(1).lower() in ("jpeg", "jpg") else match.group(1).lower()
+                    mime = match.group(1).lower()
                     raw_data = match.group(2)
                 else:
-                    ext = "jpg"
+                    mime = "image/jpeg"
                     raw_data = raw_b64
                     
                 try:
                     data = base64.b64decode(raw_data)
-                    public_id = f"post_{user.id}_{uuid.uuid4().hex[:8]}"
-                    upload_result = cloudinary.uploader.upload(
-                        data,
-                        public_id=public_id,
-                        folder="media/feed_posts",
-                        resource_type="image",
-                        overwrite=True,
-                        format=ext,
-                    )
+                    uid = uuid.uuid4().hex[:8]
+                    if "pdf" in mime:
+                        public_id = f"post_{user.id}_{uid}.pdf"
+                        upload_result = cloudinary.uploader.upload(
+                            data,
+                            public_id=public_id,
+                            folder="media/feed_posts",
+                            resource_type="raw",
+                            overwrite=True,
+                        )
+                    else:
+                        ext = mime.split("/")[-1].lower() if "/" in mime else "jpg"
+                        if ext in ("jpeg", "jpg"):
+                            ext = "jpg"
+                        public_id = f"post_{user.id}_{uid}"
+                        upload_result = cloudinary.uploader.upload(
+                            data,
+                            public_id=public_id,
+                            folder="media/feed_posts",
+                            resource_type="image",
+                            overwrite=True,
+                            format=ext,
+                        )
                     if upload_result.get("secure_url"):
                         media_urls.append(upload_result.get("secure_url"))
+                    elif upload_result.get("url"):
+                        media_urls.append(upload_result.get("url"))
                 except Exception as e:
                     import logging
-                    logging.getLogger(__name__).error(f"Cloudinary post upload failed: {e}")
+                    logging.getLogger(__name__).error(f"Cloudinary post upload failed: {e}", exc_info=True)
             
         post = Post.objects.create(
             author=user,
@@ -129,7 +145,14 @@ class FeedMutation:
         return False
 
     @strawberry.mutation
-    def update_post(self, info: Info, id: str, content: str, title: Optional[str] = None) -> PostType:
+    def update_post(
+        self,
+        info: Info,
+        id: str,
+        content: str,
+        title: Optional[str] = None,
+        media_urls: Optional[List[str]] = None
+    ) -> PostType:
         user = info.context.request.user
         if not user.is_authenticated:
             raise Exception("Authentication required")
@@ -138,10 +161,15 @@ class FeedMutation:
         if not post:
             raise Exception("Post not found or unauthorized")
             
+        update_fields = ['content', 'updated_at']
         if title is not None:
             post.title = title
-        post.content = content
-        post.save(update_fields=['title', 'content', 'updated_at'])
+            update_fields.append('title')
+        if media_urls is not None:
+            post.media_urls = media_urls
+            update_fields.append('media_urls')
+            
+        post.save(update_fields=update_fields)
         broadcast_feed_update("update_post", str(post.id))
         notify_mentions(content, user, "post", str(post.id))
         return post
