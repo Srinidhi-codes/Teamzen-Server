@@ -94,7 +94,7 @@ def _onboarding_actions(user) -> List[dict]:
     return actions
 
 
-def _attendance_actions(user) -> List[dict]:
+def _attendance_actions(user, precomputed: Optional[dict] = None) -> List[dict]:
     from organizations.workweek import is_org_weekend
 
     today = date.today()
@@ -156,11 +156,15 @@ def _attendance_actions(user) -> List[dict]:
             )
         )
 
-    total_recs = AttendanceRecord.objects.filter(user=user).count()
-    present_recs = AttendanceRecord.objects.filter(
-        user=user,
-        status__in=["present", "late_login", "early_logout", "half_day"],
-    ).count()
+    if precomputed and "total_records" in precomputed and "present_records" in precomputed:
+        total_recs = precomputed["total_records"]
+        present_recs = precomputed["present_records"]
+    else:
+        total_recs = AttendanceRecord.objects.filter(user=user).count()
+        present_recs = AttendanceRecord.objects.filter(
+            user=user,
+            status__in=["present", "late_login", "early_logout", "half_day"],
+        ).count()
     rate = (present_recs / total_recs * 100) if total_recs > 0 else 0
     if total_recs >= 5 and rate < 85:
         actions.append(
@@ -190,12 +194,15 @@ def _attendance_actions(user) -> List[dict]:
     return actions
 
 
-def _leave_actions(user) -> List[dict]:
+def _leave_actions(user, precomputed: Optional[dict] = None) -> List[dict]:
     today = date.today()
     actions = []
-    balances = LeaveBalance.objects.filter(user=user, year=today.year).select_related(
-        "leave_type"
-    )
+    if precomputed and "raw_balances" in precomputed:
+        balances = precomputed["raw_balances"]
+    else:
+        balances = LeaveBalance.objects.filter(user=user, year=today.year).select_related(
+            "leave_type"
+        )
     for bal in balances:
         available = float(bal.get_available_balance())
         if available > 8 and today.month >= 11:
@@ -212,7 +219,10 @@ def _leave_actions(user) -> List[dict]:
             )
             break
 
-    pending = LeaveRequest.objects.filter(user=user, _status="pending").count()
+    if precomputed and "pending_count" in precomputed:
+        pending = precomputed["pending_count"]
+    else:
+        pending = LeaveRequest.objects.filter(user=user, _status="pending").count()
     if pending:
         actions.append(
             _insight(
@@ -285,12 +295,12 @@ def _leave_actions(user) -> List[dict]:
     return actions
 
 
-def generate_user_insights(user) -> List[dict]:
+def generate_user_insights(user, precomputed: Optional[dict] = None) -> List[dict]:
     """Ranked next-best-actions for the employee dashboard (top items first)."""
     bundled: List[dict] = []
     bundled.extend(_onboarding_actions(user))
-    bundled.extend(_attendance_actions(user))
-    bundled.extend(_leave_actions(user))
+    bundled.extend(_attendance_actions(user, precomputed=precomputed))
+    bundled.extend(_leave_actions(user, precomputed=precomputed))
 
     # Deduplicate by title, keep highest priority (lowest number)
     by_title: dict[str, dict] = {}

@@ -19,7 +19,18 @@ class FeedQuery:
         if not user.is_authenticated:
             return PaginatedPostResponse(results=[], total=0, page=page, page_size=page_size)
             
+        from django.utils import timezone
+        from django.db.models import Q
+
+        now = timezone.now()
         queryset = Post.objects.all().order_by('-created_at')
+
+        # Normal users see only published posts + their own scheduled posts
+        if user.role not in ['admin', 'superadmin']:
+            queryset = queryset.filter(
+                Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=now) | Q(author=user)
+            )
+
         if author_id:
             queryset = queryset.filter(author_id=author_id)
             

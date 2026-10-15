@@ -61,7 +61,8 @@ class FeedMutation:
         info: Info,
         content: str,
         title: str = "",
-        media_b64: Optional[List[str]] = None
+        media_b64: Optional[List[str]] = None,
+        scheduled_for: Optional[str] = None
     ) -> PostType:
         user = info.context.request.user
         if not user.is_authenticated:
@@ -116,14 +117,26 @@ class FeedMutation:
                     import logging
                     logging.getLogger(__name__).error(f"Cloudinary post upload failed: {e}", exc_info=True)
             
+        parsed_scheduled_for = None
+        if scheduled_for:
+            import datetime
+            try:
+                parsed_scheduled_for = datetime.datetime.fromisoformat(scheduled_for.replace('Z', '+00:00'))
+            except Exception as e:
+                print(f"Error parsing scheduled_for timestamp: {e}")
+
         post = Post.objects.create(
             author=user,
             title=title,
             content=content,
-            media_urls=media_urls
+            media_urls=media_urls,
+            scheduled_for=parsed_scheduled_for
         )
-        broadcast_feed_update("create_post", str(post.id))
-        notify_mentions(content, user, "post", str(post.id))
+        from django.utils import timezone
+        is_future_scheduled = bool(parsed_scheduled_for and parsed_scheduled_for > timezone.now())
+        if not is_future_scheduled:
+            broadcast_feed_update("create_post", str(post.id))
+            notify_mentions(content, user, "post", str(post.id))
         return post
 
     @strawberry.mutation
@@ -263,7 +276,11 @@ class FeedMutation:
         if not user.is_authenticated:
             return False
             
-        comment = Comment.objects.filter(id=id, author=user).first()
+        if user.role in ['admin', 'superadmin']:
+            comment = Comment.objects.filter(id=id).first()
+        else:
+            comment = Comment.objects.filter(id=id, author=user).first()
+            
         if comment:
             post = comment.post
             post_id = str(post.id)
@@ -351,3 +368,34 @@ class FeedMutation:
         post.reported_by = None
         post.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
         return True
+
+    @strawberry.mutation
+    def report_comment(self, info: Info, comment_id: str, reason: str) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        comment = Comment.objects.filter(id=comment_id).first()
+        if not comment:
+            return False
+        
+        comment.is_reported = True
+        comment.report_reason = reason
+        comment.reported_by = user
+        comment.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
+        return True
+
+    @strawberry.mutation
+    def dismiss_comment_report(self, info: Info, comment_id: str) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized")
+        comment = Comment.objects.filter(id=comment_id).first()
+        if not comment:
+            return False
+            
+        comment.is_reported = False
+        comment.report_reason = None
+        comment.reported_by = None
+        comment.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
+        return True
+

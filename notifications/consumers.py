@@ -1,5 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
 
 class NotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -40,6 +41,51 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                 )
             except Exception:
                 pass
+
+    # Handle incoming messages from WebSocket clients
+    async def receive(self, text_data=None, bytes_data=None):
+        if not text_data:
+            return
+        try:
+            data = json.loads(text_data)
+            action = data.get("action") or data.get("type")
+            if action == "view_post":
+                post_id = data.get("post_id") or data.get("target_id")
+                if post_id:
+                    new_views = await self.increment_post_view(str(post_id))
+                    if new_views is not None and hasattr(self, 'channel_layer') and self.channel_layer:
+                        try:
+                            await self.channel_layer.group_send(
+                                "global_feed",
+                                {
+                                    "type": "send_notification",
+                                    "message": {
+                                        "level": "feed_update",
+                                        "action": "post_viewed",
+                                        "target_id": str(post_id),
+                                        "views_count": new_views
+                                    }
+                                }
+                            )
+                        except Exception:
+                            pass
+        except Exception as e:
+            print(f"[notifications] receive error: {e}")
+
+    @database_sync_to_async
+    def increment_post_view(self, post_id: str):
+        from feed.models import Post
+        from django.db.models import F
+        try:
+            post = Post.objects.filter(id=post_id).first()
+            if post:
+                post.views_count = F('views_count') + 1
+                post.save(update_fields=['views_count'])
+                post.refresh_from_db(fields=['views_count'])
+                return post.views_count
+        except Exception as e:
+            print(f"[notifications] increment_post_view error: {e}")
+        return None
 
     # Receive message from group
     async def send_notification(self, event):

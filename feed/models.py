@@ -11,6 +11,7 @@ class Post(models.Model):
     likes_count = models.PositiveIntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)
     views_count = models.PositiveIntegerField(default=0)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
     is_reported = models.BooleanField(default=False)
     report_reason = models.TextField(blank=True, null=True)
     reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reported_posts')
@@ -41,6 +42,9 @@ class Comment(models.Model):
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     content = models.TextField()
     likes_count = models.PositiveIntegerField(default=0)
+    is_reported = models.BooleanField(default=False)
+    report_reason = models.TextField(blank=True, null=True)
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reported_comments')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
