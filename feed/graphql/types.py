@@ -14,10 +14,16 @@ class PostType:
     likes_count: auto
     comments_count: auto
     views_count: auto
+    scheduled_for: auto
     created_at: auto
     updated_at: auto
     is_reported: auto
     report_reason: auto
+
+    @strawberry.field
+    def is_scheduled(self) -> bool:
+        from django.utils import timezone
+        return bool(self.scheduled_for and self.scheduled_for > timezone.now())
     
     @strawberry.field
     def author(self) -> UserType:
@@ -52,9 +58,15 @@ class CommentType:
     id: auto
     content: auto
     likes_count: auto
+    is_reported: auto
+    report_reason: auto
     created_at: auto
     updated_at: auto
     
+    @strawberry.field
+    def reported_by(self) -> Optional[UserType]:
+        return self.reported_by
+
     @strawberry.field
     def author(self) -> UserType:
         return self.author

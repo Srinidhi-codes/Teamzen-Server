@@ -28,6 +28,7 @@ class PerformanceMiddleware:
     # Thresholds (can be overridden via settings)
     SLOW_REQUEST_THRESHOLD = getattr(settings, "SLOW_REQUEST_THRESHOLD", 1.0)  # seconds
     MAX_QUERIES_WARNING = getattr(settings, "MAX_QUERIES_WARNING", 10)
+    GRAPHQL_MAX_QUERIES_WARNING = getattr(settings, "GRAPHQL_MAX_QUERIES_WARNING", 40)
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -62,14 +63,19 @@ class PerformanceMiddleware:
         # Log query count warnings (only when DEBUG is on)
         if settings.DEBUG:
             query_count = len(connection.queries)
-            if query_count > self.MAX_QUERIES_WARNING:
+            threshold = (
+                self.GRAPHQL_MAX_QUERIES_WARNING
+                if path.startswith("/graphql")
+                else self.MAX_QUERIES_WARNING
+            )
+            if query_count > threshold:
                 logger.warning(
                     "N+1 QUERY ALERT: %s %s executed %d queries (threshold: %d). "
                     "Consider using select_related/prefetch_related.",
                     method,
                     path,
                     query_count,
-                    self.MAX_QUERIES_WARNING,
+                    threshold,
                 )
             # Log all request timings in debug
             if duration > 0.5:
