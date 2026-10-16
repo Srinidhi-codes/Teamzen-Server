@@ -433,7 +433,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 ),
             )
 
-        elif target_type == "Offboarding" or ("offboarding" in str(subject).lower()):
+        elif target_type in ["Offboarding", "EmployeeOffboarding"] or ("offboarding" in str(subject).lower()) or ("exit" in str(subject).lower()):
             from temp_email.offboarding_email import get_offboarding_email_html
             from temp_email.base_template import resolve_portal_url
             portal = resolve_portal_url()
@@ -444,7 +444,7 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
                 employee_name=extra_context.get("employee_name", ""),
                 last_working_day=extra_context.get("last_working_day", ""),
                 clearance_status=extra_context.get("clearance_status", "In Progress"),
-                action_url=extra_context.get("action_url") or f"{portal}/offboarding",
+                action_url=extra_context.get("action_url") or extra_context.get("exit_url") or f"{portal}/offboarding",
                 company_name=(
                     recipient.organization.name
                     if recipient.organization_id and recipient.organization

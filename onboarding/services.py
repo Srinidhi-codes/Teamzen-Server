@@ -675,8 +675,9 @@ def get_invite_by_token(raw_token: str) -> Optional[PreboardingInvite]:
     return invite
 
 
-def preboarding_portal_url(raw_token: str) -> str:
-    base = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+def preboarding_portal_url(raw_token: str, request=None) -> str:
+    from temp_email.base_template import resolve_portal_url
+    base = resolve_portal_url(is_admin=False, request=request)
     return f"{base}/preboarding/{raw_token}"
 
 

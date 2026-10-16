@@ -202,7 +202,7 @@ class OfferLetterUploadView(APIView):
             try:
                 from onboarding.graphql.mutations import _notify_offer_letter
 
-                _notify_offer_letter(onboarding, actor=user)
+                _notify_offer_letter(onboarding, actor=user, request=request)
             except Exception as e:
                 return Response(
                     {

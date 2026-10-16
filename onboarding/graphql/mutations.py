@@ -69,10 +69,10 @@ def _client_ip(request) -> Optional[str]:
     return request.META.get("REMOTE_ADDR")
 
 
-def _notify_preboarding_invite(onboarding, raw_token: str, actor=None, expiry_hours: int = 24):
+def _notify_preboarding_invite(onboarding, raw_token: str, actor=None, expiry_hours: int = 24, request=None):
     from notifications.utils import notify_user
 
-    url = preboarding_portal_url(raw_token)
+    url = preboarding_portal_url(raw_token, request=request)
     offer = None
     try:
         offer = onboarding.offer_letter
@@ -111,7 +111,7 @@ def _notify_preboarding_invite(onboarding, raw_token: str, actor=None, expiry_ho
     )
 
 
-def _notify_offer_letter(onboarding, actor=None):
+def _notify_offer_letter(onboarding, actor=None, request=None):
     """Send / resend offer PDF by email (with invite link when possible)."""
     from notifications.utils import notify_user
 
@@ -122,13 +122,10 @@ def _notify_offer_letter(onboarding, actor=None):
     invite_url = ""
     try:
         raw, _invite = create_preboarding_invite(onboarding, created_by=actor)
-        invite_url = preboarding_portal_url(raw)
+        invite_url = preboarding_portal_url(raw, request=request)
     except Exception:
-        invite_url = getattr(
-            __import__("django.conf", fromlist=["settings"]).settings,
-            "FRONTEND_URL",
-            "http://localhost:3000",
-        )
+        from temp_email.base_template import resolve_portal_url
+        invite_url = resolve_portal_url(path="preboarding", is_admin=False, request=request)
 
     notify_user(
         recipient_id=onboarding.user_id,
@@ -186,16 +183,23 @@ class OnboardingMutation:
                     onboarding = EmployeeOnboarding.objects.select_related(
                         "user", "offer_letter", "organization"
                     ).get(id=onboarding.id)
-                    _notify_preboarding_invite(onboarding, raw_token, actor=user, expiry_hours=input.invite_expiry_hours)
+                    _notify_preboarding_invite(
+                        onboarding,
+                        raw_token,
+                        actor=user,
+                        expiry_hours=input.invite_expiry_hours,
+                        request=getattr(info.context, "request", None),
+                    )
                 except Exception:
                     import traceback
 
                     print("Failed to send preboarding invite email:")
                     print(traceback.format_exc())
+            req = getattr(info.context, "request", None)
             return OnboardingPayload(
                 success=True,
                 invite_token=raw_token,
-                invite_url=preboarding_portal_url(raw_token) if raw_token else None,
+                invite_url=preboarding_portal_url(raw_token, request=req) if raw_token else None,
                 onboarding_id=strawberry.ID(str(onboarding.id)),
             )
         except Exception as e:
@@ -248,16 +252,23 @@ class OnboardingMutation:
                     onboarding = EmployeeOnboarding.objects.select_related(
                         "user", "offer_letter", "organization"
                     ).get(id=onboarding.id)
-                    _notify_preboarding_invite(onboarding, raw_token, actor=user, expiry_hours=input.invite_expiry_hours)
+                    _notify_preboarding_invite(
+                        onboarding,
+                        raw_token,
+                        actor=user,
+                        expiry_hours=input.invite_expiry_hours,
+                        request=getattr(info.context, "request", None),
+                    )
                 except Exception:
                     import traceback
 
                     print("Failed to send preboarding invite email:")
                     print(traceback.format_exc())
+            req = getattr(info.context, "request", None)
             return OnboardingPayload(
                 success=True,
                 invite_token=raw_token,
-                invite_url=preboarding_portal_url(raw_token) if raw_token else None,
+                invite_url=preboarding_portal_url(raw_token, request=req) if raw_token else None,
                 onboarding_id=strawberry.ID(str(onboarding.id)),
             )
         except Exception as e:
@@ -279,11 +290,12 @@ class OnboardingMutation:
             if ob.status == "invited":
                 ob.status = "preboarding"
                 ob.save(update_fields=["status", "updated_at"])
-            _notify_preboarding_invite(ob, raw, actor=user)
+            req = getattr(info.context, "request", None)
+            _notify_preboarding_invite(ob, raw, actor=user, request=req)
             return OnboardingPayload(
                 success=True,
                 invite_token=raw,
-                invite_url=preboarding_portal_url(raw),
+                invite_url=preboarding_portal_url(raw, request=req),
             )
         except Exception as e:
             return OnboardingPayload(error=str(e))
@@ -477,7 +489,7 @@ class OnboardingMutation:
         ).prefetch_related("tasks__assignee", "documents").get(id=ob.id)
         if send_email:
             try:
-                _notify_offer_letter(ob, actor=user)
+                _notify_offer_letter(ob, actor=user, request=getattr(info.context, "request", None))
             except Exception:
                 pass
         return _onboarding_type(ob)
@@ -494,7 +506,7 @@ class OnboardingMutation:
             ).get(id=onboarding_id)
             if user.role != "superadmin" and ob.organization_id != user.organization_id:
                 return OnboardingPayload(error="Unauthorized")
-            _notify_offer_letter(ob, actor=user)
+            _notify_offer_letter(ob, actor=user, request=getattr(info.context, "request", None))
             return OnboardingPayload(success=True)
         except Exception as e:
             return OnboardingPayload(error=str(e))
