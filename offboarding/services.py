@@ -79,8 +79,9 @@ def hash_invite_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def exit_portal_url(raw_token: str) -> str:
-    base = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+def exit_portal_url(raw_token: str, request=None) -> str:
+    from temp_email.base_template import resolve_portal_url
+    base = resolve_portal_url(is_admin=False, request=request)
     return f"{base}/exit/{raw_token}"
 
 
@@ -291,6 +292,7 @@ def start_offboarding(
     deactivate_now: bool = True,
     send_invite: bool = True,
     notes: str = "",
+    request=None,
 ) -> tuple[EmployeeOffboarding, str | None]:
     """
     Start F&F for an employee.
@@ -379,19 +381,20 @@ def start_offboarding(
         try:
             from notifications.utils import notify_user
 
+            exit_url = exit_portal_url(raw_token, request=request)
             notify_user(
                 recipient_id=user.id,
                 verb="Exit / F&F portal",
                 message=(
                     "Your Full & Final exit checklist is ready. "
-                    f"Open {exit_portal_url(raw_token)} to complete clearance and download letters."
+                    f"Open {exit_url} to complete clearance and download letters."
                 ),
                 actor_id=getattr(actor, "id", None),
                 target_type="EmployeeOffboarding",
                 target_id=str(offboarding.id),
                 level="personal",
                 notification_type="BOTH",
-                extra_context={"exit_url": exit_portal_url(raw_token)},
+                extra_context={"exit_url": exit_url},
             )
         except Exception:
             import logging

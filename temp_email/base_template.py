@@ -22,49 +22,211 @@ def resolve_email_logo_url(logo_url: str = "") -> str:
         return ""
 
 
-def resolve_portal_url(path: str = "", is_admin: bool = False) -> str:
-    """
-    Dynamically resolve portal URL from environment variables / Django settings.
-    Ensures email action buttons link to whatever URL is configured in .env.
-    """
+_LAST_SEEN_FRONTEND_URL = ""
+_LAST_SEEN_ADMIN_URL = ""
+
+
+def _is_production() -> bool:
     import os
-    base = ""
     try:
         from django.conf import settings
-        if is_admin:
-            base = (
-                os.getenv("FRONTEND_ADMIN_URL")
-                or os.getenv("ADMIN_FRONTEND_URL")
-                or getattr(settings, "FRONTEND_ADMIN_URL", "")
-                or os.getenv("CLIENT_URL")
-                or os.getenv("FRONTEND_URL")
-                or getattr(settings, "CLIENT_URL", "")
-                or "http://localhost:3000"
-            )
-        else:
-            base = (
-                os.getenv("CLIENT_URL")
-                or os.getenv("FRONTEND_URL")
-                or getattr(settings, "CLIENT_URL", "")
-                or getattr(settings, "FRONTEND_URL", "")
-                or os.getenv("NEXT_PUBLIC_CLIENT_URL")
-                or "http://localhost:3000"
-            )
+        if not getattr(settings, "DEBUG", True):
+            return True
     except Exception:
-        import os
-        if is_admin:
-            base = (
-                os.getenv("FRONTEND_ADMIN_URL")
-                or os.getenv("ADMIN_FRONTEND_URL")
-                or os.getenv("CLIENT_URL")
-                or "http://localhost:3000"
-            )
+        pass
+    prod_env_keys = [
+        "RENDER", "VERCEL", "RAILWAY_ENVIRONMENT", "FLY_APP_NAME",
+        "KUBERNETES_SERVICE_HOST", "DYNO", "HEROKU_APP_NAME"
+    ]
+    if any(os.getenv(k) for k in prod_env_keys):
+        return True
+    if os.getenv("DEBUG", "False").lower() not in ("true", "1", "yes"):
+        return True
+    return False
+
+
+def _derive_client_from_admin(admin_url: str) -> str:
+    """Transform an admin domain/URL into the corresponding client portal domain."""
+    if not admin_url:
+        return ""
+    url = admin_url.rstrip("/")
+    if "-admin" in url:
+        return url.replace("-admin", "-client")
+    if "admin." in url:
+        return url.replace("admin.", "", 1)
+    if ":3001" in url:
+        return url.replace(":3001", ":3000")
+    return url
+
+
+def _extract_url_from_request(request, is_admin: bool = False) -> str:
+    """Extract and derive portal URL from an incoming HttpRequest."""
+    if not request:
+        return ""
+    try:
+        # 1. Custom explicit header
+        meta = getattr(request, "META", {}) or {}
+        headers = getattr(request, "headers", {}) or {}
+        custom_header = (
+            meta.get("HTTP_X_FRONTEND_URL")
+            or headers.get("x-frontend-url")
+            or headers.get("X-Frontend-Url")
+        )
+        if custom_header and not is_admin:
+            clean = str(custom_header).strip().rstrip("/")
+            if clean:
+                return clean
+
+        custom_admin_header = (
+            meta.get("HTTP_X_ADMIN_URL")
+            or headers.get("x-admin-url")
+            or meta.get("HTTP_X_ADMIN_ORIGIN")
+        )
+        if custom_admin_header and is_admin:
+            clean = str(custom_admin_header).strip().rstrip("/")
+            if clean:
+                return clean
+
+        # 2. Origin or Referer header
+        origin = (
+            meta.get("HTTP_ORIGIN")
+            or headers.get("origin")
+            or meta.get("HTTP_REFERER")
+            or headers.get("referer")
+            or ""
+        ).strip()
+
+        if origin:
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            if parsed.scheme and parsed.netloc:
+                base_origin = f"{parsed.scheme}://{parsed.netloc}"
+                if is_admin:
+                    return base_origin
+                else:
+                    return _derive_client_from_admin(base_origin)
+
+        # 3. Request host itself (if not backend)
+        host = request.get_host()
+        if host and "8000" not in host and "backend" not in host:
+            scheme = "https" if request.is_secure() else "http"
+            base_host = f"{scheme}://{host}"
+            if is_admin:
+                return base_host
+            return _derive_client_from_admin(base_host)
+    except Exception:
+        pass
+    return ""
+
+
+def resolve_portal_url(path: str = "", is_admin: bool = False, request=None) -> str:
+    """
+    Dynamically resolve portal URL from incoming request, seen origins, environment variables, or Django settings.
+    Ensures email action buttons and magic links point to the real domain in production and localhost during local development.
+    """
+    global _LAST_SEEN_FRONTEND_URL, _LAST_SEEN_ADMIN_URL
+    import os
+
+    base = ""
+
+    # 1. Attempt extraction from active request
+    if request:
+        extracted = _extract_url_from_request(request, is_admin=is_admin)
+        if extracted:
+            base = extracted
+            if "localhost" not in extracted and "127.0.0.1" not in extracted:
+                if is_admin:
+                    _LAST_SEEN_ADMIN_URL = extracted
+                else:
+                    _LAST_SEEN_FRONTEND_URL = extracted
+
+    # 2. Check recently seen dynamic domain
+    if not base:
+        if is_admin and _LAST_SEEN_ADMIN_URL:
+            base = _LAST_SEEN_ADMIN_URL
+        elif not is_admin and _LAST_SEEN_FRONTEND_URL:
+            base = _LAST_SEEN_FRONTEND_URL
+
+    # 3. Environment variables & Django settings
+    if not base:
+        try:
+            from django.conf import settings
+            if is_admin:
+                base = (
+                    os.getenv("FRONTEND_ADMIN_URL")
+                    or os.getenv("ADMIN_FRONTEND_URL")
+                    or os.getenv("NEXT_PUBLIC_ADMIN_URL")
+                    or getattr(settings, "FRONTEND_ADMIN_URL", "")
+                    or os.getenv("CLIENT_URL")
+                    or os.getenv("FRONTEND_URL")
+                    or getattr(settings, "CLIENT_URL", "")
+                    or ""
+                )
+            else:
+                base = (
+                    os.getenv("CLIENT_URL")
+                    or os.getenv("FRONTEND_URL")
+                    or os.getenv("NEXT_PUBLIC_CLIENT_URL")
+                    or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
+                    or getattr(settings, "CLIENT_URL", "")
+                    or getattr(settings, "FRONTEND_URL", "")
+                    or ""
+                )
+        except Exception:
+            if is_admin:
+                base = (
+                    os.getenv("FRONTEND_ADMIN_URL")
+                    or os.getenv("ADMIN_FRONTEND_URL")
+                    or os.getenv("NEXT_PUBLIC_ADMIN_URL")
+                    or ""
+                )
+            else:
+                base = (
+                    os.getenv("CLIENT_URL")
+                    or os.getenv("FRONTEND_URL")
+                    or os.getenv("NEXT_PUBLIC_CLIENT_URL")
+                    or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
+                    or ""
+                )
+
+    # 4. Production guard: never output localhost URLs when deployed in production
+    is_prod = _is_production()
+    is_local_base = (not base) or ("localhost" in base) or ("127.0.0.1" in base)
+
+    if is_prod and is_local_base:
+        # Search trusted origins in settings
+        candidate = ""
+        try:
+            from django.conf import settings
+            origins = list(getattr(settings, "CSRF_TRUSTED_ORIGINS", [])) + list(getattr(settings, "CORS_ALLOWED_ORIGINS", []))
+            for orig in origins:
+                if orig and orig.startswith("https://") and "localhost" not in orig:
+                    if is_admin and ("admin" in orig or "3001" in orig):
+                        candidate = orig
+                        break
+                    elif not is_admin and "admin" not in orig:
+                        candidate = orig
+                        break
+            if not candidate:
+                for orig in origins:
+                    if orig and orig.startswith("https://") and "localhost" not in orig:
+                        candidate = orig if is_admin else _derive_client_from_admin(orig)
+                        break
+        except Exception:
+            pass
+
+        if candidate:
+            base = candidate
         else:
             base = (
-                os.getenv("CLIENT_URL")
-                or os.getenv("FRONTEND_URL")
-                or "http://localhost:3000"
+                "https://teamzen-admin-v2-beta.vercel.app"
+                if is_admin
+                else "https://teamzen-client-v2-beta.vercel.app"
             )
+
+    # 5. Local development fallback
+    if not base:
+        base = "http://localhost:3001" if is_admin else "http://localhost:3000"
 
     base = str(base).strip().rstrip("/")
     if path:
@@ -73,24 +235,26 @@ def resolve_portal_url(path: str = "", is_admin: bool = False) -> str:
     return base
 
 
-def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = False) -> str:
+def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = False, request=None) -> str:
     """
-    Sanitize an action or portal URL to guarantee it dynamically adheres to .env configuration.
-    1. If url is empty, '#', or None, resolves using resolve_portal_url(default_path, is_admin=is_admin).
+    Sanitize an action or portal URL to guarantee it dynamically adheres to .env / request domain configuration.
+    1. If url is empty, '#', or None, resolves using resolve_portal_url(default_path, is_admin=is_admin, request=request).
     2. If url points to legacy hardcoded domains (e.g., vercel.app links like teamzen-client.vercel.app,
        teamzen-admin.vercel.app, or a misconfigured backend localhost:8000/admin for a frontend route),
-       it rewrites the host to the environment's configured portal host while preserving path and query.
-    3. If url is a relative path (e.g. '/leaves' or 'leaves'), prepends the dynamic portal base URL.
-    4. Genuine external URLs (e.g. drive.google.com, cloudinary.com, docs, etc.) are kept intact.
+       it rewrites the host to the dynamic portal host while preserving path and query.
+    3. If url points to localhost/127.0.0.1 in production or when a valid production domain is known,
+       it rewrites to the dynamic production portal URL while preserving path and query.
+    4. If url is a relative path (e.g. '/leaves' or 'preboarding'), prepends the dynamic portal base URL.
+    5. Genuine external URLs (e.g. drive.google.com, cloudinary.com, docs, etc.) are kept intact.
     """
     if not url or str(url).strip() in ("", "#"):
-        return resolve_portal_url(default_path, is_admin=is_admin)
+        return resolve_portal_url(default_path, is_admin=is_admin, request=request)
 
     url_str = str(url).strip()
 
     # Relative paths
     if url_str.startswith("/") and not url_str.startswith("//"):
-        return resolve_portal_url(url_str, is_admin=is_admin)
+        return resolve_portal_url(url_str, is_admin=is_admin, request=request)
 
     # Legacy or deployed vercel domains that need dynamic substitution
     legacy_admin_hosts = [
@@ -110,7 +274,7 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
 
         # Check for legacy admin vercel hosts
         if any(h in netloc for h in legacy_admin_hosts):
-            admin_base = resolve_portal_url(is_admin=True)
+            admin_base = resolve_portal_url(is_admin=True, request=request)
             path_and_query = parsed.path
             if parsed.query:
                 path_and_query += f"?{parsed.query}"
@@ -119,7 +283,7 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
 
         # Check for legacy client vercel hosts
         if any(h in netloc for h in legacy_client_hosts):
-            client_base = resolve_portal_url(is_admin=False)
+            client_base = resolve_portal_url(is_admin=False, request=request)
             path_and_query = parsed.path
             if parsed.query:
                 path_and_query += f"?{parsed.query}"
@@ -128,9 +292,21 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
 
         # Check if accidentally pointing to Django admin port for frontend paths
         if "localhost:8000/admin/" in url_str and any(seg in url_str for seg in ["settings", "leaves", "moderation", "dashboard"]):
-            target_admin_base = resolve_portal_url(is_admin=True)
+            target_admin_base = resolve_portal_url(is_admin=True, request=request)
             rel = url_str.split("localhost:8000/admin/", 1)[-1].lstrip("/")
             return f"{target_admin_base}/{rel}"
+
+        # Check for localhost / 127.0.0.1 in production
+        is_local_host = any(lh in netloc for lh in ["localhost", "127.0.0.1", "0.0.0.0"])
+        if is_local_host:
+            target_base = resolve_portal_url(is_admin=is_admin, request=request)
+            # If target_base is NOT localhost, or if we are in production, rewrite the host
+            if ("localhost" not in target_base and "127.0.0.1" not in target_base) or _is_production():
+                path_and_query = parsed.path
+                if parsed.query:
+                    path_and_query += f"?{parsed.query}"
+                clean_sub = path_and_query.lstrip("/")
+                return f"{target_base}/{clean_sub}" if clean_sub else target_base
 
         # If it's already an absolute URL with scheme (http/https), return it
         if parsed.scheme in ("http", "https"):
@@ -138,12 +314,12 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
 
         # If it doesn't have scheme and doesn't look like domain (no dot in first segment), treat as path
         if not parsed.scheme and "/" in url_str:
-            return resolve_portal_url(url_str, is_admin=is_admin)
+            return resolve_portal_url(url_str, is_admin=is_admin, request=request)
 
     except Exception:
         pass
 
-    return url_str or resolve_portal_url(default_path, is_admin=is_admin)
+    return url_str or resolve_portal_url(default_path, is_admin=is_admin, request=request)
 
 
 def get_base_template(

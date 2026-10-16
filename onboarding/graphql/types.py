@@ -157,6 +157,14 @@ class EmployeeOnboardingType:
     tasks: List[OnboardingTaskInstanceType]
     documents: List[EmployeeDocumentType]
     offer_letter: Optional[OfferLetterType]
+    phone_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhar_number: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc_code: Optional[str] = None
+    organization_name: Optional[str] = None
+    organization_logo: Optional[str] = None
+    organization_accent: Optional[str] = None
 
 
 @strawberry.type

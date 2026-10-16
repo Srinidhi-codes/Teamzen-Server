@@ -134,54 +134,34 @@ class PolicyQAView(APIView):
         if not organization_id and request.user.organization:
             organization_id = request.user.organization.id
             
+        similar_docs = []
         try:
             from .retrieval import hybrid_search
-
             similar_docs = hybrid_search(query, organization_id)
-            
-            if not similar_docs:
-                return Response({
-                    'answer': "I couldn't find any policy documents for your organization. Please ensure policies are uploaded and processed.",
-                    'sources': []
-                })
+        except Exception as e:
+            logger.warning(f"hybrid_search failed or table missing: {e}")
+            similar_docs = []
 
-            # Prepare context
-            context_parts = []
+        from .models import PolicyFile
+        policy_files_qs = PolicyFile.objects.filter(is_active=True)
+        if organization_id:
+            policy_files_qs = policy_files_qs.filter(organization_id=organization_id)
+        active_files = list(policy_files_qs)
+
+        if not similar_docs and not active_files:
+            return Response({
+                'answer': "I couldn't find any policy documents for your organization. Please ensure policies are uploaded and processed.",
+                'sources': []
+            })
+
+        # Prepare context
+        context_parts = []
+        sources = []
+        if similar_docs:
             for doc in similar_docs:
                 page = doc.get('page_number')
                 page_note = f" (page {page})" if page else ""
                 context_parts.append(f"[{doc['title']}{page_note}]\n{doc['content']}")
-            context_text = "\n\n".join(context_parts)
-            
-            # Generate answer using LLM
-            llm = ChatOpenAI(
-                model_name="gpt-4o", 
-                temperature=0, 
-                openai_api_key=settings.OPENAI_API_KEY
-            )
-            
-            template = """You are a helpful HR assistant. Answer the question based ONLY on the following context:
-            {context}
-            
-            Question: {question}
-            
-            If the answer is not in the context, say "I don't have enough information in the provided policies to answer that."
-            Do not hallucinate or use outside knowledge.
-            When you cite a policy, mention the document title and page number when available.
-
-            FORMATTING: If you find an answer, wrap the most important part of the policy in:
-            [INSIGHT_CARD] title: {Policy Name} | message: {The core policy details} | type: info | topic: Policy [/INSIGHT_CARD]
-            """
-            
-            prompt = ChatPromptTemplate.from_template(template)
-            chain = prompt | llm | StrOutputParser()
-            
-            answer = chain.invoke({
-                "context": context_text,
-                "question": query
-            })
-            
-            # Collect sources with page citations
             sources = [
                 {
                     'title': doc['title'],
@@ -193,7 +173,75 @@ class PolicyQAView(APIView):
                 }
                 for doc in similar_docs
             ]
+        else:
+            for pf in active_files:
+                desc = pf.description or f"Official {pf.title} document for company rules, entitlements, and compliance guidelines."
+                file_url = pf.file.url if hasattr(pf, "file") and pf.file else ""
+                context_parts.append(f"[{pf.title}]\n{desc}")
+                sources.append({
+                    'title': pf.title,
+                    'file_id': pf.id,
+                    'file_url': file_url,
+                    'page_number': 1,
+                    'score': 1.0,
+                    'match_type': 'file_meta',
+                })
+
+        context_text = "\n\n".join(context_parts)
+
+        # Generate answer using LLM
+        llm = None
+        openai_key = getattr(settings, "OPENAI_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+        if openai_key:
+            try:
+                llm = ChatOpenAI(
+                    model_name="gpt-4o", 
+                    temperature=0, 
+                    openai_api_key=openai_key
+                )
+            except Exception:
+                llm = None
+
+        if not llm:
+            groq_key = getattr(settings, "GROQ_API_KEY", "") or os.getenv("GROQ_API_KEY", "")
+            if groq_key:
+                try:
+                    from langchain_groq import ChatGroq
+                    llm = ChatGroq(
+                        model="llama-3.3-70b-versatile",
+                        temperature=0,
+                        groq_api_key=groq_key,
+                    )
+                except Exception:
+                    llm = None
+
+        if not llm:
+            return Response({
+                'answer': f"Based on the company policies ({', '.join(s['title'] for s in sources)}), please consult HR or view the attached documents for complete provisions on: {query}.",
+                'sources': sources
+            })
+
+        template = """You are a helpful HR policy compliance assistant for Teamzen. Answer the question based on the following company policy context:
+        {context}
+        
+        Question: {question}
+        
+        Provide a concise, professional, and clear answer. If specific policies apply (e.g. Leave Policy, Attendance Policy), cite them clearly.
+        If the context does not contain exact specifics, provide standard professional workplace guidance while advising the employee to refer directly to the uploaded policy document.
+        
+        FORMATTING: Include an insight card highlight:
+        [INSIGHT_CARD] title: Policy Summary | message: Core rule or guideline | type: info | topic: Policy [/INSIGHT_CARD]
+        """
+        
+        try:
+            prompt = ChatPromptTemplate.from_template(template)
+            chain = prompt | llm | StrOutputParser()
             
+            answer = chain.invoke({
+                "context": context_text,
+                "question": query
+            })
+                
             return Response({
                 'answer': answer,
                 'sources': sources,

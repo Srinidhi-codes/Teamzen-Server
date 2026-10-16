@@ -188,6 +188,18 @@ def _onboarding_type(
         tasks=tasks,
         documents=docs,
         offer_letter=offer,
+        phone_number=getattr(user, "phone_number", None),
+        pan_number=getattr(user, "pan_number", None),
+        aadhar_number=getattr(user, "aadhar_number", None),
+        bank_account_number=getattr(user, "bank_account_number", None),
+        bank_ifsc_code=getattr(user, "bank_ifsc_code", None),
+        organization_name=getattr(getattr(ob, "organization", None), "name", None),
+        organization_logo=(
+            getattr(ob, "organization", None).logo.url
+            if getattr(ob, "organization", None) and getattr(ob, "organization", None).logo
+            else None
+        ),
+        organization_accent=getattr(getattr(ob, "organization", None), "accent", "teal") or "teal",
     )
 
 

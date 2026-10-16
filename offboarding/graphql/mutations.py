@@ -88,6 +88,7 @@ class OffboardingMutation:
             return OffboardingPayload(error="User not found")
         if actor.role != "superadmin" and target.organization_id != actor.organization_id:
             return OffboardingPayload(error="Not authorized")
+        request = getattr(info.context, "request", None)
         try:
             ob, raw = start_offboarding(
                 actor=actor,
@@ -99,12 +100,13 @@ class OffboardingMutation:
                 deactivate_now=input.deactivate_now,
                 send_invite=input.send_invite,
                 notes=input.notes,
+                request=request,
             )
             return OffboardingPayload(
                 success=True,
                 offboarding_id=strawberry.ID(str(ob.id)),
                 invite_token=raw,
-                invite_url=exit_portal_url(raw) if raw else None,
+                invite_url=exit_portal_url(raw, request=request) if raw else None,
             )
         except Exception as e:
             return OffboardingPayload(error=str(e))
@@ -295,20 +297,22 @@ class OffboardingMutation:
         ob = EmployeeOffboarding.objects.filter(id=offboarding_id).first()
         if not ob:
             return OffboardingPayload(error="Not found")
+        request = getattr(info.context, "request", None)
         raw, _ = create_exit_invite(ob, created_by=actor)
+        exit_url = exit_portal_url(raw, request=request)
         try:
             from notifications.utils import notify_user
 
             notify_user(
                 recipient_id=ob.user_id,
                 verb="Exit portal link",
-                message=f"Your F&F portal link: {exit_portal_url(raw)}",
+                message=f"Your F&F portal link: {exit_url}",
                 actor_id=actor.id,
                 target_type="EmployeeOffboarding",
                 target_id=str(ob.id),
                 level="personal",
                 notification_type="BOTH",
-                extra_context={"exit_url": exit_portal_url(raw)},
+                extra_context={"exit_url": exit_url},
             )
         except Exception:
             pass
@@ -316,7 +320,7 @@ class OffboardingMutation:
             success=True,
             offboarding_id=strawberry.ID(str(ob.id)),
             invite_token=raw,
-            invite_url=exit_portal_url(raw),
+            invite_url=exit_url,
         )
 
     @strawberry.mutation
