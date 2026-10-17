@@ -144,12 +144,16 @@ class DocumentsQuery:
     ) -> List[IssuedDocumentType]:
         user = info.context.request.user
         require_hr(user)
+        try:
+            uid = int(str(user_id))
+        except (ValueError, TypeError):
+            return []
         org = resolve_org(user)
         qs = IssuedDocument.objects.filter(
-            user_id=user_id, organization=org
+            user_id=uid, organization=org
         ).select_related("user")
         if user.role == "superadmin":
-            qs = IssuedDocument.objects.filter(user_id=user_id).select_related("user")
+            qs = IssuedDocument.objects.filter(user_id=uid).select_related("user")
         return [_issued_type(d) for d in qs]
 
     @strawberry.field
@@ -158,12 +162,16 @@ class DocumentsQuery:
     ) -> List[DocumentRequestType]:
         user = info.context.request.user
         require_hr(user)
+        try:
+            uid = int(str(user_id))
+        except (ValueError, TypeError):
+            return []
         org = resolve_org(user)
         qs = DocumentRequest.objects.filter(
-            user_id=user_id, organization=org
+            user_id=uid, organization=org
         ).select_related("user", "fulfilled_document")
         if user.role == "superadmin":
-            qs = DocumentRequest.objects.filter(user_id=user_id).select_related(
+            qs = DocumentRequest.objects.filter(user_id=uid).select_related(
                 "user", "fulfilled_document"
             )
         if status:

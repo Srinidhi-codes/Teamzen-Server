@@ -295,6 +295,10 @@ class OnboardingQuery:
     ) -> Optional[EmployeeOnboardingType]:
         user = info.context.request.user
         require_auth(user)
+        try:
+            ob_id = int(str(id))
+        except (ValueError, TypeError):
+            return None
         ob = (
             EmployeeOnboarding.objects.select_related(
                 "user",
@@ -304,7 +308,7 @@ class OnboardingQuery:
                 "offer_letter",
             )
             .prefetch_related("tasks__assignee", "documents")
-            .filter(id=id)
+            .filter(id=ob_id)
             .first()
         )
         if not ob or not can_view_onboarding(user, ob):

@@ -83,13 +83,17 @@ class UserQuery:
     @strawberry.field
     def public_profile(self, info: Info, id: strawberry.ID) -> Optional[UserType]:
         try:
+            uid = int(str(id))
+        except (ValueError, TypeError):
+            return None
+        try:
             return CustomUser.objects.select_related(
                 "organization",
                 "designation",
                 "department",
                 "office_location",
-            ).get(pk=id, is_active=True)
-        except CustomUser.DoesNotExist:
+            ).get(pk=uid, is_active=True)
+        except (CustomUser.DoesNotExist, ValueError):
             return None
 
     # -------------------------

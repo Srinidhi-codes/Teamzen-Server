@@ -222,10 +222,14 @@ class OffboardingQuery:
     ) -> Optional[EmployeeOffboardingType]:
         user = info.context.request.user
         require_auth(user)
+        try:
+            ob_id = int(str(offboarding_id))
+        except (ValueError, TypeError):
+            return None
         ob = (
             EmployeeOffboarding.objects.select_related("user", "template", "settlement")
             .prefetch_related("tasks__assignee", "letters__issued_document")
-            .filter(id=offboarding_id)
+            .filter(id=ob_id)
             .first()
         )
         if not ob or not can_view_offboarding(user, ob):

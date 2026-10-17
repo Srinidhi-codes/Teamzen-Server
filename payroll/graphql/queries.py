@@ -42,7 +42,7 @@ class PayrollQuery:
         try:
             pk = int(str(id))
         except (ValueError, TypeError):
-            pk = id
+            return None
         return scoped_qs(PayrollRun.objects.filter(id=pk), user).first()
 
     @strawberry.field
@@ -106,7 +106,11 @@ class PayrollQuery:
             "manager",
         ]:
             raise Exception("Unauthorized")
-        qs = Payslip.objects.filter(user_id=user_id)
+        try:
+            target_uid = int(str(user_id))
+        except (ValueError, TypeError):
+            return []
+        qs = Payslip.objects.filter(user_id=target_uid)
         return scoped_qs(qs, user, field="payroll_run__organization").order_by(
             "-payroll_run__year", "-payroll_run__month"
         )
@@ -207,7 +211,11 @@ class PayrollQuery:
     ) -> Optional[DataImportJobType]:
         user = info.context.request.user
         require_payroll_admin(user, allow_hr=True)
-        job = scoped_qs(DataImportJob.objects.filter(id=id), user).first()
+        try:
+            pk = int(str(id))
+        except (ValueError, TypeError):
+            return None
+        job = scoped_qs(DataImportJob.objects.filter(id=pk), user).first()
         return DataImportJobType.from_model(job) if job else None
 
     @strawberry.field

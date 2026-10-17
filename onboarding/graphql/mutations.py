@@ -885,8 +885,15 @@ class OnboardingMutation:
                 success=False, error="Invalid or expired invite"
             )
 
+        try:
+            doc_id = int(str(input.document_id))
+        except (ValueError, TypeError):
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Invalid document ID"
+            )
+
         doc = EmployeeDocument.objects.filter(
-            id=input.document_id, onboarding=invite.onboarding
+            id=doc_id, onboarding=invite.onboarding
         ).first()
 
         if not doc:
@@ -908,8 +915,15 @@ class OnboardingMutation:
     ) -> DeletePreboardingDocumentPayload:
         user = info.context.request.user
         require_auth(user)
+        try:
+            doc_id = int(str(document_id))
+        except (ValueError, TypeError):
+            return DeletePreboardingDocumentPayload(
+                success=False, error="Invalid document ID"
+            )
+
         doc = EmployeeDocument.objects.filter(
-            id=document_id, user=user, source="onboarding"
+            id=doc_id, user=user, source="onboarding"
         ).first()
 
         if not doc:
