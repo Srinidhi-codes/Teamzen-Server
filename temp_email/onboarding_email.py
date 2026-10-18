@@ -32,23 +32,22 @@ def get_onboarding_task_reminder_email_html(
 
     overdue = is_overdue or days_overdue > 0 or "overdue" in task_title.lower() or "overdue" in message.lower()
 
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
+
     if overdue:
-        accent = "#DC2626"  # Red
-        hero_bg = "#FEE2E2"
         badge_label = "OVERDUE ONBOARDING TASK"
-        badge_color = "#B91C1C"
-        badge_bg = "#FECACA"
+        badge_color = "#0F766E"
+        badge_bg = "#FFFFFF"
         headline = "Action Required: Overdue Onboarding Task"
         default_message = (
             f'The onboarding task "{task_title}" requires immediate attention. '
             f'Please review and complete this requirement in the Onboarding portal.'
         )
     else:
-        accent = "#4F46E5"  # Indigo
-        hero_bg = "#EEF2FF"
         badge_label = "ONBOARDING TASK ASSIGNED"
-        badge_color = "#4338CA"
-        badge_bg = "#E0E7FF"
+        badge_color = "#0F766E"
+        badge_bg = "#FFFFFF"
         headline = "New Onboarding Task Assigned"
         default_message = (
             f'You have been assigned the task "{task_title}". '
@@ -133,11 +132,10 @@ def get_preboarding_invite_email_html(
     offer_pdf_url: str = "",
 ) -> str:
     """Preboarding portal invitation email."""
-    accent = "#059669"
-    hero_bg = "#ECFDF5"
+    accent = "#0F766E"
+    hero_bg = "#CCFBF1"
     safe_company_url = sanitize_portal_url(company_url)
     safe_invite_url = sanitize_portal_url(invite_url, "preboarding")
-
 
     rows = []
     if designation:
@@ -154,7 +152,7 @@ def get_preboarding_invite_email_html(
                 {alert_box_html(
                     "Your official offer letter PDF is attached to this email. Please review the terms and accept it through the preboarding portal.",
                     title="Offer Letter Enclosed",
-                    level="success",
+                    level="info",
                 )}
             </td>
         </tr>
@@ -164,7 +162,7 @@ def get_preboarding_invite_email_html(
     if offer_pdf_url and offer_pdf_url.startswith("http"):
         pdf_btn = f"""
         <div style="margin-bottom: 14px;">
-            {button_html("Download Offer Letter PDF", offer_pdf_url, "#047857")}
+            {button_html("Download Offer Letter PDF", offer_pdf_url, accent)}
         </div>
         """
 
@@ -180,8 +178,8 @@ def get_preboarding_invite_email_html(
             headline="Welcome to the Team",
             subtitle=f"Complete your preboarding for {company_name}",
             badge_label="PREBOARDING INVITATION",
-            badge_color="#047857",
-            badge_bg="#D1FAE5",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 
@@ -235,8 +233,8 @@ def get_document_rejected_email_html(
     company_url: str = "",
 ) -> str:
     """Document revision requested notification."""
-    accent = "#DC2626"
-    hero_bg = "#FEF2F2"
+    accent = "#0F766E"
+    hero_bg = "#CCFBF1"
     safe_company_url = sanitize_portal_url(company_url)
     safe_action_url = sanitize_portal_url(action_url, "onboarding")
 
@@ -251,8 +249,8 @@ def get_document_rejected_email_html(
         {hero_section_html(
             headline="Document Attention Required",
             badge_label="DOCUMENT REVISION",
-            badge_color="#B91C1C",
-            badge_bg="#FECACA",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

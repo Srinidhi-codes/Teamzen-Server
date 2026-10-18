@@ -35,21 +35,38 @@ def get_general_notification_email_html(
     safe_action_url = sanitize_portal_url(action_url) if action_url else safe_company_url
 
     priority_configs = {
-        "normal": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#E6FFFA", "label": "NOTIFICATION"},
-        "info": {"accent": "#0284C7", "hero_bg": "#E0F2FE", "badge_color": "#0369A1", "badge_bg": "#BAE6FD", "label": "INFORMATION"},
-        "success": {"accent": "#059669", "hero_bg": "#ECFDF5", "badge_color": "#047857", "badge_bg": "#D1FAE5", "label": "COMPLETED"},
-        "warning": {"accent": "#D97706", "hero_bg": "#FEF3C7", "badge_color": "#B45309", "badge_bg": "#FDE68A", "label": "ATTENTION REQUIRED"},
-        "urgent": {"accent": "#DC2626", "hero_bg": "#FEE2E2", "badge_color": "#B91C1C", "badge_bg": "#FECACA", "label": "URGENT ACTION"},
+        "normal": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "NOTIFICATION"},
+        "info": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "INFORMATION"},
+        "success": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "COMPLETED"},
+        "warning": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "ATTENTION REQUIRED"},
+        "urgent": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "URGENT ACTION"},
     }
 
     cfg = priority_configs.get(priority.lower(), priority_configs["normal"])
     accent = cfg["accent"]
     hero_bg = cfg["hero_bg"]
-    badge_text = badge_label or category.upper() or cfg["label"]
 
     clean_title = (title or "Notification").strip()
     if clean_title.lower().startswith("notification:"):
         clean_title = clean_title[13:].strip()
+
+    # Fix lowercase or raw action verb titles
+    if clean_title.lower() in ("requested", "leave requested", "new leave request"):
+        clean_title = "Leave Request Submitted"
+    elif clean_title.lower() == "approved":
+        clean_title = "Leave Request Approved"
+    elif clean_title.lower() == "rejected":
+        clean_title = "Leave Request Declined"
+    elif clean_title.lower() == "cancelled":
+        clean_title = "Leave Request Cancelled"
+    elif clean_title.islower():
+        clean_title = clean_title.replace("_", " ").title()
+
+    badge_raw = badge_label or category or cfg["label"]
+    if badge_raw.lower() in ("requested", "leave request", "leave"):
+        badge_text = "LEAVE REQUEST"
+    else:
+        badge_text = badge_raw.upper()
 
     # Format message paragraphs
     paragraphs = [p.strip() for p in (message or "").split("\n") if p.strip()]

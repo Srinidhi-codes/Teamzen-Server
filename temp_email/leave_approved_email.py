@@ -24,12 +24,11 @@ def get_leave_approved_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Leave Approved notification HTML email."""
-    accent = "#059669"  # Emerald green
-    hero_bg = "#ECFDF5"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     safe_dashboard_url = sanitize_portal_url(dashboard_url, "leaves")
     safe_company_url = sanitize_portal_url(company_url)
-
 
     date_str = f"{start_date} to {end_date}" if start_date != end_date else start_date
     duration_str = f"{duration} day(s)" if not str(duration).endswith("day") and not str(duration).endswith("days") else str(duration)
@@ -51,7 +50,7 @@ def get_leave_approved_email_html(
                 {alert_box_html(
                     remarks,
                     title="Approver Remarks",
-                    level="success",
+                    level="info",
                 )}
             </td>
         </tr>
@@ -80,9 +79,9 @@ def get_leave_approved_email_html(
     body = f"""
         {hero_section_html(
             headline="Leave Request Approved",
-            badge_label="APPROVED",
-            badge_color="#047857",
-            badge_bg="#D1FAE5",
+            badge_label="LEAVE APPROVED",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

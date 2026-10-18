@@ -23,8 +23,8 @@ def get_leave_cancelled_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Leave Request Cancelled notification HTML email (sent to manager)."""
-    accent = "#EA580C"
-    hero_bg = "#FFF7ED"
+    accent = "#0F766E"
+    hero_bg = "#CCFBF1"
     safe_dashboard_url = sanitize_portal_url(dashboard_url, "leaves", is_admin=True)
     safe_company_url = sanitize_portal_url(company_url, is_admin=True)
 
@@ -42,9 +42,9 @@ def get_leave_cancelled_email_html(
     body = f"""
         {hero_section_html(
             headline="Leave Request Cancelled",
-            badge_label="CANCELLED",
-            badge_color="#C2410C",
-            badge_bg="#FFEDD5",
+            badge_label="LEAVE CANCELLED",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

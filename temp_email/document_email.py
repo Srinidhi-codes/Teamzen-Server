@@ -25,8 +25,8 @@ def get_document_notification_email_html(
     """Generate professional document activity notification email."""
     safe_action_url = sanitize_portal_url(action_url, "documents")
     safe_company_url = sanitize_portal_url(company_url)
-    accent = "#0284C7"  # Sky blue
-    hero_bg = "#E0F2FE"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     rows = []
     if document_name:
@@ -44,8 +44,8 @@ def get_document_notification_email_html(
         {hero_section_html(
             headline=clean_title,
             badge_label="DOCUMENT SERVICE",
-            badge_color="#0369A1",
-            badge_bg="#BAE6FD",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

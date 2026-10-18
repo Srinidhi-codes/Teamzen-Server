@@ -29,24 +29,22 @@ def get_attendance_alert_email_html(
     """
     safe_action_url = sanitize_portal_url(action_url, "attendance")
     safe_company_url = sanitize_portal_url(company_url)
-    accent = "#D97706"  # Amber
-    hero_bg = "#FEF3C7"  # Soft amber
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     is_missing_checkout = "checkout" in alert_title.lower() or "check-out" in alert_title.lower()
     if is_missing_checkout:
-        accent = "#0284C7"  # Sky blue
-        hero_bg = "#E0F2FE"
         badge_label = "ATTENDANCE UPDATE"
-        badge_color = "#0369A1"
-        badge_bg = "#BAE6FD"
+        badge_color = "#0F766E"
+        badge_bg = "#FFFFFF"
         default_message = (
             "Our automated attendance log indicates a missing clock-out record for your recent shift. "
             "Please review and submit a correction to keep your work records up to date."
         )
     else:
         badge_label = "ATTENDANCE NOTICE"
-        badge_color = "#B45309"
-        badge_bg = "#FDE68A"
+        badge_color = "#0F766E"
+        badge_bg = "#FFFFFF"
         default_message = (
             "Your logged attendance for the recent period fell below the company threshold. "
             "Please ensure you log your shifts consistently to meet work requirements."

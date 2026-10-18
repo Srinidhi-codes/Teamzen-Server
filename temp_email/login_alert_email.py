@@ -1,4 +1,4 @@
-from .base_template import get_base_template, sanitize_portal_url
+from .base_template import get_base_template, sanitize_portal_url, hero_section_html
 
 
 def get_login_alert_email_html(
@@ -37,17 +37,14 @@ def get_login_alert_email_html(
         """
 
     body = f"""
-                <tr>
-                    <td class="hero-section" bgcolor="#CCFBF1" style="padding: 40px 40px 28px 40px; text-align: center; background-color: #CCFBF1;">
-                        
-                        <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 800; color: #0F172A !important; letter-spacing: -0.5px;">
-                            <span style="color: #0F172A; background-color: #CCFBF1;">{headline}</span>
-                        </h1>
-                        <p style="margin: 0; font-size: 14px; color: #334155 !important;">
-                            <span style="color: #334155; background-color: #CCFBF1;">Security notification</span>
-                        </p>
-                    </td>
-                </tr>
+        {hero_section_html(
+            headline=headline,
+            subtitle="Security notification",
+            badge_label="SECURITY ALERT",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
+            hero_bg="#CCFBF1",
+        )}
 
                 <tr>
                     <td class="content-block" bgcolor="#FFFFFF" style="padding: 28px 40px 16px 40px; background-color: #FFFFFF;">

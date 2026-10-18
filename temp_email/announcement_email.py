@@ -28,9 +28,9 @@ def get_announcement_email_html(
     safe_action_url = sanitize_portal_url(action_url, "notifications")
     safe_company_url = sanitize_portal_url(company_url)
     priority_configs = {
-        "normal": {"accent": "#4F46E5", "hero_bg": "#EEF2FF", "badge_color": "#4338CA", "badge_bg": "#E0E7FF", "label": "COMPANY ANNOUNCEMENT"},
-        "high": {"accent": "#EA580C", "hero_bg": "#FFF7ED", "badge_color": "#C2410C", "badge_bg": "#FFEDD5", "label": "IMPORTANT NOTICE"},
-        "urgent": {"accent": "#DC2626", "hero_bg": "#FEF2F2", "badge_color": "#B91C1C", "badge_bg": "#FECACA", "label": "URGENT ANNOUNCEMENT"},
+        "normal": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "COMPANY ANNOUNCEMENT"},
+        "high": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "IMPORTANT NOTICE"},
+        "urgent": {"accent": "#0F766E", "hero_bg": "#CCFBF1", "badge_color": "#0F766E", "badge_bg": "#FFFFFF", "label": "URGENT ANNOUNCEMENT"},
     }
 
     cfg = priority_configs.get(str(priority).lower(), priority_configs["normal"])

@@ -49,6 +49,9 @@ class JWTAuthMiddleware:
             token = query_params.get('token', [None])[0]
         
         if token:
+            token = token.strip()
+            if token.startswith('Bearer '):
+                token = token[7:].strip()
             scope['user'] = await get_user_from_token(token)
         else:
             from django.contrib.auth.models import AnonymousUser

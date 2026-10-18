@@ -24,8 +24,8 @@ def get_offboarding_email_html(
     """Generate offboarding / exit clearance notification email."""
     safe_action_url = sanitize_portal_url(action_url, "offboarding")
     safe_company_url = sanitize_portal_url(company_url)
-    accent = "#475569"  # Slate
-    hero_bg = "#F1F5F9"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     rows = []
     if employee_name:
@@ -43,8 +43,8 @@ def get_offboarding_email_html(
         {hero_section_html(
             headline=clean_title,
             badge_label="EXIT FORMALITIES",
-            badge_color="#334155",
-            badge_bg="#E2E8F0",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

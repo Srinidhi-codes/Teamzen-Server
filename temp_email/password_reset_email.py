@@ -19,8 +19,8 @@ def get_password_reset_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Password Reset HTML email with clean security design and zero emojis."""
-    accent = "#4F46E5"  # Indigo
-    hero_bg = "#EEF2FF"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
     safe_url = sanitize_portal_url(reset_url, "reset-password")
     safe_company_url = sanitize_portal_url(company_url)
 
@@ -53,8 +53,8 @@ def get_password_reset_email_html(
             headline="Password Reset Request",
             subtitle=f"This link is valid for {expiry_minutes} minutes",
             badge_label="ACCOUNT SECURITY",
-            badge_color="#4338CA",
-            badge_bg="#E0E7FF",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

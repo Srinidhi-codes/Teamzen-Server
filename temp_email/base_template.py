@@ -1,3 +1,7 @@
+import os
+from urllib.parse import urlparse
+
+
 def logo_badge_html(accent_color: str, brand_char: str = "T") -> str:
     """Email-safe fallback mark when no hosted logo URL is available."""
     return f"""
@@ -121,102 +125,78 @@ def _extract_url_from_request(request, is_admin: bool = False) -> str:
 
 def resolve_portal_url(path: str = "", is_admin: bool = False, request=None) -> str:
     """
-    Dynamically resolve portal URL from incoming request, seen origins, environment variables, or Django settings.
-    Ensures email action buttons and magic links point to the real domain in production and localhost during local development.
+    Dynamically resolve portal URL from environment variables, incoming request, or Django settings.
+    Ensures email action buttons and links point to deployed environments in emails, never broken localhost.
     """
     global _LAST_SEEN_FRONTEND_URL, _LAST_SEEN_ADMIN_URL
     import os
 
     base = ""
 
-    # 1. Attempt extraction from active request
-    if request:
-        extracted = _extract_url_from_request(request, is_admin=is_admin)
-        if extracted:
-            base = extracted
-            if "localhost" not in extracted and "127.0.0.1" not in extracted:
-                if is_admin:
-                    _LAST_SEEN_ADMIN_URL = extracted
-                else:
-                    _LAST_SEEN_FRONTEND_URL = extracted
+    # Priority 1: Explicit deployed / public URL from environment variables
+    if is_admin:
+        base = (
+            os.getenv("DEPLOYED_ADMIN_URL")
+            or os.getenv("PUBLIC_ADMIN_URL")
+            or os.getenv("NEXT_PUBLIC_ADMIN_URL")
+            or os.getenv("FRONTEND_ADMIN_URL")
+            or os.getenv("ADMIN_FRONTEND_URL")
+            or ""
+        )
+    else:
+        base = (
+            os.getenv("DEPLOYED_FRONTEND_URL")
+            or os.getenv("PUBLIC_FRONTEND_URL")
+            or os.getenv("DEPLOYED_CLIENT_URL")
+            or os.getenv("PUBLIC_CLIENT_URL")
+            or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
+            or os.getenv("NEXT_PUBLIC_CLIENT_URL")
+            or ""
+        )
 
-    # 2. Check recently seen dynamic domain
+    # Priority 2: Attempt extraction from active request (if not localhost)
+    if not base and request:
+        extracted = _extract_url_from_request(request, is_admin=is_admin)
+        if extracted and "localhost" not in extracted and "127.0.0.1" not in extracted:
+            base = extracted
+            if is_admin:
+                _LAST_SEEN_ADMIN_URL = extracted
+            else:
+                _LAST_SEEN_FRONTEND_URL = extracted
+
+    # Priority 3: Check recently seen non-localhost dynamic domain
     if not base:
-        if is_admin and _LAST_SEEN_ADMIN_URL:
+        if is_admin and _LAST_SEEN_ADMIN_URL and "localhost" not in _LAST_SEEN_ADMIN_URL:
             base = _LAST_SEEN_ADMIN_URL
-        elif not is_admin and _LAST_SEEN_FRONTEND_URL:
+        elif not is_admin and _LAST_SEEN_FRONTEND_URL and "localhost" not in _LAST_SEEN_FRONTEND_URL:
             base = _LAST_SEEN_FRONTEND_URL
 
-    # 3. Environment variables & Django settings
+    # Priority 4: Search trusted origins in settings
     if not base:
-        try:
-            from django.conf import settings
-            if is_admin:
-                base = (
-                    os.getenv("FRONTEND_ADMIN_URL")
-                    or os.getenv("ADMIN_FRONTEND_URL")
-                    or os.getenv("NEXT_PUBLIC_ADMIN_URL")
-                    or getattr(settings, "FRONTEND_ADMIN_URL", "")
-                    or os.getenv("CLIENT_URL")
-                    or os.getenv("FRONTEND_URL")
-                    or getattr(settings, "CLIENT_URL", "")
-                    or ""
-                )
-            else:
-                base = (
-                    os.getenv("CLIENT_URL")
-                    or os.getenv("FRONTEND_URL")
-                    or os.getenv("NEXT_PUBLIC_CLIENT_URL")
-                    or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
-                    or getattr(settings, "CLIENT_URL", "")
-                    or getattr(settings, "FRONTEND_URL", "")
-                    or ""
-                )
-        except Exception:
-            if is_admin:
-                base = (
-                    os.getenv("FRONTEND_ADMIN_URL")
-                    or os.getenv("ADMIN_FRONTEND_URL")
-                    or os.getenv("NEXT_PUBLIC_ADMIN_URL")
-                    or ""
-                )
-            else:
-                base = (
-                    os.getenv("CLIENT_URL")
-                    or os.getenv("FRONTEND_URL")
-                    or os.getenv("NEXT_PUBLIC_CLIENT_URL")
-                    or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
-                    or ""
-                )
-
-    # 4. Production guard: never output localhost URLs when deployed in production
-    is_prod = _is_production()
-    is_local_base = (not base) or ("localhost" in base) or ("127.0.0.1" in base)
-
-    if is_prod and is_local_base:
-        # Search trusted origins in settings
-        candidate = ""
         try:
             from django.conf import settings
             origins = list(getattr(settings, "CSRF_TRUSTED_ORIGINS", [])) + list(getattr(settings, "CORS_ALLOWED_ORIGINS", []))
             for orig in origins:
                 if orig and orig.startswith("https://") and "localhost" not in orig:
                     if is_admin and ("admin" in orig or "3001" in orig):
-                        candidate = orig
+                        base = orig
                         break
                     elif not is_admin and "admin" not in orig:
-                        candidate = orig
+                        base = orig
                         break
-            if not candidate:
+            if not base:
                 for orig in origins:
                     if orig and orig.startswith("https://") and "localhost" not in orig:
-                        candidate = orig if is_admin else _derive_client_from_admin(orig)
+                        base = orig if is_admin else _derive_client_from_admin(orig)
                         break
         except Exception:
             pass
 
-        if candidate:
-            base = candidate
+    # Priority 5: Fallback to official deployed portal URLs (so emails never point to broken localhost)
+    allow_local = os.getenv("ALLOW_LOCALHOST_IN_EMAILS", "False").lower() in ("true", "1")
+    if not base:
+        if allow_local:
+            base = os.getenv("FRONTEND_ADMIN_URL", "http://localhost:3001") if is_admin else os.getenv("CLIENT_URL", "http://localhost:3000")
         else:
             base = (
                 "https://teamzen-admin-v2-beta.vercel.app"
@@ -224,9 +204,13 @@ def resolve_portal_url(path: str = "", is_admin: bool = False, request=None) -> 
                 else "https://teamzen-client-v2-beta.vercel.app"
             )
 
-    # 5. Local development fallback
-    if not base:
-        base = "http://localhost:3001" if is_admin else "http://localhost:3000"
+    # Sanity check: if base ended up as localhost and allow_local is False, force deployed domain
+    if not allow_local and ("localhost" in base or "127.0.0.1" in base):
+        base = (
+            "https://teamzen-admin-v2-beta.vercel.app"
+            if is_admin
+            else "https://teamzen-client-v2-beta.vercel.app"
+        )
 
     base = str(base).strip().rstrip("/")
     if path:
@@ -296,17 +280,16 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
             rel = url_str.split("localhost:8000/admin/", 1)[-1].lstrip("/")
             return f"{target_admin_base}/{rel}"
 
-        # Check for localhost / 127.0.0.1 in production
+        # Check for localhost / 127.0.0.1 (always rewrite to deployed portal in emails unless explicitly allowed)
         is_local_host = any(lh in netloc for lh in ["localhost", "127.0.0.1", "0.0.0.0"])
-        if is_local_host:
+        allow_local = os.getenv("ALLOW_LOCALHOST_IN_EMAILS", "False").lower() in ("true", "1")
+        if is_local_host and not allow_local:
             target_base = resolve_portal_url(is_admin=is_admin, request=request)
-            # If target_base is NOT localhost, or if we are in production, rewrite the host
-            if ("localhost" not in target_base and "127.0.0.1" not in target_base) or _is_production():
-                path_and_query = parsed.path
-                if parsed.query:
-                    path_and_query += f"?{parsed.query}"
-                clean_sub = path_and_query.lstrip("/")
-                return f"{target_base}/{clean_sub}" if clean_sub else target_base
+            path_and_query = parsed.path
+            if parsed.query:
+                path_and_query += f"?{parsed.query}"
+            clean_sub = path_and_query.lstrip("/")
+            return f"{target_base}/{clean_sub}" if clean_sub else target_base
 
         # If it's already an absolute URL with scheme (http/https), return it
         if parsed.scheme in ("http", "https"):
@@ -325,15 +308,15 @@ def sanitize_portal_url(url: str = "", default_path: str = "", is_admin: bool = 
 def get_base_template(
     title: str,
     body_content: str,
-    accent_color: str = "#4F46E5",
-    accent_light: str = "#EEF2FF",
+    accent_color: str = "#0F766E",
+    accent_light: str = "#CCFBF1",
     logo_url: str = "",
     footer_text: str = "Teamzen HRMS",
     company_url: str = "",
     show_header_title: bool = True,
     header_subtitle: str = "",
 ) -> str:
-    """Generate the base responsive HTML email template."""
+    """Generate the base responsive HTML email template matching Teamzen executive design."""
     safe_company_url = sanitize_portal_url(company_url)
     resolved_logo = resolve_email_logo_url(logo_url)
     logo_html = (
@@ -343,7 +326,6 @@ def get_base_template(
         if resolved_logo
         else logo_badge_html(accent_color)
     )
-
 
     header_title_html = ""
     if show_header_title and title:
@@ -370,7 +352,7 @@ def get_base_template(
             .header {{ padding: 28px 36px 20px 36px; background-color: #FFFFFF !important; border-bottom: 1px solid #F1F5F9; }}
             .content {{ padding: 0; background-color: #FFFFFF !important; }}
             .footer {{ padding: 28px 36px; background-color: #F8FAFC !important; border-top: 1px solid #E2E8F0; text-align: center; }}
-            .eyebrow {{ margin: 0 0 6px 0; color: #64748B !important; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }}
+            .eyebrow {{ margin: 0 0 4px 0; color: #0F172A !important; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }}
             .title {{ margin: 0; color: #0F172A !important; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }}
             p {{ font-size: 15px; color: #334155 !important; line-height: 1.65; margin: 0 0 16px 0; }}
             .footer-note {{ color: #64748B !important; font-size: 12px; margin: 0 0 14px 0; line-height: 1.5; }}
@@ -399,11 +381,11 @@ def get_base_template(
                     <td class="topline" bgcolor="{accent_color}" style="height: 4px; background-color: {accent_color}; font-size: 0; line-height: 0;">&nbsp;</td>
                 </tr>
                 <tr>
-                    <td class="header" bgcolor="#FFFFFF" style="padding: 28px 36px 20px 36px; background-color: #FFFFFF; border-bottom: 1px solid #F1F5F9;">
+                    <td class="header" bgcolor="#FFFFFF" style="padding: 24px 36px 18px 36px; background-color: #FFFFFF; border-bottom: 1px solid #F1F5F9;">
                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                             <tr>
                                 <td style="vertical-align: middle;">
-                                    <p class="eyebrow" style="margin: 0 0 4px 0; color: #64748B; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">{footer_text}</p>
+                                    <p class="eyebrow" style="margin: 0; color: #0F172A; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;">{footer_text}</p>
                                     {header_title_html}
                                 </td>
                                 <td style="width: 130px; text-align: right; vertical-align: middle;">
@@ -437,20 +419,20 @@ def get_base_template(
 """
 
 
-def button_html(text: str, url: str, bg_color: str = "#4F46E5", text_color: str = "#FFFFFF") -> str:
-    """Bulletproof corporate button component."""
+def button_html(text: str, url: str, bg_color: str = "#0F766E", text_color: str = "#FFFFFF") -> str:
+    """Bulletproof corporate button component matching Teamzen theme."""
     safe_url = sanitize_portal_url(url)
     return (
         f'<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; margin: 0 auto;">'
         f'<tr><td align="center" style="border-radius: 8px; background-color: {bg_color};">'
-        f'<a href="{safe_url}" style="background-color: {bg_color}; color: {text_color}; text-decoration: none; padding: 12px 28px; '
+        f'<a href="{safe_url}" style="background-color: {bg_color}; color: {text_color}; text-decoration: none; padding: 13px 30px; '
         f'border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block; text-align: center; '
-        f'letter-spacing: -0.2px; border: 1px solid rgba(0, 0, 0, 0.08); font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif;">{text}</a>'
+        f'letter-spacing: -0.2px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif;">{text}</a>'
         f'</td></tr></table>'
     )
 
 
-def info_row_html(label: str, value: str, icon: str = "", accent_color: str = "#4F46E5") -> str:
+def info_row_html(label: str, value: str, icon: str = "", accent_color: str = "#0F766E") -> str:
     """Single key-value row (ignores icon to strictly prevent unwanted emojis)."""
     return f"""
     <tr>
@@ -464,12 +446,12 @@ def info_row_html(label: str, value: str, icon: str = "", accent_color: str = "#
     """
 
 
-def status_badge_html(text: str, text_color: str, bg_color: str) -> str:
-    """Clean, high-contrast status badge (uppercase, subtle radius)."""
+def status_badge_html(text: str, text_color: str = "#0F766E", bg_color: str = "#FFFFFF") -> str:
+    """Clean, high-contrast pill status badge matching Image 4."""
     return (
-        f'<span style="background-color: {bg_color}; color: {text_color}; padding: 4px 10px; '
-        f'border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; '
-        f'letter-spacing: 0.06em; display: inline-block; border: 1px solid rgba(0, 0, 0, 0.05);">{text}</span>'
+        f'<span style="background-color: {bg_color}; color: {text_color}; padding: 5px 14px; '
+        f'border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; '
+        f'letter-spacing: 0.08em; display: inline-block; border: 1px solid rgba(15, 118, 110, 0.15); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);">{text}</span>'
     )
 
 
@@ -528,10 +510,10 @@ def alert_box_html(text: str, title: str = "", level: str = "info") -> str:
     level: 'info' | 'warning' | 'danger' | 'success' | 'neutral'
     """
     configs = {
-        "info": {"bg": "#F0F9FF", "border": "#BAE6FD", "left": "#0284C7", "title": "#0369A1", "text": "#0C4A6E"},
+        "info": {"bg": "#F0FDF4", "border": "#A7F3D0", "left": "#0F766E", "title": "#0F766E", "text": "#115E59"},
         "warning": {"bg": "#FFFBEB", "border": "#FDE68A", "left": "#D97706", "title": "#B45309", "text": "#78350F"},
         "danger": {"bg": "#FEF2F2", "border": "#FECACA", "left": "#DC2626", "title": "#B91C1C", "text": "#7F1D1D"},
-        "success": {"bg": "#F0FDF4", "border": "#BBF7D0", "left": "#16A34A", "title": "#15803D", "text": "#14532D"},
+        "success": {"bg": "#F0FDF4", "border": "#A7F3D0", "left": "#0F766E", "title": "#0F766E", "text": "#115E59"},
         "neutral": {"bg": "#F8FAFC", "border": "#E2E8F0", "left": "#64748B", "title": "#334155", "text": "#475569"},
     }
     cfg = configs.get(level.lower(), configs["info"])
@@ -555,16 +537,27 @@ def hero_section_html(
     headline: str,
     subtitle: str = "",
     badge_label: str = "",
-    badge_color: str = "",
-    badge_bg: str = "",
-    hero_bg: str = "#F8FAFC",
+    badge_color: str = "#0F766E",
+    badge_bg: str = "#FFFFFF",
+    hero_bg: str = "#CCFBF1",
 ) -> str:
-    """Reusable hero header block matching executive design."""
+    """Reusable hero header block matching executive design in Image 4."""
+    # Fix headline capitalization cleanly
+    clean_headline = (headline or "").strip()
+    if clean_headline.lower() in ("requested", "leave requested", "new leave request"):
+        clean_headline = "Leave Request Submitted"
+    elif clean_headline.lower() == "approved":
+        clean_headline = "Leave Request Approved"
+    elif clean_headline.lower() == "rejected":
+        clean_headline = "Leave Request Declined"
+    elif clean_headline.lower() == "cancelled":
+        clean_headline = "Leave Request Cancelled"
+    elif clean_headline.islower() or clean_headline == clean_headline.lower():
+        clean_headline = clean_headline.replace("_", " ").title()
+
     badge_html = ""
     if badge_label:
-        b_color = badge_color or "#0F766E"
-        b_bg = badge_bg or "#CCFBF1"
-        badge_html = f'<div style="margin-bottom: 12px;">{status_badge_html(badge_label, b_color, b_bg)}</div>'
+        badge_html = f'<div style="margin-bottom: 14px;">{status_badge_html(badge_label, badge_color or "#0F766E", badge_bg or "#FFFFFF")}</div>'
 
     sub_html = ""
     if subtitle:
@@ -572,10 +565,10 @@ def hero_section_html(
 
     return f"""
     <tr>
-        <td class="hero-section" bgcolor="{hero_bg}" style="padding: 36px 36px 24px 36px; text-align: center; background-color: {hero_bg};">
+        <td class="hero-section" bgcolor="{hero_bg}" style="padding: 36px 36px 28px 36px; text-align: center; background-color: {hero_bg};">
             {badge_html}
-            <h1 style="margin: 0 0 8px 0; font-size: 23px; font-weight: 800; color: #0F172A; letter-spacing: -0.5px; line-height: 1.3;">
-                {headline}
+            <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #0F172A; letter-spacing: -0.5px; line-height: 1.3;">
+                {clean_headline}
             </h1>
             {sub_html}
         </td>

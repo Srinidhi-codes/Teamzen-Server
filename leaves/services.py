@@ -183,23 +183,29 @@ def create_leave_request(user, leave_type, from_date, to_date, reason, half_day_
 
     # --- NOTIFY ADMINS / MANAGERS ---
     try:
+        from django.db import transaction
         from notifications.utils import notify_management, notify_self
         message = f"New leave request from {user.first_name} {user.last_name} for {leave_type.name} ({duration} days)."
-        notify_management(
-            user=user,
-            verb="requested",
-            message=message,
-            target_type="Leave Request",
-            target_id=str(request.id)
-        )
-        # Notify self for multi-tab sync
-        notify_self(
-            user=user,
-            verb="requested_self",
-            message="Your leave request has been submitted.",
-            target_type="Leave Request",
-            target_id=str(request.id)
-        )
+        req_id_str = str(request.id)
+
+        def _dispatch_created_notifications():
+            notify_management(
+                user=user,
+                verb="requested",
+                message=message,
+                target_type="Leave Request",
+                target_id=req_id_str,
+            )
+            # Notify self for multi-tab sync
+            notify_self(
+                user=user,
+                verb="requested_self",
+                message="Your leave request has been submitted.",
+                target_type="Leave Request",
+                target_id=req_id_str,
+            )
+
+        transaction.on_commit(_dispatch_created_notifications)
     except Exception as e:
         import traceback
         print(f"FAILED TO SEND NOTIFICATION: {e}")
