@@ -24,12 +24,11 @@ def get_leave_request_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Leave Request notification HTML email (sent to manager)."""
-    accent = "#EA580C"  # Warm amber/orange
-    hero_bg = "#FFF7ED"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     safe_approval_url = sanitize_portal_url(approval_url, "leaves", is_admin=True)
     safe_company_url = sanitize_portal_url(company_url, is_admin=True)
-
 
     date_str = f"{start_date} to {end_date}" if start_date != end_date else start_date
     duration_str = f"{duration} day(s)" if not str(duration).endswith("day") and not str(duration).endswith("days") else str(duration)
@@ -61,7 +60,7 @@ def get_leave_request_email_html(
             {alert_box_html(
                 "Please check team availability and project coverage before approving or declining this request.",
                 title="Manager Action",
-                level="warning",
+                level="info",
             )}
         </td>
     </tr>
@@ -78,9 +77,9 @@ def get_leave_request_email_html(
     body = f"""
         {hero_section_html(
             headline="New Leave Request",
-            badge_label="PENDING MANAGER REVIEW",
-            badge_color="#C2410C",
-            badge_bg="#FFEDD5",
+            badge_label="LEAVE REQUEST",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

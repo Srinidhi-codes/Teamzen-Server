@@ -82,12 +82,28 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
                 
         # 3. Send Email if requested
         if notification_type in ['EMAIL', 'BOTH']:
+            verb_clean = str(verb or "").strip()
+            verb_subject_map = {
+                "requested": "New Leave Request Submitted",
+                "requested_self": "Your Leave Request Has Been Submitted",
+                "approved": "Leave Request Approved",
+                "rejected": "Leave Request Declined",
+                "cancelled": "Leave Request Cancelled",
+            }
+            if verb_clean.lower() in verb_subject_map:
+                email_subject = verb_subject_map[verb_clean.lower()]
+            elif verb_clean.lower().startswith("notification:"):
+                rest = verb_clean[13:].strip()
+                email_subject = f"Notification: {rest.title()}" if rest else "HRMS Notification"
+            else:
+                email_subject = f"Notification: {verb_clean.title()}" if verb_clean else "HRMS Notification"
+
             # Prefer a separate background task, but if the broker is currently unavailable
             # fall back to inline delivery so manager emails are not silently dropped.
             try:
                 send_email_notification.delay(
                     recipient_id,
-                    "Notification: " + verb,
+                    email_subject,
                     message,
                     target_type,
                     target_id,
@@ -97,7 +113,7 @@ def send_notification(recipient_id, verb, message, actor_id=None, notification_t
             except Exception:
                 send_email_notification(
                     recipient_id,
-                    "Notification: " + verb,
+                    email_subject,
                     message,
                     target_type,
                     target_id,
@@ -120,12 +136,23 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         recipient = User.objects.get(id=recipient_id)
         html_content = None
         extra_context = extra_context or {}
+
+        # Sanitize subject
+        sub_lower = str(subject or "").lower().strip()
+        if sub_lower in ("notification: requested", "requested", "notification:requested"):
+            subject = "New Leave Request Submitted"
+        elif sub_lower in ("notification: approved", "approved", "notification:approved"):
+            subject = "Leave Request Approved"
+        elif sub_lower in ("notification: rejected", "rejected", "notification:rejected"):
+            subject = "Leave Request Declined"
+        elif sub_lower in ("notification: cancelled", "cancelled", "notification:cancelled"):
+            subject = "Leave Request Cancelled"
         
         # 1. Generate HTML content based on target_type
         if target_type == "Leave Request" and target_id:
             LeaveRequest = get_leave_request_model()
             try:
-                req = LeaveRequest.objects.select_related('user').get(id=int(target_id))
+                req = LeaveRequest.objects.select_related('user', 'leave_type').get(id=int(target_id))
                 employee_name = f"{req.user.first_name} {req.user.last_name}"
                 manager_name = recipient.first_name or "Manager"
                 start_date = req.from_date.strftime('%b %d, %Y')
@@ -459,15 +486,29 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             clean_title = (subject or "HRMS Notification").strip()
             if clean_title.lower().startswith("notification:"):
                 clean_title = clean_title[13:].strip()
+            if clean_title.lower() in ("requested", "leave requested", "new leave request"):
+                clean_title = "Leave Request Submitted"
+            elif clean_title.lower() == "approved":
+                clean_title = "Leave Request Approved"
+            elif clean_title.lower() == "rejected":
+                clean_title = "Leave Request Declined"
+            elif clean_title.lower() == "cancelled":
+                clean_title = "Leave Request Cancelled"
+            elif clean_title.islower():
+                clean_title = clean_title.replace("_", " ").title()
 
-            portal = resolve_portal_url()
+            is_mgr = getattr(recipient, "role", "employee") != "employee"
+            portal = resolve_portal_url(is_admin=is_mgr)
+            target_path = "leaves" if target_type == "Leave Request" else ""
+            default_action_url = resolve_portal_url(target_path, is_admin=is_mgr)
+
             html_content = get_general_notification_email_html(
                 recipient_name=f"{recipient.first_name} {recipient.last_name}".strip() or "there",
                 title=clean_title,
                 message=message,
                 category=str(target_type or "Notification"),
                 details=extra_context.get("details"),
-                action_url=extra_context.get("action_url") or portal,
+                action_url=extra_context.get("action_url") or default_action_url,
                 action_text=extra_context.get("action_text") or "Open Workspace",
                 priority=extra_context.get("priority", "normal"),
                 company_name=(

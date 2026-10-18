@@ -50,6 +50,7 @@ class TeamHierarchyResponse:
     user: UserType
     subordinates: List[UserType]
     peers: List[UserType]
+    management_chain: List[UserType] = strawberry.field(default_factory=list, name="managementChain")
 
 
 # =====================================================
@@ -212,38 +213,51 @@ class UserQuery:
             
         target_id = user_id if user_id else current_user.pk
         
-        # Security: Can the current_user see target_id's hierarchy?
-        # Admins and HR can see anyone in their organization.
-        # Managers can see anyone who is in their reporting line.
-        # Employees can only see themselves.
-        
         target_user = CustomUser.objects.select_related(
             "manager", "manager__designation", "manager__department", "manager__organization",
-            "designation", "department", "organization"
+            "designation", "department", "organization", "office_location"
         ).get(pk=target_id)
         
+        # Security: All authenticated users can view colleagues in their organization (similar to MS Teams).
+        # Superadmin can view across organizations; others must belong to the same organization.
         if str(target_id) != str(current_user.pk):
-            if current_user.role not in ["superadmin", "admin", "hr", "manager"]:
-                raise Exception("Unauthorized")
-            
-            if current_user.role in ["admin", "hr"] and target_user.organization != current_user.organization:
-                 raise Exception("Unauthorized to view other organization")
-            
-            if current_user.role == "manager":
-                pass
+            if current_user.role != "superadmin":
+                if target_user.organization_id != current_user.organization_id:
+                    raise Exception("Unauthorized to view members of another organization")
             
         manager = target_user.manager
-        subordinates = list(target_user.subordinates.all().select_related("designation", "department", "organization"))
+        subordinates = list(target_user.subordinates.all().select_related("designation", "department", "organization", "office_location"))
         
         peers = []
         if manager:
-            peers = list(CustomUser.objects.filter(manager=manager).exclude(pk=target_user.pk).select_related("designation", "department", "organization"))
+            peers = list(CustomUser.objects.filter(manager=manager).exclude(pk=target_user.pk).select_related("designation", "department", "organization", "office_location"))
             
+        # Build management chain all the way up (highest executive down to immediate manager)
+        chain_users = []
+        visited = {target_user.pk}
+        curr = target_user.manager
+        while curr and curr.pk not in visited:
+            visited.add(curr.pk)
+            chain_users.append(curr)
+            curr = curr.manager
+        
+        management_chain = []
+        if chain_users:
+            chain_pks = [u.pk for u in chain_users]
+            chain_users_by_pk = {
+                u.pk: u for u in CustomUser.objects.filter(pk__in=chain_pks).select_related(
+                    "designation", "department", "organization", "office_location"
+                )
+            }
+            # Ordered from top-level leadership down to immediate manager
+            management_chain = [chain_users_by_pk[pk] for pk in reversed(chain_pks) if pk in chain_users_by_pk]
+
         return TeamHierarchyResponse(
             manager=manager,
             user=target_user,
             subordinates=subordinates,
-            peers=peers
+            peers=peers,
+            management_chain=management_chain,
         )
 
     @strawberry.field(name="globalLoginHistory")

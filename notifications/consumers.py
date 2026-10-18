@@ -25,8 +25,9 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                 # Don't tear down the socket if Redis/channel layer is down
                 print(f"[notifications] channel layer unavailable: {e}")
         else:
-            # If not authenticated, close AFTER accepting (standard practice to avoid hanging handshakes)
-            await self.close()
+            # If not authenticated, close with application code 4401 (Unauthorized)
+            # so clients know NOT to retry with the same rejected token in a tight loop.
+            await self.close(code=4401)
 
     async def disconnect(self, close_code):
         if hasattr(self, 'group_name'):

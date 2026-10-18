@@ -19,8 +19,8 @@ def get_otp_email_html(
         otp_code = employee_name
         employee_name = "there"
 
-    accent = "#4F46E5"  # Indigo
-    hero_bg = "#EEF2FF"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     code_display = otp_code or "------"
     salutation_name = (employee_name or "there").strip()
@@ -30,8 +30,8 @@ def get_otp_email_html(
             headline="One-Time Verification Code",
             subtitle=f"This code will expire in {expiry_minutes} minutes",
             badge_label="SECURITY VERIFICATION",
-            badge_color="#4338CA",
-            badge_bg="#E0E7FF",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 
@@ -48,7 +48,7 @@ def get_otp_email_html(
 
         <tr>
             <td bgcolor="#FFFFFF" style="padding: 0 36px 28px 36px; text-align: center; background-color: #FFFFFF;">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" bgcolor="#F8FAFC" style="background-color: #F8FAFC; border: 2px dashed #C7D2FE; border-radius: 12px; margin: 0 auto;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" bgcolor="#F8FAFC" style="background-color: #F8FAFC; border: 2px dashed #99F6E4; border-radius: 12px; margin: 0 auto;">
                     <tr>
                         <td bgcolor="#F8FAFC" style="padding: 18px 40px; background-color: #F8FAFC; text-align: center;">
                             <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; color: {accent}; letter-spacing: 8px;">

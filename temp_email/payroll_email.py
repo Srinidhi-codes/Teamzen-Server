@@ -33,8 +33,8 @@ def get_payroll_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Payroll/Salary notification HTML email with clean executive styling."""
-    accent = "#059669"  # Emerald green
-    hero_bg = "#ECFDF5"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
     safe_payslip_url = sanitize_portal_url(payslip_url, "payslips")
     safe_company_url = sanitize_portal_url(company_url)
 
@@ -169,8 +169,8 @@ def get_payroll_email_html(
             headline="Salary Processed",
             subtitle=f"Payroll statement for {month}",
             badge_label="PAYROLL DISBURSED",
-            badge_color="#047857",
-            badge_bg="#D1FAE5",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

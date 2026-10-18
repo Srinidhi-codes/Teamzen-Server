@@ -24,12 +24,11 @@ def get_leave_rejected_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Leave Rejected notification HTML email."""
-    accent = "#DC2626"  # Red
-    hero_bg = "#FEF2F2"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
 
     safe_dashboard_url = sanitize_portal_url(dashboard_url, "leaves")
     safe_company_url = sanitize_portal_url(company_url)
-
 
     date_str = f"{start_date} to {end_date}" if start_date != end_date else start_date
     duration_str = f"{duration} day(s)" if not str(duration).endswith("day") and not str(duration).endswith("days") else str(duration)
@@ -51,7 +50,7 @@ def get_leave_rejected_email_html(
                 {alert_box_html(
                     reason,
                     title="Reason for Decision",
-                    level="danger",
+                    level="neutral",
                 )}
             </td>
         </tr>
@@ -72,7 +71,7 @@ def get_leave_rejected_email_html(
     cta_markup = f"""
     <tr>
         <td bgcolor="#FFFFFF" style="padding: 4px 36px 36px 36px; background-color: #FFFFFF; text-align: center;">
-            {button_html("Submit New Request", safe_dashboard_url, "#4F46E5")}
+            {button_html("Submit New Request", safe_dashboard_url, accent)}
         </td>
     </tr>
     """
@@ -80,9 +79,9 @@ def get_leave_rejected_email_html(
     body = f"""
         {hero_section_html(
             headline="Leave Request Declined",
-            badge_label="REQUEST DECLINED",
-            badge_color="#B91C1C",
-            badge_bg="#FECACA",
+            badge_label="LEAVE DECLINED",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 

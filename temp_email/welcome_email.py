@@ -22,8 +22,8 @@ def get_welcome_email_html(
     company_url: str = "",
 ) -> str:
     """Generate the Welcome/Onboarding HTML email."""
-    accent = "#4F46E5"  # Indigo
-    hero_bg = "#EEF2FF"
+    accent = "#0F766E"  # Teamzen Teal
+    hero_bg = "#CCFBF1"  # Soft mint
     safe_login_url = sanitize_portal_url(login_url, "login")
     safe_company_url = sanitize_portal_url(company_url)
 
@@ -70,8 +70,8 @@ def get_welcome_email_html(
             headline=f"Welcome to {company_name}",
             subtitle="Your employee account has been created successfully",
             badge_label="ACCOUNT ACTIVATED",
-            badge_color="#4338CA",
-            badge_bg="#E0E7FF",
+            badge_color="#0F766E",
+            badge_bg="#FFFFFF",
             hero_bg=hero_bg,
         )}
 
