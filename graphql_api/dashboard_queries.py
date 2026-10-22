@@ -169,6 +169,12 @@ class DashboardQuery:
         if not user.is_authenticated or user.role not in ['superadmin', 'admin', 'hr', 'manager']:
             raise Exception("Unauthenticated")
 
+        from django.core.cache import cache
+        cache_key = f"admin_dash_stats:{getattr(user, 'organization_id', None) or 'all'}:{user.role}:{getattr(user, 'department_id', None) or 'none'}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         # 0. Define scope filters based on role to prevent hierarchy leakage
         # Superadmin (no org required) sees all orgs; HR/Admin see their org; Managers see department
         if user.role == 'superadmin':
@@ -420,7 +426,7 @@ class DashboardQuery:
                 status=l._status
             ))
 
-        return AdminDashboardStats(
+        result = AdminDashboardStats(
             total_employees=total_employees,
             active_employees=active_employees,
             pending_leave_approvals=pending_leaves,
@@ -434,6 +440,11 @@ class DashboardQuery:
             ai_insights=[AIInsight(**i) for i in generate_admin_insights(user)],
             wish_message=None # Admins get a generic dashboard, or we could add a greeting here too
         )
+        try:
+            cache.set(cache_key, result, timeout=180)
+        except Exception:
+            pass
+        return result
 
     @strawberry.field
     def user_dashboard_stats(self, info) -> UserDashboardStats:
@@ -441,9 +452,14 @@ class DashboardQuery:
         if not user.is_authenticated:
             raise Exception("Unauthenticated")
 
-        from organizations.workweek import get_weekend_days
-
         today = date.today()
+        from django.core.cache import cache
+        cache_key = f"user_dash_stats:{user.id}:{today.isoformat()}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        from organizations.workweek import get_weekend_days
         org = user.organization
         weekend_days = get_weekend_days(org)
         attendance_statuses = ("present", "late_login", "early_logout", "half_day")
@@ -919,6 +935,11 @@ class DashboardQuery:
             payroll_summary=payroll_summary,
             pending_leaves_summary=pending_leaves_summary,
         )
+        try:
+            cache.set(cache_key, result, timeout=60)
+        except Exception:
+            pass
+        return result
 
     @strawberry.field
     def user_activities(self, info) -> List[ActivityStat]:

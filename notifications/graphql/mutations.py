@@ -1,4 +1,5 @@
 import strawberry
+from typing import Optional
 from notifications.models import Notification
 from .types import NotificationType
 
@@ -159,4 +160,149 @@ class NotificationMutation:
                 
             broadcast_to_bots.delay(html_message=html_message, image_url=image_url)
             
+        return True
+
+    @strawberry.mutation
+    def update_email_template(
+        self,
+        info,
+        template_key: str,
+        is_enabled: bool,
+        custom_category: Optional[str] = None,
+        custom_subject: Optional[str] = None,
+        custom_headline: Optional[str] = None,
+        custom_body: Optional[str] = None,
+        custom_cta_text: Optional[str] = None,
+        custom_cta_url: Optional[str] = None,
+        custom_footer: Optional[str] = None,
+        is_raw_html_mode: Optional[bool] = False,
+        custom_full_html: Optional[str] = None,
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized to edit email templates. Requires Admin or Superadmin role.")
+
+        from notifications.models import EmailTemplateSetting
+        org = user.organization if getattr(user, 'organization_id', None) else None
+
+        setting, _ = EmailTemplateSetting.objects.get_or_create(
+            organization=org,
+            template_key=template_key,
+            defaults={"is_enabled": is_enabled}
+        )
+        setting.is_enabled = is_enabled
+        setting.custom_category = custom_category.strip() if custom_category else None
+        setting.custom_subject = custom_subject.strip() if custom_subject else None
+        setting.custom_headline = custom_headline.strip() if custom_headline else None
+        setting.custom_body = custom_body.strip() if custom_body else None
+        setting.custom_cta_text = custom_cta_text.strip() if custom_cta_text else None
+        setting.custom_cta_url = custom_cta_url.strip() if custom_cta_url else None
+        setting.custom_footer = custom_footer.strip() if custom_footer else None
+        setting.is_raw_html_mode = bool(is_raw_html_mode)
+        setting.custom_full_html = custom_full_html.strip() if custom_full_html else None
+        setting.updated_by = user
+        setting.save()
+        return True
+
+    @strawberry.mutation
+    def toggle_email_template(
+        self,
+        info,
+        template_key: str,
+        is_enabled: bool
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized. Requires Admin or Superadmin role.")
+
+        from notifications.models import EmailTemplateSetting
+        org = user.organization if getattr(user, 'organization_id', None) else None
+
+        setting, _ = EmailTemplateSetting.objects.get_or_create(
+            organization=org,
+            template_key=template_key,
+            defaults={"is_enabled": is_enabled}
+        )
+        setting.is_enabled = is_enabled
+        setting.updated_by = user
+        setting.save(update_fields=['is_enabled', 'updated_by', 'updated_at'])
+        return True
+
+    @strawberry.mutation
+    def reset_email_template(
+        self,
+        info,
+        template_key: str
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized. Requires Admin or Superadmin role.")
+
+        from notifications.models import EmailTemplateSetting
+        org = user.organization if getattr(user, 'organization_id', None) else None
+
+        setting = EmailTemplateSetting.objects.filter(
+            organization=org,
+            template_key=template_key
+        ).first()
+        if setting:
+            setting.custom_category = None
+            setting.custom_subject = None
+            setting.custom_headline = None
+            setting.custom_body = None
+            setting.custom_cta_text = None
+            setting.custom_cta_url = None
+            setting.custom_footer = None
+            setting.custom_full_html = None
+            setting.is_raw_html_mode = False
+            setting.updated_by = user
+            setting.save()
+        return True
+
+    @strawberry.mutation
+    def send_test_email(
+        self,
+        info,
+        template_key: str,
+        recipient_email: str
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin']:
+            raise Exception("Unauthorized. Requires Admin or Superadmin role.")
+
+        from django.core.mail import EmailMultiAlternatives
+        from django.conf import settings
+        from notifications.models import EmailTemplateSetting
+        from notifications.email_templates_registry import DEFAULT_EMAIL_TEMPLATES, render_email_html, substitute_tokens
+        from notifications.email_backends import BrevoHTTPBackend
+
+        spec = DEFAULT_EMAIL_TEMPLATES.get(template_key)
+        if not spec:
+            raise Exception("Invalid template key")
+
+        org = user.organization if getattr(user, 'organization_id', None) else None
+        setting = EmailTemplateSetting.get_setting_or_default(org, template_key)
+
+        sample_ctx = dict(spec.get("sample_context", {}))
+        if org:
+            sample_ctx["company_name"] = org.name
+
+        active_subject = (setting.custom_subject if setting and setting.custom_subject else spec["default_subject"])
+        subject = f"[Test Preview] " + substitute_tokens(active_subject, sample_ctx)
+
+        html_content = render_email_html(
+            setting or spec,
+            sample_ctx,
+            company_name=org.name if org else "Teamzen"
+        )
+
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body="This is a test preview of your customized Teamzen email template.",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[recipient_email],
+            connection=BrevoHTTPBackend()
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send(fail_silently=False)
         return True

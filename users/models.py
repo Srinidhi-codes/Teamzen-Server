@@ -17,6 +17,15 @@ class CustomUser(AbstractUser):
         ('manager', 'Manager'),
         ('employee', 'Employee'),
     ]
+
+    HIERARCHY_LEVEL_CHOICES = [
+        (0, "Level 0 - Superadmin"),
+        (1, "Level 1 - Admin / Executive Leadership (CEO/MD)"),
+        (2, "Level 2 - Senior Leadership (Director/Regional Head/VP)"),
+        (3, "Level 3 - Management (Manager/Lead/HR)"),
+        (4, "Level 4 - Professional / IC (Senior/Mid Engineer/QA/DevOps)"),
+        (5, "Level 5 - Associate / Support (Associate/IT/Intern)"),
+    ]
     
     EMPLOYMENT_TYPES = [
         ('full_time', 'Full Time'),
@@ -37,7 +46,12 @@ class CustomUser(AbstractUser):
     designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, null=True, blank=True)
     manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
     office_location = models.ForeignKey(OfficeLocation, on_delete=models.SET_NULL, null=True, blank=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='employee')
+    role = models.CharField(max_length=32, choices=ROLE_CHOICES, default='employee')
+    hierarchy_level = models.IntegerField(
+        default=4,
+        choices=HIERARCHY_LEVEL_CHOICES,
+        help_text="Organizational hierarchy level (0: Superadmin, 1: Admin/Exec, 2: Director/VP, 3: Manager/Lead/HR, 4: Professional/IC, 5: Associate/Support)"
+    )
     
     # Personal Details
     date_of_birth = models.DateField(null=True, blank=True)
@@ -121,6 +135,34 @@ class CustomUser(AbstractUser):
 
     def has_role(self, role_name):
         return self.role == role_name
+
+    @property
+    def is_eligible_manager(self) -> bool:
+        if self.role in ['superadmin', 'admin', 'hr', 'manager']:
+            return True
+        return self.hierarchy_level is not None and self.hierarchy_level <= 3
+
+    def get_hierarchy_label(self) -> str:
+        labels = {
+            0: "Level 0 - Superadmin",
+            1: "Level 1 - Executive (Admin/CEO)",
+            2: "Level 2 - Leadership (Director/Regional Head/VP)",
+            3: "Level 3 - Management (Manager/Lead/HR)",
+            4: "Level 4 - Professional (Staff/Dev/QA)",
+            5: "Level 5 - Associate (Associate/IT/Intern)",
+        }
+        return labels.get(self.hierarchy_level, f"Level {self.hierarchy_level}")
+
+    def save(self, *args, **kwargs):
+        # Auto-align default hierarchy_level if untouched default 4
+        if self.hierarchy_level == 4:
+            if self.role == 'superadmin':
+                self.hierarchy_level = 0
+            elif self.role == 'admin':
+                self.hierarchy_level = 1
+            elif self.role in ['manager', 'hr']:
+                self.hierarchy_level = 3
+        super().save(*args, **kwargs)
 
 class UserLoginHistory(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='login_history')

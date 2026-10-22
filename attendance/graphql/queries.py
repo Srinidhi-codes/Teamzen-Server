@@ -33,6 +33,7 @@ class OrgAttendanceFilterInput:
     start_date: Optional[dt_date] = None
     end_date: Optional[dt_date] = None
     search: Optional[str] = None
+    user_id: Optional[strawberry.ID] = None
     status: Optional[str] = None
     roaming_only: Optional[bool] = None
     approval_status: Optional[str] = None
@@ -343,6 +344,9 @@ class AttendanceQuery:
 
             if filters.is_off_hours is not None:
                 qs = qs.filter(is_off_hours=filters.is_off_hours)
+
+            if filters.user_id:
+                qs = qs.filter(user_id=filters.user_id)
 
             if filters.search:
                 s = filters.search.strip()

@@ -501,6 +501,13 @@ def start_preboarding(
         new_user.department_id = department_id
     if designation_id:
         new_user.designation_id = designation_id
+        try:
+            from organizations.models import Designation
+            desig = Designation.objects.filter(id=designation_id).first()
+            if desig and desig.hierarchy_level:
+                new_user.hierarchy_level = desig.hierarchy_level
+        except Exception:
+            pass
     if office_location_id:
         new_user.office_location_id = office_location_id
     if manager_id:

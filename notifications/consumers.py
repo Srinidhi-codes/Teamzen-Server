@@ -70,6 +70,59 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                             )
                         except Exception:
                             pass
+
+            elif action == "draft_sync" and self.user.is_authenticated:
+                scope = data.get("scope", "post")
+                draft = data.get("draft") or {}
+                await self.set_cached_draft(self.user.id, scope, draft)
+                if hasattr(self, 'channel_layer') and self.channel_layer and hasattr(self, 'group_name'):
+                    try:
+                        await self.channel_layer.group_send(
+                            self.group_name,
+                            {
+                                "type": "send_notification",
+                                "message": {
+                                    "level": "draft_sync",
+                                    "action": "draft_updated",
+                                    "scope": scope,
+                                    "draft": draft,
+                                    "sender_channel": self.channel_name
+                                }
+                            }
+                        )
+                    except Exception:
+                        pass
+
+            elif action == "get_draft" and self.user.is_authenticated:
+                scope = data.get("scope", "post")
+                cached = await self.get_cached_draft(self.user.id, scope)
+                await self.send(text_data=json.dumps({
+                    "level": "draft_sync",
+                    "action": "draft_loaded",
+                    "scope": scope,
+                    "draft": cached
+                }))
+
+            elif action == "draft_clear" and self.user.is_authenticated:
+                scope = data.get("scope", "post")
+                await self.clear_cached_draft(self.user.id, scope)
+                if hasattr(self, 'channel_layer') and self.channel_layer and hasattr(self, 'group_name'):
+                    try:
+                        await self.channel_layer.group_send(
+                            self.group_name,
+                            {
+                                "type": "send_notification",
+                                "message": {
+                                    "level": "draft_sync",
+                                    "action": "draft_cleared",
+                                    "scope": scope,
+                                    "sender_channel": self.channel_name
+                                }
+                            }
+                        )
+                    except Exception:
+                        pass
+
         except Exception as e:
             print(f"[notifications] receive error: {e}")
 
@@ -88,7 +141,27 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             print(f"[notifications] increment_post_view error: {e}")
         return None
 
+    @database_sync_to_async
+    def set_cached_draft(self, user_id: int, scope: str, draft: dict):
+        from django.core.cache import cache
+        key = f"teamzen_draft:{user_id}:{scope}"
+        cache.set(key, draft, timeout=86400)
+
+    @database_sync_to_async
+    def get_cached_draft(self, user_id: int, scope: str):
+        from django.core.cache import cache
+        key = f"teamzen_draft:{user_id}:{scope}"
+        return cache.get(key)
+
+    @database_sync_to_async
+    def clear_cached_draft(self, user_id: int, scope: str):
+        from django.core.cache import cache
+        key = f"teamzen_draft:{user_id}:{scope}"
+        cache.delete(key)
+
     # Receive message from group
     async def send_notification(self, event):
-        # Send message to WebSocket
+        # Ignore echoing back to the exact sender socket for draft synchronization
+        if event.get("message", {}).get("sender_channel") == self.channel_name:
+            return
         await self.send(text_data=json.dumps(event["message"]))

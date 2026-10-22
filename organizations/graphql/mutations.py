@@ -450,3 +450,299 @@ class OrganizationMutation:
         designation.save(update_fields=['is_active'])
         return designation
 
+    # =========================================================================
+    # 3-Tier Access Control & Feature Gating Mutations
+    # =========================================================================
+
+    @strawberry.mutation
+    def update_plan_feature_default(
+        self, info, plan: str, module_key: str, is_enabled: bool
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role != "superadmin":
+            raise Exception("Unauthorized. Only Super Admin can modify subscription plan feature defaults.")
+
+        from organizations.models import PlanFeatureDefault
+        record, _ = PlanFeatureDefault.objects.get_or_create(
+            plan=plan.lower().strip(),
+            module_key=module_key.lower().strip(),
+            defaults={"is_enabled": is_enabled}
+        )
+        record.is_enabled = is_enabled
+        record.save(update_fields=["is_enabled"])
+        return True
+
+    @strawberry.mutation
+    def update_organization_feature_override(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        module_key: str,
+        is_enabled: bool,
+        notes: Optional[str] = None
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role != "superadmin":
+            raise Exception("Unauthorized. Only Super Admin can customize company feature overrides.")
+
+        from organizations.models import Organization, OrganizationFeatureOverride
+        org = Organization.objects.filter(id=organization_id).first()
+        if not org:
+            raise Exception("Organization not found")
+
+        override, _ = OrganizationFeatureOverride.objects.get_or_create(
+            organization=org,
+            module_key=module_key.lower().strip(),
+            defaults={"is_enabled": is_enabled, "notes": notes or "", "updated_by": user}
+        )
+        override.is_enabled = is_enabled
+        if notes is not None:
+            override.notes = notes
+        override.updated_by = user
+        override.save()
+        return True
+
+    @strawberry.mutation
+    def reset_organization_feature_override(
+        self, info, organization_id: strawberry.ID, module_key: str
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role != "superadmin":
+            raise Exception("Unauthorized. Only Super Admin can reset company feature overrides.")
+
+        from organizations.models import OrganizationFeatureOverride
+        OrganizationFeatureOverride.objects.filter(
+            organization_id=organization_id,
+            module_key=module_key.lower().strip()
+        ).delete()
+        return True
+
+    @strawberry.mutation
+    def update_company_admin_delegation(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        can_manage_payroll: bool,
+        can_manage_leaves: bool,
+        can_manage_attendance: bool,
+        can_manage_employees: bool,
+        can_manage_email_templates: bool,
+        can_manage_onboarding: bool,
+        can_manage_policies: bool,
+        can_manage_rbac: bool
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role != "superadmin":
+            raise Exception("Unauthorized. Only Super Admin can configure Company Admin delegated privileges.")
+
+        from organizations.models import Organization, CompanyAdminDelegation
+        org = Organization.objects.filter(id=organization_id).first()
+        if not org:
+            raise Exception("Organization not found")
+
+        delegation, _ = CompanyAdminDelegation.objects.get_or_create(
+            organization=org,
+            defaults={
+                "can_manage_payroll": can_manage_payroll,
+                "can_manage_leaves": can_manage_leaves,
+                "can_manage_attendance": can_manage_attendance,
+                "can_manage_employees": can_manage_employees,
+                "can_manage_email_templates": can_manage_email_templates,
+                "can_manage_onboarding": can_manage_onboarding,
+                "can_manage_policies": can_manage_policies,
+                "can_manage_rbac": can_manage_rbac,
+                "updated_by": user,
+            }
+        )
+        delegation.can_manage_payroll = can_manage_payroll
+        delegation.can_manage_leaves = can_manage_leaves
+        delegation.can_manage_attendance = can_manage_attendance
+        delegation.can_manage_employees = can_manage_employees
+        delegation.can_manage_email_templates = can_manage_email_templates
+        delegation.can_manage_onboarding = can_manage_onboarding
+        delegation.can_manage_policies = can_manage_policies
+        delegation.can_manage_rbac = can_manage_rbac
+        delegation.updated_by = user
+        delegation.save()
+        return True
+
+    @strawberry.mutation
+    def update_role_permission(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        role: str,
+        module_key: str,
+        access_level: str
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+
+        from organizations.models import Organization, RoleModulePermission
+        from organizations.permissions_engine import get_company_admin_delegation
+
+        org = Organization.objects.filter(id=organization_id).first()
+        if not org:
+            raise Exception("Organization not found")
+
+        if user.role != "superadmin":
+            if user.role != "admin" or str(user.organization_id) != str(organization_id):
+                raise Exception("Unauthorized to modify role permissions")
+            delegation = get_company_admin_delegation(org)
+            if not delegation.get("can_manage_rbac", True):
+                raise Exception("Super Admin has restricted RBAC management for this company admin.")
+
+        level = access_level.lower().strip()
+        if level not in ("none", "view", "full"):
+            raise Exception("Invalid access level. Must be 'none', 'view', or 'full'.")
+
+        r = role.lower().strip()
+        from organizations.models import OrganizationRole
+        is_valid_role = r in ("admin", "hr", "manager", "employee") or OrganizationRole.objects.filter(organization=org, role_key=r).exists()
+        if not is_valid_role:
+            raise Exception(f"Role '{r}' is not recognized for this organization.")
+
+        perm, _ = RoleModulePermission.objects.get_or_create(
+            organization=org,
+            role=r,
+            module_key=module_key.lower().strip(),
+            defaults={"access_level": level, "updated_by": user}
+        )
+        perm.access_level = level
+        perm.updated_by = user
+        perm.save()
+        return True
+
+    @strawberry.mutation
+    def create_custom_role(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        role_label: str,
+        role_key: Optional[str] = None,
+        copy_from_role: Optional[str] = "employee",
+        description: Optional[str] = None
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+
+        import re
+        from organizations.models import Organization, OrganizationRole, RoleModulePermission
+        from organizations.permissions_engine import MODULE_DEFINITIONS, get_company_admin_delegation
+
+        org = Organization.objects.filter(id=organization_id).first()
+        if not org:
+            raise Exception("Organization not found")
+
+        if user.role != "superadmin":
+            if user.role != "admin" or str(user.organization_id) != str(organization_id):
+                raise Exception("Unauthorized to create custom roles")
+            delegation = get_company_admin_delegation(org)
+            if not delegation.get("can_manage_rbac", True):
+                raise Exception("Super Admin has restricted RBAC management for this company admin.")
+
+        label = (role_label or "").strip()
+        if not label:
+            raise Exception("Role label is required")
+
+        raw_key = (role_key or role_label).lower().strip()
+        clean_key = re.sub(r'[^a-z0-9_]', '_', raw_key).strip('_')[:32]
+        if not clean_key:
+            raise Exception("Invalid role identifier / key")
+
+        if clean_key in ("admin", "hr", "manager", "employee", "superadmin"):
+            raise Exception(f"'{clean_key}' is a reserved system role key")
+
+        if OrganizationRole.objects.filter(organization=org, role_key=clean_key).exists():
+            raise Exception(f"Role '{clean_key}' already exists for this organization")
+
+        OrganizationRole.objects.create(
+            organization=org,
+            role_key=clean_key,
+            role_label=label,
+            description=(description or "").strip() or None,
+            is_system_role=False
+        )
+
+        base_role = (copy_from_role or "employee").lower().strip()
+        existing_base_perms = {}
+        if base_role != "none":
+            for p in RoleModulePermission.objects.filter(organization=org, role=base_role):
+                existing_base_perms[p.module_key] = p.access_level
+
+        for m in MODULE_DEFINITIONS:
+            k = m["key"]
+            if base_role == "none":
+                level = "none"
+            elif k in existing_base_perms:
+                level = existing_base_perms[k]
+            else:
+                level = m["default_role_levels"].get(base_role, "view")
+            RoleModulePermission.objects.create(
+                organization=org,
+                role=clean_key,
+                module_key=k,
+                access_level=level,
+                updated_by=user
+            )
+
+        return True
+
+    @strawberry.mutation
+    def delete_custom_role(
+        self,
+        info,
+        organization_id: strawberry.ID,
+        role_key: str
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+
+        from organizations.models import Organization, OrganizationRole, RoleModulePermission
+        from organizations.permissions_engine import get_company_admin_delegation
+
+        org = Organization.objects.filter(id=organization_id).first()
+        if not org:
+            raise Exception("Organization not found")
+
+        if user.role != "superadmin":
+            if user.role != "admin" or str(user.organization_id) != str(organization_id):
+                raise Exception("Unauthorized to delete custom roles")
+            delegation = get_company_admin_delegation(org)
+            if not delegation.get("can_manage_rbac", True):
+                raise Exception("Super Admin has restricted RBAC management for this company admin.")
+
+        r = (role_key or "").lower().strip()
+        if r in ("admin", "hr", "manager", "employee", "superadmin"):
+            raise Exception("Built-in system roles cannot be deleted")
+
+        OrganizationRole.objects.filter(organization=org, role_key=r).delete()
+        RoleModulePermission.objects.filter(organization=org, role=r).delete()
+
+        from users.models import CustomUser
+        CustomUser.objects.filter(organization=org, role=r).update(role="employee")
+
+        return True
+
+    @strawberry.mutation
+    def reset_role_permissions_to_default(
+        self, info, organization_id: strawberry.ID
+    ) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+
+        if user.role != "superadmin" and (user.role != "admin" or str(user.organization_id) != str(organization_id)):
+            raise Exception("Unauthorized to reset role permissions")
+
+        from organizations.models import RoleModulePermission
+        RoleModulePermission.objects.filter(
+            organization_id=organization_id,
+            role__in=["admin", "hr", "manager", "employee"]
+        ).delete()
+        return True
+
+

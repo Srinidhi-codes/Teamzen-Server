@@ -7,19 +7,83 @@ from users.models import CustomUser
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
-def broadcast_feed_update(action: str, target_id: str):
+def serialize_user(user) -> Optional[dict]:
+    if not user:
+        return None
+    profile_pic = None
+    if hasattr(user, 'profile_picture') and user.profile_picture:
+        try:
+            profile_pic = user.profile_picture.url
+        except Exception:
+            profile_pic = str(user.profile_picture)
+    return {
+        "id": str(user.id),
+        "firstName": user.first_name,
+        "lastName": user.last_name,
+        "email": user.email,
+        "profilePictureUrl": profile_pic,
+    }
+
+def serialize_post(post, viewer=None) -> dict:
+    from django.utils import timezone
+    is_scheduled = bool(post.scheduled_for and post.scheduled_for > timezone.now())
+    has_liked = False
+    if viewer and viewer.is_authenticated:
+        has_liked = getattr(post, 'user_has_liked', None)
+        if has_liked is None:
+            has_liked = PostLike.objects.filter(post=post, user=viewer).exists()
+    return {
+        "id": str(post.id),
+        "title": post.title or "",
+        "content": post.content or "",
+        "mediaUrls": post.media_urls or [],
+        "likesCount": post.likes_count,
+        "commentsCount": post.comments_count,
+        "viewsCount": post.views_count,
+        "scheduledFor": post.scheduled_for.isoformat() if post.scheduled_for else None,
+        "isScheduled": is_scheduled,
+        "createdAt": post.created_at.isoformat() if post.created_at else None,
+        "updatedAt": post.updated_at.isoformat() if post.updated_at else None,
+        "hasLiked": has_liked,
+        "likers": [],
+        "author": serialize_user(post.author),
+    }
+
+def serialize_comment(comment, viewer=None) -> dict:
+    has_liked = False
+    if viewer and viewer.is_authenticated:
+        has_liked = CommentLike.objects.filter(comment=comment, user=viewer).exists()
+    return {
+        "id": str(comment.id),
+        "content": comment.content or "",
+        "likesCount": comment.likes_count,
+        "createdAt": comment.created_at.isoformat() if comment.created_at else None,
+        "updatedAt": comment.updated_at.isoformat() if comment.updated_at else None,
+        "hasLiked": has_liked,
+        "postId": str(comment.post_id),
+        "parentId": str(comment.parent_id) if comment.parent_id else None,
+        "author": serialize_user(comment.author),
+        "replies": [],
+    }
+
+def broadcast_feed_update(action: str, target_id: str, payload: Optional[dict] = None):
     channel_layer = get_channel_layer()
     if channel_layer:
         try:
+            msg = {
+                "level": "feed_update",
+                "action": action,
+                "target_id": str(target_id),
+            }
+            if payload:
+                msg.update(payload)
+                msg["data"] = payload
+
             async_to_sync(channel_layer.group_send)(
                 "global_feed",
                 {
                     "type": "send_notification",
-                    "message": {
-                        "level": "feed_update",
-                        "action": action,
-                        "target_id": target_id
-                    }
+                    "message": msg
                 }
             )
         except Exception:
@@ -135,7 +199,10 @@ class FeedMutation:
         from django.utils import timezone
         is_future_scheduled = bool(parsed_scheduled_for and parsed_scheduled_for > timezone.now())
         if not is_future_scheduled:
-            broadcast_feed_update("create_post", str(post.id))
+            broadcast_feed_update("create_post", str(post.id), {
+                "action": "post_created",
+                "post": serialize_post(post, viewer=user)
+            })
             notify_mentions(content, user, "post", str(post.id))
         return post
 
@@ -153,7 +220,10 @@ class FeedMutation:
         if post:
             post_id = str(post.id)
             post.delete()
-            broadcast_feed_update("delete_post", post_id)
+            broadcast_feed_update("delete_post", post_id, {
+                "action": "post_deleted",
+                "post_id": post_id
+            })
             return True
         return False
 
@@ -183,7 +253,10 @@ class FeedMutation:
             update_fields.append('media_urls')
             
         post.save(update_fields=update_fields)
-        broadcast_feed_update("update_post", str(post.id))
+        broadcast_feed_update("update_post", str(post.id), {
+            "action": "post_updated",
+            "post": serialize_post(post, viewer=user)
+        })
         notify_mentions(content, user, "post", str(post.id))
         return post
 
@@ -200,9 +273,15 @@ class FeedMutation:
         like, created = PostLike.objects.get_or_create(post=post, user=user)
         if not created:
             like.delete()
-            post.likes_count -= 1
+            post.likes_count = max(0, post.likes_count - 1)
             post.save(update_fields=['likes_count'])
-            broadcast_feed_update("toggle_post_like", str(post.id))
+            broadcast_feed_update("toggle_post_like", str(post.id), {
+                "action": "post_liked",
+                "post_id": str(post.id),
+                "likes_count": post.likes_count,
+                "actor_id": str(user.id),
+                "has_liked": False
+            })
             return False
         else:
             post.likes_count += 1
@@ -218,7 +297,13 @@ class FeedMutation:
                     message=f"{user.first_name} {user.last_name} liked your post.",
                     level='personal'
                 )
-            broadcast_feed_update("toggle_post_like", str(post.id))
+            broadcast_feed_update("toggle_post_like", str(post.id), {
+                "action": "post_liked",
+                "post_id": str(post.id),
+                "likes_count": post.likes_count,
+                "actor_id": str(user.id),
+                "has_liked": True
+            })
             return True
 
     @strawberry.mutation
@@ -266,7 +351,13 @@ class FeedMutation:
                 level='personal'
             )
         
-        broadcast_feed_update("create_comment", str(post.id))
+        broadcast_feed_update("create_comment", str(post.id), {
+            "action": "comment_created",
+            "post_id": str(post.id),
+            "parent_id": str(parent.id) if parent else None,
+            "comments_count": post.comments_count,
+            "comment": serialize_comment(comment, viewer=user)
+        })
         notify_mentions(content, user, "comment", str(post.id))
         return comment
 
@@ -284,10 +375,16 @@ class FeedMutation:
         if comment:
             post = comment.post
             post_id = str(post.id)
+            comment_id = str(comment.id)
             comment.delete()
             post.comments_count = max(0, post.comments_count - 1)
             post.save(update_fields=['comments_count'])
-            broadcast_feed_update("delete_comment", post_id)
+            broadcast_feed_update("delete_comment", post_id, {
+                "action": "comment_deleted",
+                "post_id": post_id,
+                "comment_id": comment_id,
+                "comments_count": post.comments_count
+            })
             return True
         return False
 
@@ -303,7 +400,11 @@ class FeedMutation:
             
         comment.content = content
         comment.save(update_fields=['content', 'updated_at'])
-        broadcast_feed_update("update_comment", str(comment.post.id))
+        broadcast_feed_update("update_comment", str(comment.post.id), {
+            "action": "comment_updated",
+            "post_id": str(comment.post.id),
+            "comment": serialize_comment(comment, viewer=user)
+        })
         notify_mentions(content, user, "comment", str(comment.post.id))
         return comment
 
@@ -320,14 +421,28 @@ class FeedMutation:
         like, created = CommentLike.objects.get_or_create(comment=comment, user=user)
         if not created:
             like.delete()
-            comment.likes_count -= 1
+            comment.likes_count = max(0, comment.likes_count - 1)
             comment.save(update_fields=['likes_count'])
-            broadcast_feed_update("toggle_comment_like", str(comment.post.id))
+            broadcast_feed_update("toggle_comment_like", str(comment.post.id), {
+                "action": "comment_liked",
+                "post_id": str(comment.post.id),
+                "comment_id": str(comment.id),
+                "likes_count": comment.likes_count,
+                "actor_id": str(user.id),
+                "has_liked": False
+            })
             return False
         else:
             comment.likes_count += 1
             comment.save(update_fields=['likes_count'])
-            broadcast_feed_update("toggle_comment_like", str(comment.post.id))
+            broadcast_feed_update("toggle_comment_like", str(comment.post.id), {
+                "action": "comment_liked",
+                "post_id": str(comment.post.id),
+                "comment_id": str(comment.id),
+                "likes_count": comment.likes_count,
+                "actor_id": str(user.id),
+                "has_liked": True
+            })
             return True
 
     @strawberry.mutation

@@ -16,6 +16,10 @@ class UserFilterInput:
     search: Optional[str] = None
     is_active: Optional[bool] = None
     organization_id: Optional[strawberry.ID] = None
+    is_manager: Optional[bool] = None
+    max_hierarchy_level: Optional[int] = None
+    roles: Optional[List[str]] = None
+    include_admins: Optional[bool] = None
 
 
 @strawberry.input
@@ -132,11 +136,17 @@ class UserQuery:
             "manager",
         )
 
-        # Org owners / platform admins are not listed as workforce employees
-        qs = qs.exclude(role__in=["admin", "superadmin"])
+        # General workforce directory hides platform/org owners unless explicitly requested or filtering for managers/roles
+        should_exclude_admins = True
+        if filters:
+            if filters.include_admins or filters.is_manager or filters.roles or (filters.max_hierarchy_level is not None and filters.max_hierarchy_level <= 3):
+                should_exclude_admins = False
+
+        if should_exclude_admins:
+            qs = qs.exclude(role__in=["admin", "superadmin"])
 
         if user.role == "superadmin":
-            pass # full queryset (minus admin/superadmin above)
+            pass # full queryset
         elif user.role in ["admin", "hr"]:
             qs = qs.filter(organization=user.organization)
         elif user.role == "manager":
@@ -160,6 +170,23 @@ class UserQuery:
                     raise Exception("Unauthorized to filter by other organizations")
                 qs = qs.filter(organization_id=filters.organization_id)
 
+            if filters.is_manager is not None:
+                if filters.is_manager:
+                    qs = qs.filter(
+                        Q(role__in=["superadmin", "admin", "hr", "manager"]) |
+                        Q(hierarchy_level__lte=3)
+                    )
+                else:
+                    qs = qs.exclude(
+                        role__in=["superadmin", "admin", "hr", "manager"]
+                    ).filter(hierarchy_level__gt=3)
+
+            if filters.max_hierarchy_level is not None:
+                qs = qs.filter(hierarchy_level__lte=filters.max_hierarchy_level)
+
+            if filters.roles:
+                qs = qs.filter(role__in=filters.roles)
+
             if filters.search:
                 search = filters.search.strip()
                 qs = qs.filter(
@@ -180,6 +207,47 @@ class UserQuery:
         paginated = get_paginated_results(qs, page, page_size, sort)
         
         return PaginatedUserResponse(**paginated)
+
+    @strawberry.field
+    def eligible_managers(
+        self,
+        info: Info,
+        organization_id: Optional[strawberry.ID] = None,
+        search: Optional[str] = None,
+    ) -> List[UserType]:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return []
+
+        qs = CustomUser.objects.filter(is_active=True).select_related(
+            "organization",
+            "designation",
+            "department",
+            "office_location",
+        )
+
+        target_org_id = organization_id or user.organization_id
+        if user.role != "superadmin":
+            qs = qs.filter(organization=user.organization)
+        elif target_org_id:
+            qs = qs.filter(organization_id=target_org_id)
+
+        # Managers and higher hierarchy: roles superadmin, admin, hr, manager OR hierarchy_level <= 3
+        qs = qs.filter(
+            Q(role__in=["superadmin", "admin", "hr", "manager"]) |
+            Q(hierarchy_level__lte=3)
+        )
+
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(designation__name__icontains=search)
+            )
+
+        return list(qs.order_by("hierarchy_level", "first_name", "last_name")[:100])
 
     @strawberry.field
     def directory_users(self, info: Info, search: Optional[str] = None) -> List[UserType]:

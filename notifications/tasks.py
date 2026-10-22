@@ -137,7 +137,17 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
         html_content = None
         extra_context = extra_context or {}
 
-        # Sanitize subject
+        # 0. Check Admin Email Notification Setting & Custom Templates
+        from .models import EmailTemplateSetting
+        from .email_templates_registry import resolve_template_key, render_email_html, substitute_tokens
+
+        template_key = resolve_template_key(target_type, extra_context.get("verb") or subject, extra_context)
+        org = getattr(recipient, "organization", None)
+        if not EmailTemplateSetting.is_email_enabled(org, template_key):
+            print(f"[Email Suppressed] Template '{template_key}' is disabled by admin settings for {recipient.email}.")
+            return f"Email {template_key} disabled for {recipient.email}"
+
+        # Sanitize default subject
         sub_lower = str(subject or "").lower().strip()
         if sub_lower in ("notification: requested", "requested", "notification:requested"):
             subject = "New Leave Request Submitted"
@@ -147,9 +157,28 @@ def send_email_notification(recipient_id, subject, message, target_type=None, ta
             subject = "Leave Request Declined"
         elif sub_lower in ("notification: cancelled", "cancelled", "notification:cancelled"):
             subject = "Leave Request Cancelled"
-        
-        # 1. Generate HTML content based on target_type
-        if target_type == "Leave Request" and target_id:
+
+        setting = EmailTemplateSetting.get_setting_or_default(org, template_key)
+        if setting and (setting.custom_subject or setting.custom_headline or setting.custom_body or setting.custom_cta_text):
+            merged_ctx = {
+                "recipient_name": f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                "employee_name": f"{recipient.first_name} {recipient.last_name}".strip() or "there",
+                "company_name": org.name if org else "Teamzen",
+                "message": message,
+                "title": subject,
+                "action_url": extra_context.get("action_url") or "",
+                **extra_context
+            }
+            if setting.custom_subject:
+                subject = substitute_tokens(setting.custom_subject, merged_ctx)
+            html_content = render_email_html(
+                setting,
+                merged_ctx,
+                company_name=org.name if org else "Teamzen"
+            )
+
+        # 1. Generate HTML content based on target_type (if not already custom rendered)
+        if not html_content and target_type == "Leave Request" and target_id:
             LeaveRequest = get_leave_request_model()
             try:
                 req = LeaveRequest.objects.select_related('user', 'leave_type').get(id=int(target_id))
