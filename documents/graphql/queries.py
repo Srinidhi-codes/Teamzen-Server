@@ -180,18 +180,20 @@ class DocumentsQuery:
 
     @strawberry.field
     def organization_document_requests(
-        self, info: Info, status: Optional[str] = None
+        self, info: Info, status: Optional[str] = None, organization_id: Optional[strawberry.ID] = None
     ) -> List[DocumentRequestType]:
         """Org-wide inbox of HR document requests (open / fulfilled / cancelled)."""
         user = info.context.request.user
         require_hr(user)
-        org = resolve_org(user)
         qs = DocumentRequest.objects.select_related("user", "fulfilled_document")
-        if user.role != "superadmin":
+        if organization_id and (user.role == "superadmin" or str(user.organization_id) == str(organization_id)):
+            qs = qs.filter(organization_id=organization_id)
+        elif user.role != "superadmin":
+            org = resolve_org(user)
             qs = qs.filter(organization=org)
         if status:
             qs = qs.filter(status=status)
-        return [_request_type(r) for r in qs.order_by("-created_at")[:200]]
+        return [_request_type(r) for r in qs.order_by("-created_at")[:300]]
 
     @strawberry.field
     def my_employee_document_requests(
@@ -206,14 +208,32 @@ class DocumentsQuery:
 
     @strawberry.field
     def org_employee_document_requests(
-        self, info: Info, status: Optional[str] = None
+        self, info: Info, status: Optional[str] = None, organization_id: Optional[strawberry.ID] = None
     ) -> List[EmployeeDocumentRequestType]:
         user = info.context.request.user
         require_hr(user)
-        org = resolve_org(user)
         qs = EmployeeDocumentRequest.objects.select_related("user", "issued_document")
-        if user.role != "superadmin":
+        if organization_id and (user.role == "superadmin" or str(user.organization_id) == str(organization_id)):
+            qs = qs.filter(organization_id=organization_id)
+        elif user.role != "superadmin":
+            org = resolve_org(user)
             qs = qs.filter(organization=org)
         if status:
             qs = qs.filter(status=status)
         return [_employee_request_type(r) for r in qs.order_by("-created_at")]
+
+    @strawberry.field
+    def org_issued_documents(
+        self, info: Info, organization_id: Optional[strawberry.ID] = None, category: Optional[str] = None
+    ) -> List[IssuedDocumentType]:
+        user = info.context.request.user
+        require_hr(user)
+        qs = IssuedDocument.objects.select_related("user")
+        if organization_id and (user.role == "superadmin" or str(user.organization_id) == str(organization_id)):
+            qs = qs.filter(organization_id=organization_id)
+        elif user.role != "superadmin":
+            org = resolve_org(user)
+            qs = qs.filter(organization=org)
+        if category:
+            qs = qs.filter(category=category)
+        return [_issued_type(d) for d in qs.order_by("-published_at")[:300]]

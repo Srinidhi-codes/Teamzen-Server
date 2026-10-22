@@ -176,6 +176,10 @@ class Designation(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    hierarchy_level = models.IntegerField(
+        default=4,
+        help_text="Hierarchy grade level: 1=Exec, 2=Director/VP, 3=Manager/Lead, 4=Staff, 5=Associate"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -373,3 +377,134 @@ class MCPAuthCode(models.Model):
 
     def __str__(self):
         return f"auth_code…{self.code[-6:]} user={self.user_id}"
+
+
+# ---------------------------------------------------------------------------
+# 3-Tier Access Control & Feature Gating Models
+# ---------------------------------------------------------------------------
+
+class PlanFeatureDefault(models.Model):
+    """Platform-wide default features per plan level (Super Admin managed)."""
+    plan = models.CharField(max_length=20, choices=Organization.PLAN_CHOICES)
+    module_key = models.CharField(max_length=64)
+    is_enabled = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('plan', 'module_key')
+        ordering = ['plan', 'module_key']
+
+    def __str__(self):
+        status = "ON" if self.is_enabled else "OFF"
+        return f"[{self.plan.upper()}] {self.module_key}: {status}"
+
+
+class OrganizationFeatureOverride(models.Model):
+    """Super Admin override for a specific company's plan features."""
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='feature_overrides'
+    )
+    module_key = models.CharField(max_length=64)
+    is_enabled = models.BooleanField(default=True)
+    notes = models.CharField(max_length=255, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'module_key')
+        ordering = ['organization', 'module_key']
+
+    def __str__(self):
+        status = "ENABLED" if self.is_enabled else "REVOKED"
+        return f"{self.organization.name} - {self.module_key}: {status}"
+
+
+class CompanyAdminDelegation(models.Model):
+    """Super Admin delegation defining what Company Admins are authorized to manage."""
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='admin_delegation'
+    )
+    can_manage_payroll = models.BooleanField(default=True)
+    can_manage_leaves = models.BooleanField(default=True)
+    can_manage_attendance = models.BooleanField(default=True)
+    can_manage_employees = models.BooleanField(default=True)
+    can_manage_email_templates = models.BooleanField(default=True)
+    can_manage_onboarding = models.BooleanField(default=True)
+    can_manage_policies = models.BooleanField(default=True)
+    can_manage_rbac = models.BooleanField(default=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Delegation for {self.organization.name}"
+
+
+class RoleModulePermission(models.Model):
+    """Workforce role access matrix per organization (Company Admin & Super Admin managed)."""
+    ACCESS_LEVELS = [
+        ('none', 'No Access'),
+        ('view', 'Read Only'),
+        ('full', 'Full Access'),
+    ]
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='role_permissions'
+    )
+    role = models.CharField(max_length=32)  # 'admin', 'hr', 'manager', 'employee'
+    module_key = models.CharField(max_length=64)
+    access_level = models.CharField(max_length=16, choices=ACCESS_LEVELS, default='view')
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'role', 'module_key')
+        ordering = ['organization', 'role', 'module_key']
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.role.upper()} - {self.module_key}: {self.access_level}"
+
+
+class OrganizationRole(models.Model):
+    """
+    Dynamic workforce roles defined for an organization.
+    Permits creating custom roles (e.g. 'Payroll Officer', 'Auditor', 'Recruiter')
+    in addition to the built-in system roles (Admin, HR, Manager, Employee).
+    """
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='custom_roles'
+    )
+    role_key = models.CharField(max_length=32)
+    role_label = models.CharField(max_length=64)
+    description = models.CharField(max_length=255, blank=True, null=True)
+    is_system_role = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'role_key')
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.role_label} ({self.role_key})"
+

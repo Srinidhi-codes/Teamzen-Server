@@ -104,5 +104,72 @@ class DesignationType:
     name: auto
     organization: OrganizationType
     description: auto
+    hierarchy_level: auto
     is_active: auto
     created_at: auto
+
+
+@strawberry.type
+class PlanFeatureItemType:
+    key: str
+    name: str
+    category: str
+    description: str
+    free: bool
+    pro: bool
+    elite: bool
+
+
+@strawberry.type
+class OrganizationModuleEntitlementType:
+    module_key: str
+    name: str
+    category: str
+    description: str
+    plan_default: bool
+    is_overridden: bool
+    is_enabled: bool
+    notes: Optional[str] = None
+
+
+@strawberry.type
+class CompanyAdminDelegationType:
+    organization_id: strawberry.ID
+    organization_name: str
+    can_manage_payroll: bool
+    can_manage_leaves: bool
+    can_manage_attendance: bool
+    can_manage_employees: bool
+    can_manage_email_templates: bool
+    can_manage_onboarding: bool
+    can_manage_policies: bool
+    can_manage_rbac: bool
+    updated_at: Optional[str] = None
+
+
+@strawberry.type
+class RoleModulePermissionItemType:
+    module_key: str
+    module_name: str
+    module_category: str
+    access_level: str  # 'full', 'view', 'none'
+
+
+@strawberry.type
+class RolePermissionMatrixType:
+    organization_id: strawberry.ID
+    organization_name: str
+    role: str
+    role_label: str
+    is_system_role: bool = True
+    permissions: List[RoleModulePermissionItemType]
+
+
+@strawberry.type
+class MyEffectivePermissionsType:
+    is_superadmin: bool
+    role: str
+    organization_id: Optional[strawberry.ID] = None
+    organization_name: Optional[str] = None
+    plan: Optional[str] = None
+    permissions_json: str

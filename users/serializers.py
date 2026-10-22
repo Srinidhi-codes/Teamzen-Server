@@ -115,28 +115,36 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class LoginSerializer(serializers.Serializer):
     """Login serializer"""
-    email = serializers.EmailField()
+    email = serializers.CharField()
     password = serializers.CharField(write_only=True)
     latitude = serializers.DecimalField(max_digits=25, decimal_places=10, required=False)
     longitude = serializers.DecimalField(max_digits=25, decimal_places=10, required=False)
 
     def validate(self, data):
         from django.contrib.auth import get_user_model
+        from django.db.models import Q
         from users.exit_access import can_authenticate_user, has_exit_portal_access
 
         User = get_user_model()
-        user = authenticate(username=data["email"], password=data["password"])
-        if not user:
-            # Django authenticate() rejects inactive users — allow F&F portal access
-            candidate = User.objects.filter(email__iexact=data["email"]).first()
-            if (
-                candidate
-                and candidate.check_password(data["password"])
-                and has_exit_portal_access(candidate)
-            ):
+        raw_email = (data.get("email") or "").strip()
+        data["email"] = raw_email
+
+        # Case-insensitive lookup by email or username
+        candidate = User.objects.filter(
+            Q(email__iexact=raw_email) | Q(username__iexact=raw_email)
+        ).first()
+
+        user = None
+        if candidate:
+            # Pass the canonical email from the DB record to Django's authenticate()
+            user = authenticate(username=candidate.email, password=data["password"])
+            if not user and candidate.check_password(data["password"]) and has_exit_portal_access(candidate):
                 user = candidate
-            else:
-                raise serializers.ValidationError("Invalid credentials")
+        else:
+            user = authenticate(username=raw_email, password=data["password"])
+
+        if not user:
+            raise serializers.ValidationError("Invalid credentials")
         if not can_authenticate_user(user):
             raise serializers.ValidationError("This account is inactive")
         data["user"] = user

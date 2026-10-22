@@ -50,6 +50,7 @@ class CreateUserInput:
     designation_id: str | None = None
     office_location_id: str | None = None
     manager_id: str | None = None
+    hierarchy_level: int | None = None
     employment_type: str = "full_time"
     date_of_joining: str | None = None
     date_of_exit: str | None = None
@@ -64,6 +65,7 @@ class UpdateUserInput:
     first_name: str
     last_name: str
     role: str = "employee"
+    hierarchy_level: int | None = None
     organization_id: str | None = None
     department_id: str | None = None
     date_of_birth: str | None = None
@@ -85,6 +87,26 @@ class UpdateUserInput:
     is_verified: bool = False
     is_active: bool = True
     profile_picture: Upload | None = None
+
+@strawberry.input
+class PromoteEmployeeInput:
+    user_id: strawberry.ID
+    new_role: str | None = None
+    new_hierarchy_level: int | None = None
+    new_designation_id: strawberry.ID | None = None
+    new_department_id: strawberry.ID | None = None
+    new_manager_id: strawberry.ID | None = None
+    annual_ctc: float | None = None
+    effective_date: str | None = None
+    promotion_notes: str | None = None
+    make_manager: bool | None = None
+
+@strawberry.type
+class PromoteEmployeePayload:
+    success: bool
+    user: UserType | None = None
+    error: str | None = None
+    message: str | None = None
 
 @strawberry.type
 class UserPayload:
@@ -279,6 +301,8 @@ class UserMutation:
                 new_user.aadhar_number = input.aadhar_number
             if input.uan_number:
                 new_user.uan_number = input.uan_number
+            if input.hierarchy_level is not None:
+                new_user.hierarchy_level = input.hierarchy_level
             new_user.is_staff = bool(input.is_staff)
             # Verification is earned by completing required onboarding tasks/docs —
             # never mark verified on create.
@@ -384,3 +408,108 @@ class UserMutation:
             latest_log.save()
             return True
         return False
+
+    @strawberry.mutation
+    def promote_employee(self, info: Info, input: PromoteEmployeeInput) -> PromoteEmployeePayload:
+        actor = info.context.request.user
+        if not actor.is_authenticated or actor.role not in ["superadmin", "admin", "hr"]:
+            return PromoteEmployeePayload(success=False, error="Unauthorized: Only Admin and HR can promote employees.")
+
+        try:
+            target_user = User.objects.select_related("organization", "designation", "department", "manager").get(id=input.user_id)
+            if actor.role != "superadmin" and target_user.organization_id != actor.organization_id:
+                return PromoteEmployeePayload(success=False, error="Unauthorized: Cannot promote employees of another organization.")
+
+            # Determine new role
+            if input.new_role:
+                target_user.role = input.new_role
+            elif input.make_manager:
+                target_user.role = "manager"
+
+            # Determine new hierarchy level
+            if input.new_hierarchy_level is not None:
+                target_user.hierarchy_level = input.new_hierarchy_level
+            elif input.make_manager or target_user.role == "manager":
+                if target_user.hierarchy_level > 3:
+                    target_user.hierarchy_level = 3
+            elif target_user.role == "admin":
+                target_user.hierarchy_level = 1
+
+            if input.new_designation_id:
+                target_user.designation_id = input.new_designation_id
+            if input.new_department_id:
+                target_user.department_id = input.new_department_id
+            if input.new_manager_id:
+                if str(input.new_manager_id) == str(target_user.id):
+                    return PromoteEmployeePayload(success=False, error="Employee cannot report to themselves.")
+                target_user.manager_id = input.new_manager_id
+
+            target_user.save()
+
+            # Handle revised CTC if provided
+            if input.annual_ctc and input.annual_ctc > 0:
+                try:
+                    from payroll.models import EmployeeSalaryStructure, SalaryStructure
+                    from datetime import date
+                    eff_date = date.today()
+                    if input.effective_date:
+                        eff_date = date.fromisoformat(input.effective_date)
+                    
+                    active_struct = EmployeeSalaryStructure.objects.filter(
+                        user=target_user,
+                        is_active=True
+                    ).first()
+                    if active_struct:
+                        active_struct.annual_ctc = input.annual_ctc
+                        active_struct.effective_from = eff_date
+                        active_struct.save()
+                    else:
+                        default_struct = SalaryStructure.objects.filter(
+                            organization_id=target_user.organization_id,
+                            is_active=True
+                        ).first()
+                        if default_struct:
+                            EmployeeSalaryStructure.objects.create(
+                                user=target_user,
+                                salary_structure=default_struct,
+                                annual_ctc=input.annual_ctc,
+                                effective_from=eff_date,
+                                is_active=True
+                            )
+                except Exception:
+                    pass
+
+            # Notify employee of promotion
+            try:
+                from notifications.utils import notify_user
+                desig_name = target_user.designation.name if target_user.designation else target_user.role.title()
+                notify_user(
+                    recipient_id=target_user.id,
+                    verb="Promotion Confirmed",
+                    message=(
+                        f"Congratulations! You have been promoted to {desig_name} "
+                        f"({target_user.get_hierarchy_label()}). "
+                        f"{input.promotion_notes or ''}"
+                    ).strip(),
+                    actor_id=actor.id,
+                    target_type="Promotion",
+                    target_id=str(target_user.id),
+                    level="personal",
+                    notification_type="BOTH"
+                )
+            except Exception:
+                pass
+
+            refreshed = User.objects.select_related(
+                "organization", "designation", "department", "office_location", "manager"
+            ).get(id=target_user.id)
+
+            return PromoteEmployeePayload(
+                success=True,
+                user=refreshed,
+                message=f"Successfully promoted {refreshed.first_name} {refreshed.last_name}."
+            )
+        except User.DoesNotExist:
+            return PromoteEmployeePayload(success=False, error="User not found")
+        except Exception as e:
+            return PromoteEmployeePayload(success=False, error=str(e))

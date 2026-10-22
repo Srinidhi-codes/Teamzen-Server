@@ -218,8 +218,26 @@ class LoginView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            email = request.data.get("email", "<not provided>")
+            errors = serializer.errors
+            print(f"[AUTH ERROR] Login failed for '{email}': {errors}")
+            
+            error_msg = "Invalid email or password"
+            if "non_field_errors" in errors and errors["non_field_errors"]:
+                error_msg = str(errors["non_field_errors"][0])
+            elif "email" in errors and errors["email"]:
+                error_msg = f"Email: {errors['email'][0]}"
+            elif "password" in errors and errors["password"]:
+                error_msg = f"Password: {errors['password'][0]}"
+                
+            return Response(
+                {"detail": error_msg, "error": error_msg, "non_field_errors": [error_msg], "errors": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user = serializer.validated_data['user']
+        print(f"[AUTH SUCCESS] User logged in: {user.email} (role: {user.role})")
         
         # Check if 2FA (TOTP) is enabled
         if user.is_totp_enabled:

@@ -89,6 +89,19 @@ class UserType:
     aadhar_number: auto
     uan_number: auto
     residential_address: auto
+
+    @strawberry.field
+    def hierarchy_level(self) -> int:
+        val = getattr(self, "hierarchy_level", None)
+        return val if val is not None else 4
+
+    @strawberry.field
+    def hierarchy_label(self) -> str:
+        return self.get_hierarchy_label()
+
+    @strawberry.field
+    def is_manager(self) -> bool:
+        return self.is_eligible_manager
     
     @strawberry.field
     def salary_details(self) -> Optional[SalarySummaryType]:
@@ -249,3 +262,54 @@ class UserType:
         if self.profile_picture:
             return self.profile_picture.url
         return None
+
+    @strawberry.field
+    def is_present_today(self) -> bool:
+        from attendance.models import AttendanceRecord
+        from datetime import date
+        from django.db.models import Q
+        today = date.today()
+        attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
+        return AttendanceRecord.objects.filter(
+            user=self,
+            attendance_date=today
+        ).filter(
+            Q(status__in=attendance_statuses) | Q(login_time__isnull=False)
+        ).exists()
+
+    @strawberry.field
+    def is_on_leave_today(self) -> bool:
+        from leaves.models import LeaveRequest
+        from datetime import date
+        today = date.today()
+        return LeaveRequest.objects.filter(
+            user=self,
+            _status='approved',
+            from_date__lte=today,
+            to_date__gte=today,
+        ).exists()
+
+    @strawberry.field
+    def today_attendance_status(self) -> str:
+        """Returns 'present', 'on_leave', or 'absent' for today."""
+        from datetime import date
+        today = date.today()
+        from leaves.models import LeaveRequest
+        if LeaveRequest.objects.filter(
+            user=self,
+            _status='approved',
+            from_date__lte=today,
+            to_date__gte=today,
+        ).exists():
+            return "on_leave"
+        from attendance.models import AttendanceRecord
+        from django.db.models import Q
+        attendance_statuses = ['present', 'late_login', 'early_logout', 'half_day']
+        if AttendanceRecord.objects.filter(
+            user=self,
+            attendance_date=today
+        ).filter(
+            Q(status__in=attendance_statuses) | Q(login_time__isnull=False)
+        ).exists():
+            return "present"
+        return "absent"
