@@ -21,6 +21,9 @@ class CheckInInput:
     face_match_score: Optional[float] = None
     face_descriptor: Optional[list[float]] = None
     selfie_base64: Optional[str] = None
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+    challenge_token: Optional[str] = None
 
 @strawberry.input
 class CheckOutInput:
@@ -31,6 +34,9 @@ class CheckOutInput:
     face_match_score: Optional[float] = None
     face_descriptor: Optional[list[float]] = None
     selfie_base64: Optional[str] = None
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+    challenge_token: Optional[str] = None
  
 @strawberry.input
 class AttendanceCorrectionInput:
@@ -38,6 +44,8 @@ class AttendanceCorrectionInput:
     corrected_login_time: time
     corrected_logout_time: time
     reason: str
+    category: Optional[str] = "FORGOT_TO_PUNCH"
+    supporting_evidence_base64: Optional[str] = None
 
 @strawberry.input
 class ApproveAttendanceCorrectionInput:
@@ -70,7 +78,7 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthenticated")
+            raise GraphQLError("Unauthenticated")
 
         attendance, _ = check_in_user(
             user=user,
@@ -82,6 +90,9 @@ class AttendanceMutation:
             face_match_score=input.face_match_score,
             face_descriptor=input.face_descriptor,
             selfie_base64=input.selfie_base64,
+            device_id=input.device_id,
+            device_name=input.device_name,
+            challenge_token=input.challenge_token,
         )
 
         return attendance
@@ -95,7 +106,7 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthenticated")
+            raise GraphQLError("Unauthenticated")
 
         attendance, _ = check_out_user(
             user=user,
@@ -106,6 +117,9 @@ class AttendanceMutation:
             face_match_score=input.face_match_score,
             face_descriptor=input.face_descriptor,
             selfie_base64=input.selfie_base64,
+            device_id=input.device_id,
+            device_name=input.device_name,
+            challenge_token=input.challenge_token,
         )
 
         return attendance
@@ -120,28 +134,36 @@ class AttendanceMutation:
 
         user = info.context.request.user
         if not user.is_authenticated:
-            raise Exception("Unauthenticated")
+            raise GraphQLError("Unauthenticated")
 
-        record = AttendanceRecord.objects.get(id=input.attendance_record_id)
+        from attendance.services import request_regularization_for_user
+        import base64
+        import uuid
+        from django.core.files.base import ContentFile
 
-        # Create correction record first
-        correction = AttendanceCorrection.objects.create(
-            attendance_record=record,
-            requested_by=user,
-            corrected_login_time=input.corrected_login_time or record.login_time,
-            corrected_logout_time=input.corrected_logout_time or record.logout_time,
-            reason=input.reason,
-        )
+        supporting_evidence_file = None
+        if input.supporting_evidence_base64:
+            try:
+                raw_b64 = input.supporting_evidence_base64
+                if ";base64," in raw_b64:
+                    format_part, raw_b64 = raw_b64.split(";base64,", 1)
+                    ext = "pdf" if "pdf" in format_part else ("png" if "png" in format_part else "jpg")
+                else:
+                    ext = "jpg"
+                decoded_data = base64.b64decode(raw_b64)
+                file_name = f"evidence_{user.id}_{uuid.uuid4().hex[:8]}.{ext}"
+                supporting_evidence_file = ContentFile(decoded_data, name=file_name)
+            except Exception:
+                pass
 
-        # Notify Management
-        from notifications.utils import notify_management
-        message = f"New attendance correction request from {user.first_name} {user.last_name} for {record.attendance_date}."
-        notify_management(
+        correction = request_regularization_for_user(
             user=user,
-            verb="requested",
-            message=message,
-            target_type="Attendance Correction",
-            target_id=str(correction.id)
+            attendance_record_id=input.attendance_record_id,
+            corrected_login_time=input.corrected_login_time,
+            corrected_logout_time=input.corrected_logout_time,
+            reason=input.reason,
+            category=input.category or "FORGOT_TO_PUNCH",
+            supporting_evidence=supporting_evidence_file,
         )
 
         return correction
@@ -154,54 +176,16 @@ class AttendanceMutation:
     ) -> bool:
         approver = info.context.request.user
 
-        # 🔐 Auth check
         if not approver or getattr(approver, "is_anonymous", True):
             raise GraphQLError("Authentication required")
 
-        # # 🔐 Role check
-        if approver.role not in ["admin", "superadmin", "hr", "manager"]:
-            raise GraphQLError("Not authorized")
-
-        # 🔎 Fetch correction
-        try:
-            correction = AttendanceCorrection.objects.select_related(
-                "attendance_record", "requested_by"
-            ).get(id=input.correction_id)
-        except AttendanceCorrection.DoesNotExist:
-            raise GraphQLError("Attendance correction not found")
-
-        # 🛑 Prevent double approval/rejection
-        if correction.status != "pending":
-            raise GraphQLError("This correction has already been processed")
-
-        # Apply decision
-        with transaction.atomic():
-            if input.status == "approved":
-                correction.approve(approver, input.approval_comments)
-                verb = "approved"
-            elif input.status == "rejected":
-                correction.reject(approver, input.approval_comments)
-                verb = "rejected"
-            else:
-                raise GraphQLError("Invalid status. Use 'approved' or 'rejected'.")
-            
-            correction.save()
-
-            # Notify User
-            from notifications.utils import notify_user
-            message = f"Your attendance correction for {correction.attendance_record.attendance_date} has been {verb.upper()}."
-            if input.approval_comments:
-                message += f" Reason: {input.approval_comments}"
-            
-            notify_user(
-                recipient_id=correction.requested_by.id,
-                verb=verb,
-                message=message,
-                actor_id=approver.id,
-                target_type="Attendance Correction",
-                target_id=str(correction.id),
-                level='personal'
-            )
+        from attendance.services import process_regularization_approval_decision
+        process_regularization_approval_decision(
+            correction_id=input.correction_id,
+            action=input.status,
+            approver=approver,
+            comments=input.approval_comments or "",
+        )
 
         return True
 

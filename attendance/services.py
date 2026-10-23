@@ -1,12 +1,21 @@
 from math import radians, sin, cos, sqrt, atan2
-from datetime import date, datetime, time as time_type
+from datetime import date, datetime, timedelta, time as time_type
 import base64
 import re
+import uuid
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.db import transaction
+from django.core import signing
 from graphql import GraphQLError
 
-from attendance.models import AttendanceRecord, AttendanceHeartbeat
+from attendance.models import (
+    AttendanceRecord,
+    AttendanceHeartbeat,
+    AttendanceCorrection,
+    UserDeviceBinding,
+)
 from attendance.face_constants import (
     FACE_DESCRIPTOR_DIM,
     FACE_DISTANCE_THRESHOLD,
@@ -15,6 +24,7 @@ from attendance.face_constants import (
 from organizations.models import OfficeLocation
 from organizations.workweek import is_org_weekend
 from leaves.models import CompanyHoliday
+from payroll.models import PayrollRun
 
 
 def save_selfie_base64_to_field(image_field, base64_str: str | None, filename: str):
@@ -87,12 +97,95 @@ def _get_enrolled_templates(raw) -> list[list[float]]:
     return []
 
 
+from django.core.cache import cache
+
+def generate_face_challenge_token(user_id: int | str) -> str:
+    """
+    Issues a short-lived (180s) cryptographically signed challenge token with a unique nonce
+    to bind the verification attempt to the authenticated user and prevent replay attacks.
+    """
+    signer = signing.TimestampSigner(salt="face_punch_challenge")
+    payload = {
+        "user_id": str(user_id),
+        "nonce": uuid.uuid4().hex,
+        "ts": timezone.now().timestamp(),
+    }
+    return signer.sign_object(payload)
+
+
+def validate_face_challenge_token(user, challenge_token: str | None) -> None:
+    """
+    Validates a short-lived cryptographically signed challenge token to prevent replay attacks.
+    """
+    if not challenge_token or not isinstance(challenge_token, str):
+        return
+    signer = signing.TimestampSigner(salt="face_punch_challenge")
+    try:
+        data = signer.unsign_object(challenge_token, max_age=180)
+        token_user_id = str(data.get("user_id"))
+        if token_user_id != str(user.id):
+            raise GraphQLError("Challenge token does not match authenticated user.")
+        
+        # Anti-replay: Ensure nonce cannot be reused
+        nonce = data.get("nonce")
+        if nonce:
+            cache_key = f"face_challenge_used:{nonce}"
+            if cache.get(cache_key):
+                raise GraphQLError("Face challenge token has already been consumed (anti-replay). Please capture again.")
+            cache.set(cache_key, 1, timeout=300)
+    except signing.SignatureExpired:
+        raise GraphQLError("Face verification session expired. Please retry.")
+    except GraphQLError:
+        raise
+    except Exception:
+        raise GraphQLError("Invalid face verification challenge token.")
+
+
+def assert_device_binding_allowed(user, device_id: str | None, device_name: str | None = None):
+    """
+    Validates that attendance is punched exclusively from a registered personal device.
+    Blocks coworker/buddy logins from foreign devices when device_binding_enforced is True.
+    """
+    org = getattr(user, "organization", None)
+    if not org or not getattr(org, "device_binding_enforced", False):
+        return
+
+    if not device_id or not str(device_id).strip():
+        raise GraphQLError(
+            "Device identification required by company policy. Punch from an authorized registered device."
+        )
+
+    device_id = str(device_id).strip()
+
+    # Query active bindings for user
+    existing_bindings = UserDeviceBinding.objects.filter(user=user, is_active=True)
+    if not existing_bindings.exists():
+        # First-time device enrollment for employee
+        UserDeviceBinding.objects.create(
+            user=user,
+            device_id=device_id,
+            device_name=device_name or "Primary Device",
+            is_trusted=True,
+            is_active=True,
+        )
+        return
+
+    matching = existing_bindings.filter(device_id=device_id, is_trusted=True).first()
+    if not matching:
+        raise GraphQLError(
+            "Unregistered device detected. You can only punch attendance from your registered personal device. "
+            "If you recently changed your phone or computer, contact HR to authorize a device replacement."
+        )
+    matching.save(update_fields=["last_seen_at"])
+
+
 def assert_face_attendance_allowed(
     user,
     *,
     face_descriptor: list[float] | None = None,
     face_verified: bool | None = None,
     face_match_score: float | None = None,
+    challenge_token: str | None = None,
 ) -> float:
     """
     Validate face punch. Returns server-computed similarity in [0, 1].
@@ -101,6 +194,9 @@ def assert_face_attendance_allowed(
     """
     if not org_requires_face(user):
         return 0.0
+
+    if challenge_token:
+        validate_face_challenge_token(user, challenge_token)
 
     templates = _get_enrolled_templates(user.face_descriptor)
     if not user.face_enrolled_at or not templates:
@@ -197,7 +293,13 @@ def check_in_user(
     face_match_score: float | None = None,
     face_descriptor: list[float] | None = None,
     selfie_base64: str | None = None,
+    device_id: str | None = None,
+    device_name: str | None = None,
+    challenge_token: str | None = None,
 ):
+    # Enforce device registration check
+    assert_device_binding_allowed(user, device_id, device_name)
+
     office = get_object_or_404(OfficeLocation, id=office_id)
 
     if office.latitude is None or office.longitude is None:
@@ -216,6 +318,7 @@ def check_in_user(
             face_descriptor=face_descriptor,
             face_verified=face_verified,
             face_match_score=face_match_score,
+            challenge_token=challenge_token,
         )
 
     attendance, _ = AttendanceRecord.objects.get_or_create(
@@ -288,7 +391,13 @@ def check_out_user(
     face_match_score: float | None = None,
     face_descriptor: list[float] | None = None,
     selfie_base64: str | None = None,
+    device_id: str | None = None,
+    device_name: str | None = None,
+    challenge_token: str | None = None,
 ):
+    # Enforce device registration check
+    assert_device_binding_allowed(user, device_id, device_name)
+
     attendance = get_object_or_404(
         AttendanceRecord,
         user=user,
@@ -312,6 +421,7 @@ def check_out_user(
             face_descriptor=face_descriptor,
             face_verified=face_verified,
             face_match_score=face_match_score,
+            challenge_token=challenge_token,
         )
 
     logout_time = normalize_time(time)
@@ -482,3 +592,268 @@ def approve_or_reject_attendance_record(
     # Recalculate status and save (if rejected, recalculate_status sets status='absent')
     record.save()
     return record
+
+
+# =============================================================================
+# ENTERPRISE ATTENDANCE REGULARIZATION POLICY ENGINE
+# =============================================================================
+
+def count_business_days(start_date: date, end_date: date, weekend_days: list[int] | None = None) -> int:
+    """Calculate working business days between two dates, excluding weekends."""
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    weekends = set(weekend_days if weekend_days is not None else [6])  # Sunday default
+    cur = start_date + timedelta(days=1)
+    b_days = 0
+    while cur <= end_date:
+        if cur.weekday() not in weekends:
+            b_days += 1
+        cur += timedelta(days=1)
+    return b_days
+
+
+def get_monthly_regularization_quota_summary(user, target_date: date | None = None) -> dict:
+    """
+    Returns the employee's monthly regularization allowance, used count, and remaining quota.
+    """
+    org = getattr(user, "organization", None)
+    monthly_limit = getattr(org, "attendance_regularization_monthly_limit", 3) if org else 3
+    deadline_days = getattr(org, "attendance_regularization_deadline_days", 3) if org else 3
+
+    target = target_date or timezone.localdate()
+    month_start = date(target.year, target.month, 1)
+    next_month = date(
+        target.year + (1 if target.month == 12 else 0),
+        1 if target.month == 12 else target.month + 1,
+        1,
+    )
+
+    used_count = AttendanceCorrection.objects.filter(
+        requested_by=user,
+        attendance_record__attendance_date__gte=month_start,
+        attendance_record__attendance_date__lt=next_month,
+        _status__in=["pending", "approved"],
+    ).count()
+
+    remaining = max(0, monthly_limit - used_count)
+    return {
+        "monthly_limit": monthly_limit,
+        "used_count": used_count,
+        "remaining_count": remaining,
+        "deadline_days": deadline_days,
+        "is_exhausted": remaining <= 0,
+    }
+
+
+def request_regularization_for_user(
+    *,
+    user,
+    attendance_record_id: int | str,
+    corrected_login_time: time_type | None = None,
+    corrected_logout_time: time_type | None = None,
+    reason: str,
+    category: str = "FORGOT_TO_PUNCH",
+    supporting_evidence = None,
+) -> AttendanceCorrection:
+    """
+    Validates and submits an attendance regularization request governed by:
+    - Tenant ownership & permission boundaries.
+    - Payroll lock period prevention (frozen finalized payroll periods).
+    - Hard submission SLA window (e.g. within 3 business days of incident).
+    - Monthly quota cap with database concurrency locking (select_for_update).
+    - Duplicate pending request check.
+    - Shift-constrained time boundaries and overtime guardrails.
+    - Automatic escalation to HR for 3rd/threshold requests.
+    """
+    record = get_object_or_404(
+        AttendanceRecord.objects.select_related("user", "user__organization", "office_location"),
+        id=attendance_record_id,
+    )
+
+    # 1. Identity & Tenant isolation check
+    if record.user_id != user.id and user.role not in ["superadmin", "admin", "hr"]:
+        raise GraphQLError("You can only request regularization for your own attendance records.")
+
+    if user.organization_id and record.user.organization_id != user.organization_id and user.role != "superadmin":
+        raise GraphQLError("Cross-tenant access forbidden.")
+
+    # 2. Duplicate Pending Check
+    if AttendanceCorrection.objects.filter(attendance_record=record, _status="pending").exists():
+        raise GraphQLError("A pending regularization request already exists for this attendance date.")
+
+    # 3. Payroll Lock Check: Prevent changes to finalized payroll periods
+    is_payroll_locked = PayrollRun.objects.filter(
+        organization=record.user.organization,
+        month=record.attendance_date.month,
+        year=record.attendance_date.year,
+        status="completed",
+    ).exists()
+    if is_payroll_locked and user.role not in ["superadmin", "admin"]:
+        raise GraphQLError(
+            "Attendance for this period is locked because payroll has already been finalized. "
+            "Adjustments require an authorized HR payroll exception."
+        )
+
+    org = record.user.organization
+    deadline_days = getattr(org, "attendance_regularization_deadline_days", 3) or 3
+    weekend_days = getattr(org, "weekend_days", [6])
+    today = timezone.localdate()
+
+    # 4. Time-Barring Submission Window Check
+    elapsed_business_days = count_business_days(record.attendance_date, today, weekend_days)
+    if elapsed_business_days > deadline_days and user.role not in ["superadmin", "admin", "hr"]:
+        raise GraphQLError(
+            f"Submission window expired. Regularization requests must be submitted within {deadline_days} "
+            f"business days of the attendance discrepancy. Please contact HR for exception handling."
+        )
+
+    monthly_limit = getattr(org, "attendance_regularization_monthly_limit", 3) or 3
+    escalation_limit = getattr(org, "attendance_regularization_escalation_limit", 3) or 3
+
+    # 5. Concurrency-Safe Monthly Quota Check (Row locking with select_for_update)
+    with transaction.atomic():
+        month_start = date(record.attendance_date.year, record.attendance_date.month, 1)
+        next_month = date(
+            record.attendance_date.year + (1 if record.attendance_date.month == 12 else 0),
+            1 if record.attendance_date.month == 12 else record.attendance_date.month + 1,
+            1,
+        )
+
+        existing_month_count = (
+            AttendanceCorrection.objects.select_for_update()
+            .filter(
+                requested_by=record.user,
+                attendance_record__attendance_date__gte=month_start,
+                attendance_record__attendance_date__lt=next_month,
+                _status__in=["pending", "approved"],
+            )
+            .count()
+        )
+
+        if existing_month_count >= monthly_limit and user.role not in ["superadmin", "admin", "hr"]:
+            raise GraphQLError(
+                f"Monthly regularization quota ({monthly_limit} requests) exhausted for this month. "
+                "Any further adjustments require direct HR authorization."
+            )
+
+        escalated_to_hr = False
+        policy_notes = ""
+        if existing_month_count + 1 >= escalation_limit:
+            escalated_to_hr = True
+            policy_notes = f"Request #{existing_month_count + 1} this month (Exceeds {escalation_limit - 1} manager threshold). Escalated to HR."
+
+        shift_login = record.office_location.login_time if record.office_location else time_type(9, 0)
+        shift_logout = record.office_location.logout_time if record.office_location else time_type(18, 0)
+
+        # Guardrail against unauthorized overtime generation
+        if corrected_logout_time and corrected_logout_time > shift_logout and category != "CLIENT_VISIT_ON_DUTY":
+            policy_notes = (policy_notes + f" Requested logout {corrected_logout_time} extends beyond shift end {shift_logout}.").strip()
+
+        correction = AttendanceCorrection.objects.create(
+            attendance_record=record,
+            requested_by=user,
+            category=category or "FORGOT_TO_PUNCH",
+            corrected_login_time=corrected_login_time or record.login_time,
+            corrected_logout_time=corrected_logout_time or record.logout_time,
+            original_login_time=record.actual_login_time or record.login_time,
+            original_logout_time=record.actual_logout_time or record.logout_time,
+            system_suggested_login_time=shift_login,
+            system_suggested_logout_time=shift_logout,
+            reason=reason.strip() if reason else "",
+            supporting_evidence=supporting_evidence,
+            escalated_to_hr=escalated_to_hr,
+            policy_violation_notes=policy_notes,
+        )
+
+    # Notify Management
+    try:
+        from notifications.utils import notify_management
+        msg = f"New attendance correction request ({category}) from {user.first_name} {user.last_name} for {record.attendance_date}."
+        if escalated_to_hr:
+            msg += " [ESCALATED TO HR]"
+        notify_management(
+            user=user,
+            verb="requested",
+            message=msg,
+            target_type="Attendance Correction",
+            target_id=str(correction.id),
+        )
+    except Exception:
+        pass
+
+    return correction
+
+
+def process_regularization_approval_decision(
+    *,
+    correction_id: int | str,
+    action: str,  # "approved" | "rejected"
+    approver,
+    comments: str = "",
+) -> AttendanceCorrection:
+    """
+    Processes manager/HR approval or rejection with strict enterprise safeguards:
+    - Rejects self-approval attempts.
+    - Enforces tenant isolation.
+    - Enforces HR role requirement for quota-escalated requests.
+    - Requires mandatory rejection reasons.
+    - Preserves historical punch records and updates effective status atomically.
+    """
+    if action not in ["approved", "rejected"]:
+        raise GraphQLError("Action must be 'approved' or 'rejected'.")
+
+    correction = get_object_or_404(
+        AttendanceCorrection.objects.select_related("attendance_record", "requested_by"),
+        id=correction_id,
+    )
+
+    if correction.status != "pending":
+        raise GraphQLError("This regularization request has already been processed.")
+
+    # 1. Prevent self-approval
+    if correction.requested_by_id == approver.id and approver.role != "superadmin":
+        raise GraphQLError("Self-approval is strictly prohibited. Regularization must be reviewed by a manager or HR.")
+
+    # 2. Tenant isolation check
+    if (
+        approver.organization_id
+        and correction.requested_by.organization_id != approver.organization_id
+        and approver.role != "superadmin"
+    ):
+        raise GraphQLError("Cross-tenant decision forbidden.")
+
+    # 3. Escalated to HR permission check
+    if correction.escalated_to_hr and approver.role not in ["superadmin", "admin", "hr"]:
+        raise GraphQLError("This correction has been escalated due to monthly quota threshold and requires HR approval.")
+
+    # 4. Mandatory rejection reason check
+    if action == "rejected" and not (comments and comments.strip()):
+        raise GraphQLError("A rejection reason/comment is required when rejecting a regularization request.")
+
+    with transaction.atomic():
+        if action == "approved":
+            correction.approve(approver, comments.strip())
+        else:
+            correction.reject(approver, comments.strip())
+        correction.save()
+
+    # 5. Notify employee
+    try:
+        from notifications.utils import notify_user
+        verb = "approved" if action == "approved" else "rejected"
+        msg = f"Your attendance correction for {correction.attendance_record.attendance_date} has been {verb.upper()}."
+        if comments:
+            msg += f" Reason: {comments}"
+        notify_user(
+            recipient_id=correction.requested_by.id,
+            verb=verb,
+            message=msg,
+            actor_id=approver.id,
+            target_type="Attendance Correction",
+            target_id=str(correction.id),
+            level="personal",
+        )
+    except Exception:
+        pass
+
+    return correction

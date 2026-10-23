@@ -122,6 +122,19 @@ class FaceExtractView(APIView):
         user = request.user
 
         if should_enroll:
+            # 🔐 Re-enrollment security lock:
+            # If face is already enrolled, only HR/Admin or authorized employee (with re_enrollment_allowed=True) can change it
+            if user.face_descriptor:
+                is_admin_or_hr = user.role in ("admin", "superadmin", "hr")
+                is_authorized = getattr(user, "re_enrollment_allowed", False)
+                if not is_admin_or_hr and not is_authorized:
+                    return Response(
+                        {
+                            "error": "Face template is already enrolled. Biometric re-enrollment requires prior HR or Admin authorization."
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
             append_appearance = str(request.data.get("append", "")).lower() in ("true", "1", "yes")
             if append_appearance and user.face_descriptor:
                 existing = user.face_descriptor
@@ -135,10 +148,32 @@ class FaceExtractView(APIView):
                 user.face_descriptor = descriptor
 
             user.face_enrolled_at = timezone.now()
+            # If re-enrollment permission was consumed, revoke it atomically
+            if getattr(user, "re_enrollment_allowed", False):
+                user.re_enrollment_allowed = False
+                user.re_enrollment_allowed_by = None
+                user.re_enrollment_allowed_at = None
+
             # Save enrollment image
             if photo_file:
                 user.face_enrollment_image.save(f"face_{user.id}.jpg", photo_file, save=False)
-            user.save(update_fields=["face_descriptor", "face_enrolled_at", "face_enrollment_image"])
+            user.save()
+
+            # Security audit notification
+            try:
+                from notifications.utils import notify_user
+                notify_user(
+                    recipient_id=user.id,
+                    verb="updated",
+                    message="Your facial recognition template was updated. If you did not perform this action, contact HR immediately.",
+                    actor_id=user.id,
+                    target_type="Face Profile",
+                    target_id=str(user.id),
+                    level="security",
+                )
+            except Exception:
+                pass
+
             return Response({
                 "success": True,
                 "message": "Face enrolled successfully.",
@@ -151,6 +186,15 @@ class FaceExtractView(APIView):
         distance = 0.0
 
         if should_verify:
+            # Challenge token anti-replay verification
+            challenge_token = request.data.get("challenge_token")
+            if challenge_token:
+                try:
+                    from attendance.services import validate_face_challenge_token
+                    validate_face_challenge_token(user, challenge_token)
+                except Exception as e:
+                    return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
             if not user.face_descriptor:
                 return Response(
                     {"error": "User has not enrolled a face yet. Please enroll first."},
@@ -179,6 +223,73 @@ class FaceExtractView(APIView):
             "verified": verified,
             "distance": round(distance, 3),
             "match_score": round(match_score, 3),
+        })
+
+
+class FaceChallengeView(APIView):
+    """
+    Issues a cryptographically signed, short-lived challenge token with anti-replay nonce
+    for binding the face capture session to the authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from attendance.services import generate_face_challenge_token
+        token = generate_face_challenge_token(request.user.id)
+        return Response({"challenge_token": token, "expires_in": 180})
+
+
+class DeviceRegistrationView(APIView):
+    """
+    Registers or queries the current user's hardware device for anti-proxy enforcement.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from attendance.models import UserDeviceBinding
+        bindings = UserDeviceBinding.objects.filter(user=request.user, is_active=True).values(
+            "id", "device_id", "device_name", "device_type", "is_trusted", "registered_at", "last_seen_at"
+        )
+        enforced = False
+        if request.user.organization:
+            enforced = getattr(request.user.organization, "device_binding_enforced", False)
+        return Response({
+            "device_binding_enforced": enforced,
+            "devices": list(bindings),
+        })
+
+    def post(self, request):
+        from attendance.models import UserDeviceBinding
+        device_id = (request.data.get("device_id") or "").strip()
+        device_name = (request.data.get("device_name") or "Primary Device").strip()
+        device_type = (request.data.get("device_type") or "web").strip()
+
+        if not device_id:
+            return Response({"error": "device_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        binding, created = UserDeviceBinding.objects.get_or_create(
+            user=user,
+            device_id=device_id,
+            defaults={
+                "device_name": device_name,
+                "device_type": device_type,
+                "is_trusted": True,
+                "is_active": True,
+            }
+        )
+        if not created:
+            binding.last_seen_at = timezone.now()
+            if device_name and binding.device_name != device_name:
+                binding.device_name = device_name
+            binding.save(update_fields=["last_seen_at", "device_name"])
+
+        return Response({
+            "success": True,
+            "device_id": binding.device_id,
+            "device_name": binding.device_name,
+            "is_trusted": binding.is_trusted,
+            "is_active": binding.is_active,
         })
 
 

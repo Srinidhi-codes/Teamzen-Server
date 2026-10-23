@@ -1,8 +1,8 @@
 import strawberry
 from typing import Optional, List
 from strawberry.types import Info
-from feed.models import Post, Comment, PostLike, CommentLike
-from .types import PostType, CommentType
+from feed.models import Post, Comment, PostLike, CommentLike, Poll, PollOption, PollVote
+from .types import PostType, CommentType, PollType
 from users.models import CustomUser
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -24,6 +24,39 @@ def serialize_user(user) -> Optional[dict]:
         "profilePictureUrl": profile_pic,
     }
 
+def serialize_poll(poll, viewer=None) -> Optional[dict]:
+    if not poll:
+        return None
+    tot_votes = poll.total_votes()
+    tot_voters = poll.total_voters() if hasattr(poll, 'total_voters') else poll.votes.values('user').distinct().count()
+    base_total = tot_voters if poll.is_multiple_choice else tot_votes
+
+    options_data = []
+    for opt in poll.options.all():
+        pct = round((opt.votes_count / base_total) * 100, 1) if base_total > 0 else 0.0
+        options_data.append({
+            "id": str(opt.id),
+            "text": opt.text,
+            "votesCount": opt.votes_count,
+            "percentage": pct,
+        })
+    user_voted_option_ids = []
+    if viewer and viewer.is_authenticated:
+        user_voted_option_ids = [str(v.option_id) for v in poll.votes.filter(user=viewer)]
+    user_voted_option_id = user_voted_option_ids[0] if user_voted_option_ids else None
+
+    return {
+        "id": str(poll.id),
+        "question": poll.question,
+        "isMultipleChoice": bool(poll.is_multiple_choice),
+        "totalVotes": tot_votes,
+        "totalVoters": tot_voters,
+        "hasVoted": bool(user_voted_option_ids),
+        "userVotedOptionId": user_voted_option_id,
+        "userVotedOptionIds": user_voted_option_ids,
+        "options": options_data,
+    }
+
 def serialize_post(post, viewer=None) -> dict:
     from django.utils import timezone
     is_scheduled = bool(post.scheduled_for and post.scheduled_for > timezone.now())
@@ -32,6 +65,14 @@ def serialize_post(post, viewer=None) -> dict:
         has_liked = getattr(post, 'user_has_liked', None)
         if has_liked is None:
             has_liked = PostLike.objects.filter(post=post, user=viewer).exists()
+
+    poll_data = None
+    try:
+        if hasattr(post, 'poll') and post.poll:
+            poll_data = serialize_poll(post.poll, viewer=viewer)
+    except Exception:
+        pass
+
     return {
         "id": str(post.id),
         "title": post.title or "",
@@ -47,6 +88,7 @@ def serialize_post(post, viewer=None) -> dict:
         "hasLiked": has_liked,
         "likers": [],
         "author": serialize_user(post.author),
+        "poll": poll_data,
     }
 
 def serialize_comment(comment, viewer=None) -> dict:
@@ -57,6 +99,7 @@ def serialize_comment(comment, viewer=None) -> dict:
         "id": str(comment.id),
         "content": comment.content or "",
         "likesCount": comment.likes_count,
+        "isPinned": bool(getattr(comment, 'is_pinned', False)),
         "createdAt": comment.created_at.isoformat() if comment.created_at else None,
         "updatedAt": comment.updated_at.isoformat() if comment.updated_at else None,
         "hasLiked": has_liked,
@@ -126,7 +169,10 @@ class FeedMutation:
         content: str,
         title: str = "",
         media_b64: Optional[List[str]] = None,
-        scheduled_for: Optional[str] = None
+        scheduled_for: Optional[str] = None,
+        poll_question: Optional[str] = None,
+        poll_options: Optional[List[str]] = None,
+        poll_is_multiple_choice: Optional[bool] = False
     ) -> PostType:
         user = info.context.request.user
         if not user.is_authenticated:
@@ -196,6 +242,21 @@ class FeedMutation:
             media_urls=media_urls,
             scheduled_for=parsed_scheduled_for
         )
+
+        if poll_question and poll_question.strip() and poll_options:
+            cleaned_options = [opt.strip() for opt in poll_options if opt and opt.strip()]
+            if len(cleaned_options) >= 2:
+                poll = Poll.objects.create(
+                    post=post,
+                    question=poll_question.strip(),
+                    is_multiple_choice=bool(poll_is_multiple_choice)
+                )
+                for opt_text in cleaned_options:
+                    PollOption.objects.create(
+                        poll=poll,
+                        text=opt_text
+                    )
+
         from django.utils import timezone
         is_future_scheduled = bool(parsed_scheduled_for and parsed_scheduled_for > timezone.now())
         if not is_future_scheduled:
@@ -513,4 +574,93 @@ class FeedMutation:
         comment.reported_by = None
         comment.save(update_fields=['is_reported', 'report_reason', 'reported_by'])
         return True
+
+    @strawberry.mutation
+    def toggle_pin_comment(self, info: Info, comment_id: str) -> bool:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        comment = Comment.objects.select_related('post').filter(id=comment_id).first()
+        if not comment:
+            raise Exception("Comment not found")
+        
+        is_post_author = comment.post.author_id == user.id
+        is_admin = user.role in ['admin', 'superadmin', 'hr']
+        if not (is_post_author or is_admin):
+            raise Exception("Only the post author or admins can pin a comment")
+
+        new_status = not comment.is_pinned
+        if new_status:
+            Comment.objects.filter(post=comment.post, is_pinned=True).update(is_pinned=False)
+            comment.is_pinned = True
+            comment.save(update_fields=['is_pinned'])
+            action_name = "comment_pinned"
+        else:
+            comment.is_pinned = False
+            comment.save(update_fields=['is_pinned'])
+            action_name = "comment_unpinned"
+
+        broadcast_feed_update("toggle_pin_comment", str(comment.post.id), {
+            "action": action_name,
+            "post_id": str(comment.post.id),
+            "comment_id": str(comment.id),
+            "is_pinned": comment.is_pinned
+        })
+        return comment.is_pinned
+
+    @strawberry.mutation
+    def vote_poll(self, info: Info, poll_id: str, option_id: str) -> PollType:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+
+        poll = Poll.objects.filter(id=poll_id).first()
+        if not poll:
+            raise Exception("Poll not found")
+
+        option = PollOption.objects.filter(id=option_id, poll=poll).first()
+        if not option:
+            raise Exception("Option not found")
+
+        from django.db import transaction
+        with transaction.atomic():
+            if poll.is_multiple_choice:
+                # Multiple choice: toggle the vote on option
+                existing_vote = PollVote.objects.filter(poll=poll, user=user, option=option).first()
+                if existing_vote:
+                    existing_vote.delete()
+                    option.votes_count = max(0, option.votes_count - 1)
+                    option.save(update_fields=['votes_count'])
+                else:
+                    PollVote.objects.create(poll=poll, user=user, option=option)
+                    option.votes_count += 1
+                    option.save(update_fields=['votes_count'])
+            else:
+                # Single choice: switch vote or cast vote
+                existing_vote = PollVote.objects.filter(poll=poll, user=user).first()
+                if existing_vote:
+                    if str(existing_vote.option_id) == str(option.id):
+                        return poll
+                    old_option = existing_vote.option
+                    old_option.votes_count = max(0, old_option.votes_count - 1)
+                    old_option.save(update_fields=['votes_count'])
+
+                    existing_vote.option = option
+                    existing_vote.save(update_fields=['option'])
+
+                    option.votes_count += 1
+                    option.save(update_fields=['votes_count'])
+                else:
+                    PollVote.objects.create(poll=poll, user=user, option=option)
+                    option.votes_count += 1
+                    option.save(update_fields=['votes_count'])
+
+        broadcast_feed_update("vote_poll", str(poll.post_id), {
+            "action": "poll_voted",
+            "post_id": str(poll.post_id),
+            "poll": serialize_poll(poll, viewer=user)
+        })
+        return poll
+
+
 

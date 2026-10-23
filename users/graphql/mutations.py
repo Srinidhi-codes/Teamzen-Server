@@ -203,9 +203,25 @@ class UserMutation:
                     "Hard-refresh the browser, then re-enroll."
                 )
             )
+
+        # 🔐 Re-enrollment security lock:
+        if user.face_descriptor:
+            is_admin_or_hr = user.role in ("admin", "superadmin", "hr")
+            is_authorized = getattr(user, "re_enrollment_allowed", False)
+            if not is_admin_or_hr and not is_authorized:
+                return EnrollFacePayload(
+                    error="Face template is already enrolled. Template re-enrollment requires prior HR or Admin authorization."
+                )
+
         try:
             user.face_descriptor = [float(x) for x in input.descriptor]
             user.face_enrolled_at = timezone.now()
+
+            # Revoke one-time re-enrollment authorization token
+            if getattr(user, "re_enrollment_allowed", False):
+                user.re_enrollment_allowed = False
+                user.re_enrollment_allowed_by = None
+                user.re_enrollment_allowed_at = None
 
             if input.image_base64:
                 raw = input.image_base64
@@ -220,23 +236,40 @@ class UserMutation:
                 user.face_enrollment_image.save(filename, ContentFile(data), save=False)
 
             user.save()
+
+            # Notify user for biometric profile modification audit
+            try:
+                from notifications.utils import notify_user
+                notify_user(
+                    recipient_id=user.id,
+                    verb="updated",
+                    message="Your facial recognition template was successfully updated. If you did not perform this action, contact HR immediately.",
+                    actor_id=user.id,
+                    target_type="Face Profile",
+                    target_id=str(user.id),
+                    level="security",
+                )
+            except Exception:
+                pass
+
             return EnrollFacePayload(success=True, user=user)
         except Exception as e:
             return EnrollFacePayload(error=str(e))
 
     @strawberry.mutation
     def clear_face_enrollment(self, info: Info, user_id: str | None = None) -> EnrollFacePayload:
-        """Clear own enrollment, or another user's if admin/HR."""
+        """Clear enrollment: Only Admin / HR authorized."""
         from django.utils import timezone
 
         actor = info.context.request.user
         if not actor.is_authenticated:
             return EnrollFacePayload(error="Not authenticated")
 
+        if actor.role not in ["superadmin", "admin", "hr"]:
+            return EnrollFacePayload(error="Only HR or Admin can clear biometric face enrollment.")
+
         target = actor
         if user_id and str(user_id) != str(actor.id):
-            if actor.role not in ["superadmin", "admin", "hr"]:
-                return EnrollFacePayload(error="Not authorized")
             try:
                 target = User.objects.get(id=user_id)
             except User.DoesNotExist:
@@ -244,10 +277,51 @@ class UserMutation:
 
         target.face_descriptor = None
         target.face_enrolled_at = None
+        target.re_enrollment_allowed = False
+        target.re_enrollment_allowed_by = None
+        target.re_enrollment_allowed_at = None
         if target.face_enrollment_image:
             target.face_enrollment_image.delete(save=False)
             target.face_enrollment_image = None
         target.save()
+        return EnrollFacePayload(success=True, user=target)
+
+    @strawberry.mutation
+    def authorize_face_re_enrollment(self, info: Info, user_id: strawberry.ID) -> EnrollFacePayload:
+        """HR / Admin workflow to allow an employee to re-enroll their face template."""
+        from django.utils import timezone
+
+        actor = info.context.request.user
+        if not actor.is_authenticated or actor.role not in ["superadmin", "admin", "hr"]:
+            return EnrollFacePayload(error="Not authorized to approve face re-enrollment.")
+
+        try:
+            target = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return EnrollFacePayload(error="User not found")
+
+        if actor.organization_id and target.organization_id != actor.organization_id and actor.role != "superadmin":
+            return EnrollFacePayload(error="Cross-tenant access forbidden.")
+
+        target.re_enrollment_allowed = True
+        target.re_enrollment_allowed_by = actor
+        target.re_enrollment_allowed_at = timezone.now()
+        target.save(update_fields=["re_enrollment_allowed", "re_enrollment_allowed_by", "re_enrollment_allowed_at"])
+
+        try:
+            from notifications.utils import notify_user
+            notify_user(
+                recipient_id=target.id,
+                verb="authorized",
+                message=f"HR/Admin ({actor.first_name} {actor.last_name}) has authorized you to re-enroll your facial recognition profile.",
+                actor_id=actor.id,
+                target_type="Face Profile",
+                target_id=str(target.id),
+                level="security",
+            )
+        except Exception:
+            pass
+
         return EnrollFacePayload(success=True, user=target)
 
     @strawberry.mutation
@@ -419,6 +493,36 @@ class UserMutation:
             target_user = User.objects.select_related("organization", "designation", "department", "manager").get(id=input.user_id)
             if actor.role != "superadmin" and target_user.organization_id != actor.organization_id:
                 return PromoteEmployeePayload(success=False, error="Unauthorized: Cannot promote employees of another organization.")
+
+            if not target_user.is_active:
+                return PromoteEmployeePayload(success=False, error="Cannot promote an inactive or deactivated employee.")
+
+            from datetime import date
+            if target_user.date_of_exit and target_user.date_of_exit < date.today():
+                return PromoteEmployeePayload(success=False, error="Cannot promote an employee who has exited the organization.")
+
+            if target_user.employment_type == "intern":
+                return PromoteEmployeePayload(success=False, error="Interns must be converted to regular full-time employees before promotion.")
+
+            # Rule: check onboarding completion status
+            from onboarding.models import EmployeeOnboarding
+            ob = EmployeeOnboarding.objects.filter(user=target_user).first()
+            if ob and ob.status != "completed":
+                return PromoteEmployeePayload(
+                    success=False,
+                    error=f"Cannot promote employee whose onboarding is incomplete (status: {ob.status.replace('_', ' ').title()})."
+                )
+
+            if not target_user.is_verified:
+                return PromoteEmployeePayload(success=False, error="Employee has not completed required onboarding verification.")
+
+            if target_user.date_of_joining:
+                tenure_days = (date.today() - target_user.date_of_joining).days
+                if tenure_days < 90:
+                    return PromoteEmployeePayload(
+                        success=False,
+                        error=f"Employee is still within the 90-day probation period ({tenure_days} days served). Minimum 90 days tenure required for promotion."
+                    )
 
             # Determine new role
             if input.new_role:
