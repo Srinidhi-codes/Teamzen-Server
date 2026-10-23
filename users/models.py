@@ -77,6 +77,19 @@ class CustomUser(AbstractUser):
         max_length=1024,
     )
     face_enrolled_at = models.DateTimeField(null=True, blank=True)
+    # Face Re-enrollment Governance (Prevents unauthorized overwrites)
+    re_enrollment_allowed = models.BooleanField(
+        default=False,
+        help_text="Requires explicit HR/Admin approval before an existing face template can be replaced",
+    )
+    re_enrollment_allowed_by = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='authorized_re_enrollments',
+    )
+    re_enrollment_allowed_at = models.DateTimeField(null=True, blank=True)
     
     # Employment Details
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES, default='full_time')

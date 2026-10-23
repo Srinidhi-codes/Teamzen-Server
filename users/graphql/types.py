@@ -153,6 +153,7 @@ class UserType:
     has_seen_ai_onboarding: auto
     email_login_alerts: auto
     face_enrolled_at: auto
+    re_enrollment_allowed: auto
 
     created_at: auto
     updated_at: auto

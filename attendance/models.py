@@ -191,6 +191,38 @@ class AttendanceHeartbeat(models.Model):
         fence_str = 'inside' if self.is_within_geofence else 'outside'
         return f"Heartbeat {self.attendance_record.user} @ {self.timestamp} ({fence_str}, {self.distance_meters}m)"
 
+class UserDeviceBinding(models.Model):
+    """
+    Hardware Device Registration for anti-proxy & anti-buddy punching enforcement.
+    Prevents employees from clocking in for peers from unauthorized devices.
+    """
+    DEVICE_TYPES = [
+        ("web", "Web Browser"),
+        ("mobile_android", "Android App"),
+        ("mobile_ios", "iOS App"),
+        ("kiosk", "Office Kiosk / Shared Device"),
+    ]
+
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="device_bindings")
+    device_id = models.CharField(max_length=128, db_index=True)
+    device_name = models.CharField(max_length=128, blank=True, default="")
+    device_type = models.CharField(max_length=32, choices=DEVICE_TYPES, default="web")
+    fingerprint = models.CharField(max_length=255, blank=True, default="")
+    is_trusted = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    registered_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "device_id")
+        indexes = [
+            models.Index(fields=["user", "device_id", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.device_name or self.device_id[:12]}"
+
+
 class AttendanceCorrection(models.Model):
     STATUS_CHOICES = [
         ("pending", "Pending"),
@@ -199,13 +231,56 @@ class AttendanceCorrection(models.Model):
         ("cancelled", "Cancelled")
     ]
 
+    CATEGORY_CHOICES = [
+        ("FORGOT_TO_PUNCH", "Forgot to Punch"),
+        ("BIOMETRIC_DEVICE_ERROR", "Biometric / Device Failure"),
+        ("CLIENT_VISIT_ON_DUTY", "Client Visit / On-Duty"),
+        ("POWER_INTERNET_OUTAGE", "Power / Internet Outage"),
+        ("OTHER_EXCEPTION", "Other Exception"),
+    ]
+
     attendance_record = models.ForeignKey(AttendanceRecord, on_delete=models.CASCADE)
     requested_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
 
+    category = models.CharField(
+        max_length=40,
+        choices=CATEGORY_CHOICES,
+        default="FORGOT_TO_PUNCH",
+        help_text="Standardized justification category for attendance adjustment",
+    )
+    supporting_evidence = models.FileField(
+        upload_to="teamzen/regularization_proofs/",
+        null=True,
+        blank=True,
+        max_length=1024,
+        help_text="Uploaded document or screenshot supporting the regularization request",
+    )
+
+    # Requested adjustment times
     corrected_login_time = models.TimeField(null=True, blank=True)
     corrected_logout_time = models.TimeField(null=True, blank=True)
 
+    # Historical punch snapshot at time of request (prevents tampering)
+    original_login_time = models.TimeField(null=True, blank=True)
+    original_logout_time = models.TimeField(null=True, blank=True)
+
+    # System-suggested bounds (derived from shift or verified office heartbeats)
+    system_suggested_login_time = models.TimeField(null=True, blank=True)
+    system_suggested_logout_time = models.TimeField(null=True, blank=True)
+
     reason = models.TextField()
+
+    # Policy escalation & audit notes
+    escalated_to_hr = models.BooleanField(
+        default=False,
+        help_text="True if request hit the organizational quota threshold and requires HR escalation",
+    )
+    policy_violation_notes = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Automatic policy evaluation notes (e.g. 3rd monthly request)",
+    )
 
     _status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_column='status')
     
@@ -228,6 +303,7 @@ class AttendanceCorrection(models.Model):
     approval_comments = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -235,9 +311,15 @@ class AttendanceCorrection(models.Model):
     @status.transition(source='pending', target='approved')
     def approve(self, approver, comments=None):
         """
-        Apply correction to attendance but KEEP correction record
+        Apply correction to attendance while preserving historical punch data.
         """
         attendance = self.attendance_record
+
+        # Preserve original unadjusted punch times if not already set
+        if not attendance.actual_login_time and attendance.login_time:
+            attendance.actual_login_time = attendance.login_time
+        if not attendance.actual_logout_time and attendance.logout_time:
+            attendance.actual_logout_time = attendance.logout_time
 
         if self.corrected_login_time:
             attendance.login_time = self.corrected_login_time
@@ -246,19 +328,29 @@ class AttendanceCorrection(models.Model):
             attendance.logout_time = self.corrected_logout_time
 
         attendance.is_verified = True
+        attendance.recalculate_worked_hours()
+
+        hours = float(attendance.worked_hours or 0)
+        if hours >= 8.0:
+            attendance.status = 'present'
+        elif hours >= 4.0:
+            attendance.status = 'half_day'
+        elif hours > 0:
+            attendance.status = 'present'
+
         attendance.save()
 
         self.approved_by = approver
-        self.approval_comments = comments
+        self.approval_comments = comments or ""
 
     @status.transition(source='pending', target='rejected')
     def reject(self, approver, comments=None):
         self.approved_by = approver
-        self.approval_comments = comments
+        self.approval_comments = comments or ""
 
     @status.transition(source='pending', target='cancelled')
     def cancel(self):
         pass
 
     def __str__(self):
-        return f"Correction for {self.attendance_record}"
+        return f"Correction for {self.attendance_record} ({self.category} - {self.status})"

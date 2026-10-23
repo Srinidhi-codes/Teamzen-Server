@@ -42,6 +42,7 @@ class Comment(models.Model):
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     content = models.TextField()
     likes_count = models.PositiveIntegerField(default=0)
+    is_pinned = models.BooleanField(default=False)
     is_reported = models.BooleanField(default=False)
     report_reason = models.TextField(blank=True, null=True)
     reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reported_comments')
@@ -49,7 +50,7 @@ class Comment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ['-is_pinned', 'created_at']
 
     def __str__(self):
         return f"Comment by {self.author.email} on post {self.post.id}"
@@ -64,3 +65,48 @@ class CommentLike(models.Model):
 
     def __str__(self):
         return f"{self.user.email} likes comment {self.comment.id}"
+
+
+class Poll(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name='poll')
+    question = models.CharField(max_length=255)
+    is_multiple_choice = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    def total_votes(self) -> int:
+        return self.votes.count()
+
+    def total_voters(self) -> int:
+        return self.votes.values('user').distinct().count()
+
+    def __str__(self):
+        return f"Poll: {self.question}"
+
+
+class PollOption(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name='options')
+    text = models.CharField(max_length=255)
+    votes_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.text} ({self.votes_count} votes)"
+
+
+class PollVote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name='votes')
+    option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name='votes')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='poll_votes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('poll', 'user', 'option')
+
+    def __str__(self):
+        return f"{self.user.email} voted for {self.option.text}"

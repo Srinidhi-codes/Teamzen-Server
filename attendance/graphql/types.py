@@ -99,11 +99,37 @@ class AttendanceRecordType:
         return correction.id if correction else None
 
     @strawberry.field
+    def correction_category(self) -> Optional[str]:
+        correction = self.attendancecorrection_set.order_by("-created_at").first()
+        return correction.category if correction else None
+
+    @strawberry.field
     def approval_comment(self) -> Optional[str]:
-        correction = (
-            self.attendancecorrection_set.order_by("-created_at").first()
-        )
-        return correction.approval_comments if correction else None
+        correction = self.attendancecorrection_set.order_by("-created_at").first()
+        if correction and correction.approval_comments:
+            return correction.approval_comments
+        return self.approval_remarks or None
+
+    @strawberry.field
+    def is_payroll_locked(self) -> bool:
+        try:
+            from payroll.models import PayrollRun
+            return PayrollRun.objects.filter(
+                organization=self.user.organization,
+                month=self.attendance_date.month,
+                year=self.attendance_date.year,
+                status="completed"
+            ).exists()
+        except Exception:
+            return False
+
+@strawberry.type
+class RegularizationQuotaType:
+    monthly_limit: int
+    used_count: int
+    remaining_count: int
+    deadline_days: int
+    is_exhausted: bool
 
 @strawberry.django.type(AttendanceCorrection)
 class AttendanceCorrectionType:
@@ -112,11 +138,25 @@ class AttendanceCorrectionType:
     requested_by: UserType
     approved_by: Optional[UserType]
 
+    category: auto
     corrected_login_time: auto
     corrected_logout_time: auto
+    original_login_time: auto
+    original_logout_time: auto
+    system_suggested_login_time: auto
+    system_suggested_logout_time: auto
     reason: auto
     status: str
     approval_comments: auto
+    escalated_to_hr: auto
+    policy_violation_notes: auto
 
     created_at: auto
+    updated_at: auto
+
+    @strawberry.field
+    def supporting_evidence_url(self) -> Optional[str]:
+        if self.supporting_evidence:
+            return self.supporting_evidence.url
+        return None
 

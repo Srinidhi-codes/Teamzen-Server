@@ -14,6 +14,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+import sys
+# pyrefly: ignore[missing-import]
 from dotenv import load_dotenv
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
@@ -243,7 +245,14 @@ else:
 #     }
 # }
 
-if os.getenv("DATABASE_URL"):
+if "test" in sys.argv:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }
+elif os.getenv("DATABASE_URL"):
     tmpPostgres = urlparse(os.getenv("DATABASE_URL"))
     DATABASES = {
         'default': {

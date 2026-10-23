@@ -1,8 +1,16 @@
 from django.urls import path
-from attendance.api_views import AttendanceSelfieUploadView, FaceExtractView, AttendanceHeartbeatView
+from attendance.api_views import (
+    AttendanceSelfieUploadView,
+    FaceExtractView,
+    AttendanceHeartbeatView,
+    FaceChallengeView,
+    DeviceRegistrationView,
+)
 
 urlpatterns = [
     path("attendance/selfie/", AttendanceSelfieUploadView.as_view(), name="attendance_selfie_upload"),
     path("attendance/face/extract/", FaceExtractView.as_view(), name="attendance_face_extract"),
+    path("attendance/face/challenge/", FaceChallengeView.as_view(), name="attendance_face_challenge"),
+    path("attendance/device/register/", DeviceRegistrationView.as_view(), name="attendance_device_register"),
     path("attendance/heartbeat/", AttendanceHeartbeatView.as_view(), name="attendance_heartbeat"),
 ]

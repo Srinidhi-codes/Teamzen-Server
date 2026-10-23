@@ -3,9 +3,14 @@ from typing import List, Optional
 from datetime import date as dt_date, time
 from django.db.models import Q
 from attendance.models import AttendanceRecord, AttendanceCorrection
-from attendance.graphql.types import AttendanceRecordType, AttendanceCorrectionType
+from attendance.graphql.types import (
+    AttendanceRecordType,
+    AttendanceCorrectionType,
+    RegularizationQuotaType,
+)
 from users.models import CustomUser
 from users.graphql.types import UserType
+from graphql import GraphQLError
 
 # =====================================================
 # INPUT TYPES
@@ -78,6 +83,32 @@ PRESENT_STATUSES = {"present", "late_login", "early_logout", "half_day"}
 @strawberry.type
 class AttendanceQuery:
     # -------------------------
+    # MY REGULARIZATION QUOTA
+    # -------------------------
+    @strawberry.field
+    def my_regularization_quota(
+        self,
+        info,
+        target_date: Optional[dt_date] = None,
+    ) -> RegularizationQuotaType:
+        """
+        Returns employee's monthly regularization quota allowance, used, remaining and deadline.
+        """
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise GraphQLError("Unauthenticated")
+
+        from attendance.services import get_monthly_regularization_quota_summary
+        summary = get_monthly_regularization_quota_summary(user, target_date)
+        return RegularizationQuotaType(
+            monthly_limit=summary["monthly_limit"],
+            used_count=summary["used_count"],
+            remaining_count=summary["remaining_count"],
+            deadline_days=summary["deadline_days"],
+            is_exhausted=summary["is_exhausted"],
+        )
+
+    # -------------------------
     # MY ATTENDANCE
     # ------------------------
     @strawberry.field
@@ -111,6 +142,27 @@ class AttendanceQuery:
             qs = qs.filter(attendance_date=dt_date.today())
 
         return qs
+
+    # -------------------------
+    # ATTENDANCE RECORD BY ID
+    # -------------------------
+    @strawberry.field
+    def attendance_record(
+        self,
+        info,
+        id: strawberry.ID,
+    ) -> Optional[AttendanceRecordType]:
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise GraphQLError("Unauthenticated")
+
+        try:
+            record = AttendanceRecord.objects.select_related("user", "office_location").get(id=id)
+            if record.user_id != user.id and user.role not in ["superadmin", "admin", "hr", "manager"]:
+                raise GraphQLError("Not authorized to view this record")
+            return record
+        except AttendanceRecord.DoesNotExist:
+            return None
 
     # -------------------------
     # ATTENDANCE BY USER

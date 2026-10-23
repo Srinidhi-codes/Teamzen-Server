@@ -68,6 +68,23 @@ class Organization(models.Model):
         default=False,
         help_text="When True, employees must verify face to punch attendance (geofence remains soft-flagged)",
     )
+    # Attendance Regularization Policy & Security (Enterprise Guardrails)
+    attendance_regularization_monthly_limit = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Maximum self-service regularizations permitted per employee per calendar month",
+    )
+    attendance_regularization_deadline_days = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Maximum allowed submission window in business days following the attendance discrepancy",
+    )
+    attendance_regularization_escalation_limit = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Monthly request count that escalates the approval to HR/Executive level",
+    )
+    device_binding_enforced = models.BooleanField(
+        default=False,
+        help_text="When True, employees may only punch attendance from registered and approved hardware devices",
+    )
     weekend_days = models.JSONField(
         default=default_weekend_days,
         blank=True,

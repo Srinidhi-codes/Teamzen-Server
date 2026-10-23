@@ -2,7 +2,7 @@ import strawberry
 from typing import List, Optional
 from strawberry.types import Info
 from feed.models import Post, Comment
-from .types import PostType, PaginatedPostResponse
+from .types import PostType, PaginatedPostResponse, PaginatedCommentResponse
 from graphql_utils.pagination import get_paginated_results
 
 @strawberry.type
@@ -113,3 +113,29 @@ class FeedQuery:
         )
         paginated = get_paginated_results(queryset, page, page_size)
         return PaginatedPostResponse(**paginated)
+
+    @strawberry.field
+    def reported_comments(
+        self,
+        info: Info,
+        page: int = 1,
+        page_size: int = 10
+    ) -> PaginatedCommentResponse:
+        user = info.context.request.user
+        if not user.is_authenticated or user.role not in ['admin', 'superadmin', 'hr']:
+            return PaginatedCommentResponse(results=[], total=0, page=page, page_size=page_size)
+            
+        queryset = (
+            Comment.objects.filter(is_reported=True)
+            .select_related(
+                'author',
+                'author__department',
+                'author__designation',
+                'author__organization',
+                'reported_by',
+                'post'
+            )
+            .order_by('-updated_at')
+        )
+        paginated = get_paginated_results(queryset, page, page_size)
+        return PaginatedCommentResponse(**paginated)
